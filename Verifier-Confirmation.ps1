@@ -661,7 +661,7 @@ function Set-CategorieConfirmation {
 # =====================================================================
 
 function Write-RapportExcel {
-    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise)
+    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande = "")
 
     if ($Resultats.Count -eq 0) { return }
 
@@ -697,10 +697,10 @@ function Write-RapportExcel {
 
             $fsDonnees = $classeur.Sheets.Add([System.Reflection.Missing]::Value, $fsSommaire)
             $fsDonnees.Name = "Donnees_SAP"
-            $hdrsD = @("Ligne SAP","Article","Prix PDF (a coller)","Qte PDF (a coller)","Statut")
+            $hdrsD = @("Ligne SAP","Article","Prix PDF (a coller)","Qte PDF (a coller)","Statut","No Commande SAP")
             for ($c = 0; $c -lt $hdrsD.Count; $c++) { $fsDonnees.Cells.Item(1, $c + 1) = $hdrsD[$c] }
-            $fsDonnees.Range("A1:E1").Font.Bold = $true
-            $fsDonnees.Range("A1:E1").Interior.Color = 0x6B1A4A
+            $fsDonnees.Range("A1:F1").Font.Bold = $true
+            $fsDonnees.Range("A1:F1").Interior.Color = 0x6B1A4A
 
             # Supprimer feuilles superflues
             for ($k = $classeur.Sheets.Count; $k -ge 1; $k--) {
@@ -781,8 +781,9 @@ function Write-RapportExcel {
             $fsDonnees.Cells.Item($ligneD, 3) = if ($r.PdfUnit -gt 0) { $r.PdfUnit } else { $r.SapPrice }
             $fsDonnees.Cells.Item($ligneD, 4) = if ($r.PdfQty -gt 0) { $r.PdfQty } else { $r.SapQty }
             $fsDonnees.Cells.Item($ligneD, 5) = $r.Statut
+            $fsDonnees.Cells.Item($ligneD, 6) = $NumeroCommande
             $fsDonnees.Cells.Item($ligneD, 3).NumberFormat = "0.0000"
-            if ($r.Statut -eq "ECART") { $fsDonnees.Range("A$ligneD`:E$ligneD").Interior.Color = 15001066 }
+            if ($r.Statut -eq "ECART") { $fsDonnees.Range("A$ligneD`:F$ligneD").Interior.Color = 15001066 }
             $ligneD++
         }
         $fsDonnees.Columns.AutoFit() | Out-Null
@@ -941,7 +942,7 @@ function Invoke-TraiterComparaison {
 
     Set-CategorieConfirmation $MailConfirmation $estOK
     Write-JournalEntry $expediteur $(if ($estOK) { "OK" } else { "ECART" }) "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves"
-    Write-RapportExcel $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise
+    Write-RapportExcel $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC
 }
 
 # =====================================================================
