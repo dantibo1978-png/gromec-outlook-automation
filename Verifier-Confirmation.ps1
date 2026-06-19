@@ -423,6 +423,13 @@ $($dictInfo.Regles)
 
 Cherche aussi le numero de bon de commande GROMEC (pas le numero de confirmation
 du fournisseur) -- format typique 90XXXXX (7-8 chiffres commencant par 90).
+Ce numero peut apparaitre sous plusieurs etiquettes selon le fournisseur, par exemple:
+"N bon de commande", "Bon de commande", "No de commande", "PO Number", "Purchase Order",
+"Customer PO", "Order No", "Numero de commande", "Notre commande", "Votre commande".
+CHAMP OBLIGATOIRE: le 5e champ de la ligne FOURNISSEUR doit TOUJOURS etre present,
+meme vide (laisse-le vide entre les deux derniers | si vraiment introuvable, mais
+cherche attentivement avant de conclure que c'est absent -- il est presque toujours
+imprime quelque part sur le document, souvent pres du nom du client ou en en-tete.
 
 Reponds STRICTEMENT dans ce format, rien d'autre:
 FOURNISSEUR|NomFournisseur|NumConfirmationFournisseur|CAD_ou_USD|NumeroBCGromec
@@ -979,6 +986,30 @@ function Invoke-ProposerFournisseur {
 # FONCTION - Orchestration complete de la comparaison
 # =====================================================================
 
+function Write-FirebaseEchec {
+    param($MailConfirmation, [string]$RaisonEchec, [string]$NumeroBCRecherche = "", [string]$NomFournisseurDetecte = "")
+
+    $entree = @{
+        date            = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
+        fournisseur     = if ($NomFournisseurDetecte -ne "") { $NomFournisseurDetecte } else { $MailConfirmation.SenderEmailAddress }
+        sujet           = $MailConfirmation.Subject
+        statut          = "NON_APPARIE"
+        raisonEchec     = $RaisonEchec
+        numeroBCRecherche = $NumeroBCRecherche
+        entryID         = $MailConfirmation.EntryID
+        storeID         = $MailConfirmation.Parent.StoreID
+        articles        = @()
+    }
+
+    try {
+        $url = "${FirebaseUrl}gromec_vba/historique.json"
+        $jsonBody = $entree | ConvertTo-Json -Depth 10 -Compress
+        Invoke-RestMethod -Uri $url -Method Post -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
+    } catch {
+        # Echec silencieux -- le journal local CSV reste la source de verite principale
+    }
+}
+
 function Invoke-TraiterComparaison {
     param($Namespace, $MailConfirmation)
 
@@ -988,6 +1019,7 @@ function Invoke-TraiterComparaison {
     $cheminConfirmation = Save-PremierePDF $MailConfirmation
     if ($cheminConfirmation -eq "") {
         Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF confirmation introuvable"
+        Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_CONFIRMATION"
         return
     }
 
@@ -1017,6 +1049,7 @@ function Invoke-TraiterComparaison {
     $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $numeroBC
     if ($null -eq $mailEnvoye) {
         Write-JournalEntry $expediteur "AUCUNE_COMMANDE_TROUVEE" "BC recherche: $numeroBC"
+        Write-FirebaseEchec $MailConfirmation "AUCUNE_COMMANDE_TROUVEE" $numeroBC $nomFourn
         Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
         return
     }
@@ -1024,6 +1057,7 @@ function Invoke-TraiterComparaison {
     $cheminCommande = Save-PremierePDF $mailEnvoye
     if ($cheminCommande -eq "") {
         Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF commande Gromec introuvable"
+        Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_COMMANDE" $numeroBC $nomFourn
         Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
         return
     }
@@ -1036,6 +1070,7 @@ function Invoke-TraiterComparaison {
 
     if ($itemsFourn.Count -eq 0 -or $itemsSAP.Count -eq 0) {
         Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Fourn:$($itemsFourn.Count) SAP:$($itemsSAP.Count)"
+        Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn
         return
     }
 
@@ -1045,6 +1080,7 @@ function Invoke-TraiterComparaison {
     $nbEcarts = ($resultats | Where-Object { $_.Statut -eq "ECART" }).Count
     $nbNonTrouves = ($resultats | Where-Object { $_.Statut -eq "NON_TROUVE" }).Count
     $estOK = ($nbEcarts -eq 0 -and $nbNonTrouves -eq 0)
+
 
     Set-CategorieConfirmation $MailConfirmation $estOK
     Write-JournalEntry $expediteur $(if ($estOK) { "OK" } else { "ECART" }) "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves"
