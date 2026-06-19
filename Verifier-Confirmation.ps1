@@ -124,6 +124,56 @@ function Set-FirebaseValue {
     }
 }
 
+function Write-FirebaseHistorique {
+    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande)
+
+    if ($Resultats.Count -eq 0) { return }
+
+    $articles = @()
+    foreach ($r in $Resultats) {
+        $articles += @{
+            sapLigne   = $r.SapLineNbr
+            sapArticle = $r.SapArticle
+            sapCode    = $r.SapCodeManuf
+            sapDesc    = $r.SapDesc
+            sapQty     = $r.SapQty
+            sapPrix    = $r.SapPrice
+            pdfCode    = $r.PdfCode
+            pdfQty     = $r.PdfQty
+            pdfPrix    = $r.PdfUnit
+            diffQty    = $r.DiffQty
+            diffUnit   = $r.DiffUnit
+            diffTotal  = $r.DiffTotal
+            statut     = $r.Statut
+            methode    = $r.Methode
+            confiance  = $r.Confiance
+        }
+    }
+
+    $nbEcarts = ($Resultats | Where-Object { $_.Statut -eq "ECART" }).Count
+    $nbNonTrouves = ($Resultats | Where-Object { $_.Statut -eq "NON_TROUVE" }).Count
+
+    $entree = @{
+        date         = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
+        fournisseur  = $Fournisseur
+        sujet        = $Sujet
+        statut       = $StatutGlobal
+        devise       = $Devise
+        numeroCommande = $NumeroCommande
+        nbEcarts     = $nbEcarts
+        nbNonTrouves = $nbNonTrouves
+        articles     = $articles
+    }
+
+    try {
+        $url = "${FirebaseUrl}gromec_vba/historique.json"
+        $jsonBody = $entree | ConvertTo-Json -Depth 10 -Compress
+        Invoke-RestMethod -Uri $url -Method Post -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
+    } catch {
+        # Echec silencieux -- le rapport Excel local reste la source de verite principale
+    }
+}
+
 function Get-DictionnaireFournisseurs {
     $dict = Get-FirebaseValue "gromec_vba/dict_fournisseurs"
     $regles = Get-FirebaseValue "gromec_vba/regles_generales"
@@ -943,6 +993,7 @@ function Invoke-TraiterComparaison {
     Set-CategorieConfirmation $MailConfirmation $estOK
     Write-JournalEntry $expediteur $(if ($estOK) { "OK" } else { "ECART" }) "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves"
     Write-RapportExcel $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC
+    Write-FirebaseHistorique $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC
 }
 
 # =====================================================================
