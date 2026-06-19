@@ -125,7 +125,7 @@ function Set-FirebaseValue {
 }
 
 function Write-FirebaseHistorique {
-    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande)
+    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande, [string]$EntryID = "", [string]$StoreID = "")
 
     if ($Resultats.Count -eq 0) { return }
 
@@ -163,6 +163,10 @@ function Write-FirebaseHistorique {
         nbEcarts     = $nbEcarts
         nbNonTrouves = $nbNonTrouves
         articles     = $articles
+        entryID      = $EntryID
+        storeID      = $StoreID
+        resolu       = $false
+        syncedResolu = $false
     }
 
     try {
@@ -171,6 +175,58 @@ function Write-FirebaseHistorique {
         Invoke-RestMethod -Uri $url -Method Post -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
     } catch {
         # Echec silencieux -- le rapport Excel local reste la source de verite principale
+    }
+}
+
+function Update-FirebaseChamp {
+    param([string]$Chemin, [hashtable]$Champs)
+    try {
+        $url = "$FirebaseUrl$Chemin.json"
+        $jsonBody = $Champs | ConvertTo-Json -Compress
+        Invoke-RestMethod -Uri $url -Method Patch -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Sync-ResolusVersOutlook {
+    param($Namespace)
+
+    try {
+        $url = "${FirebaseUrl}gromec_vba/historique.json"
+        $historique = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 15
+    } catch {
+        return  # Pas de connexion -- on reessaiera au prochain passage du script
+    }
+
+    if ($null -eq $historique) { return }
+
+    foreach ($cle in $historique.PSObject.Properties.Name) {
+        $entree = $historique.$cle
+
+        $resolu = [bool]$entree.resolu
+        $syncedResolu = [bool]$entree.syncedResolu
+
+        if ($resolu -eq $syncedResolu) { continue }  # Deja synchronise, rien a faire
+
+        $entryID = $entree.entryID
+        $storeID = $entree.storeID
+        if ([string]::IsNullOrEmpty($entryID)) { continue }  # Ancienne entree sans EntryID -- ignoree
+
+        try {
+            $mail = $Namespace.GetItemFromID($entryID, $storeID)
+            if ($null -ne $mail) {
+                Set-CategorieConfirmation $mail $resolu
+            }
+            # Marquer comme synchronise, que le courriel ait ete trouve ou non
+            # (s'il a ete deplace/supprime, on evite de reessayer indefiniment)
+            Update-FirebaseChamp "gromec_vba/historique/$cle" @{ syncedResolu = $resolu } | Out-Null
+        } catch {
+            # Courriel introuvable ou erreur Outlook -- on marque quand meme synchronise
+            # pour eviter une boucle de tentatives infructueuses
+            Update-FirebaseChamp "gromec_vba/historique/$cle" @{ syncedResolu = $resolu } | Out-Null
+        }
     }
 }
 
@@ -993,7 +1049,7 @@ function Invoke-TraiterComparaison {
     Set-CategorieConfirmation $MailConfirmation $estOK
     Write-JournalEntry $expediteur $(if ($estOK) { "OK" } else { "ECART" }) "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves"
     Write-RapportExcel $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC
-    Write-FirebaseHistorique $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC
+    Write-FirebaseHistorique $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID
 }
 
 # =====================================================================
@@ -1041,6 +1097,11 @@ function Invoke-TraiterNouveauCourriel {
 try {
     $outlook = New-Object -ComObject Outlook.Application
     $namespace = $outlook.GetNamespace("MAPI")
+
+    # Synchronise vers Outlook les cases "resolu" cochees/decochees depuis le
+    # dashboard web depuis le dernier passage du script -- piggyback sur
+    # chaque execution, qu'il s'agisse d'un nouveau courriel ou d'un test manuel
+    Sync-ResolusVersOutlook $namespace
 
     $mail = $null
 
