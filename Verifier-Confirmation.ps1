@@ -1,4 +1,4 @@
-﻿﻿# =====================================================================
+﻿# =====================================================================
 # Verifier-Confirmation.ps1
 # Verification automatique des confirmations de commande fournisseurs
 # Lance de maniere asynchrone depuis Outlook VBA (Shell, sans attente)
