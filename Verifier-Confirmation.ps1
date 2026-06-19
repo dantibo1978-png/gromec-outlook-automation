@@ -1,4 +1,4 @@
-﻿# =====================================================================
+﻿﻿# =====================================================================
 # Verifier-Confirmation.ps1
 # Verification automatique des confirmations de commande fournisseurs
 # Lance de maniere asynchrone depuis Outlook VBA (Shell, sans attente)
@@ -19,6 +19,59 @@ param(
 )
 
 Add-Type -AssemblyName System.Windows.Forms
+
+# =====================================================================
+# MISE A JOUR AUTOMATIQUE depuis GitHub
+# Verifie a chaque lancement si une version plus recente du script existe.
+# Si oui: remplace ce fichier, relance avec les memes parametres, sort.
+# En cas d'echec (pas de connexion, repo indisponible): continue
+# normalement avec la version locale -- jamais bloquant.
+# =====================================================================
+
+$GitHubRawUrl = "https://raw.githubusercontent.com/dantibo1978-png/gromec-outlook-automation/main/Verifier-Confirmation.ps1"
+
+function Update-ScriptSiNecessaire {
+    try {
+        $remoteContent = Invoke-RestMethod -Uri $GitHubRawUrl -TimeoutSec 10
+    } catch {
+        return  # Pas de connexion ou GitHub indisponible -- on continue avec la version locale
+    }
+
+    if ([string]::IsNullOrWhiteSpace($remoteContent)) { return }
+
+    $scriptPath = $PSCommandPath
+    if ([string]::IsNullOrEmpty($scriptPath)) { return }  # Securite si lance autrement qu'en fichier
+
+    try {
+        $localContent = Get-Content -Path $scriptPath -Raw
+    } catch {
+        return
+    }
+
+    # Normaliser les fins de ligne avant comparaison (evite les faux positifs)
+    $normLocal  = ($localContent  -replace "`r`n", "`n").Trim()
+    $normRemote = ($remoteContent -replace "`r`n", "`n").Trim()
+
+    if ($normLocal -eq $normRemote) { return }  # Deja a jour
+
+    try {
+        Set-Content -Path $scriptPath -Value $remoteContent -Encoding UTF8 -Force
+    } catch {
+        return  # Fichier verrouille ou inaccessible en ecriture -- continuer avec version locale
+    }
+
+    # Relancer avec les memes parametres que cet appel
+    $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $scriptPath)
+    if ($EntryID -ne "")  { $argList += @("-EntryID", $EntryID) }
+    if ($StoreID -ne "")  { $argList += @("-StoreID", $StoreID) }
+    if ($Force)           { $argList += "-Force" }
+    if ($Interactive)     { $argList += "-Interactive" }
+
+    Start-Process -FilePath "powershell.exe" -ArgumentList $argList -WindowStyle Hidden
+    exit 0
+}
+
+Update-ScriptSiNecessaire
 
 # --- Chemin du dossier de donnees (meme que la version VBA) ---
 $DataFolder = "U:\GromecOutlook\"
