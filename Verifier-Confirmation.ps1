@@ -28,7 +28,7 @@ Add-Type -AssemblyName System.Windows.Forms
 # normalement avec la version locale -- jamais bloquant.
 # =====================================================================
 
-$GitHubRawUrl = "https://raw.githubusercontent.com/dantibo1978-png/gromec-outlook-automation/main/Verifier-Confirmation.ps1"
+$GitHubRawUrl = "https://raw.githubusercontent.com/dantibo1978-png/gromec-outlook-automation/master/Verifier-Confirmation.ps1"
 
 function Update-ScriptSiNecessaire {
     try {
