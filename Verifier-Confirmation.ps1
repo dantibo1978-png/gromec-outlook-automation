@@ -1320,6 +1320,7 @@ function Invoke-TraiterComparaison {
         # deux champs (juste le prix, ou juste la quantite) sur une ligne.
         # Sans ce remplissage, un champ a 0 creerait un faux ecart.
         $itemsFournRempli = @()
+        $codesMentionnes = @{}
         foreach ($itemFourn in $itemsFourn) {
             $sapCorrespondant = $itemsSAP | Where-Object {
                 $_.CodeManuf -ne "" -and $itemFourn.Code -ne "" -and
@@ -1334,26 +1335,31 @@ function Invoke-TraiterComparaison {
             if ($sapCorrespondant) {
                 if ($itemFourn.Qty -eq 0) { $itemFourn.Qty = $sapCorrespondant.Qty }
                 if ($itemFourn.NetUnit -eq 0) { $itemFourn.NetUnit = $sapCorrespondant.Price }
+                $codesMentionnes[(Format-CodeNormalise $sapCorrespondant.CodeManuf)] = $true
             }
             $itemsFournRempli += $itemFourn
         }
-        $itemsFourn = $itemsFournRempli
 
-        # On ne compare QUE les lignes SAP que le fournisseur a explicitement
-        # mentionnees dans le corps -- pas question de marquer NON_TROUVE
-        # toutes les autres lignes du PO qu'il n'a simplement pas commentees
-        # (silence = pas d'ecart sur ces lignes-la, contrairement au mode PDF
-        # ou une confirmation chiffree couvre normalement TOUTES les lignes).
-        $codesMatches = $itemsFourn | ForEach-Object { Format-CodeNormalise $_.Code }
-        $itemsSAP = @($itemsSAP | Where-Object {
-            $codesMatches -contains (Format-CodeNormalise $_.CodeManuf)
-        })
-
-        if ($itemsSAP.Count -eq 0) {
-            Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Aucune ligne SAP ne correspond aux codes mentionnes dans le corps"
-            Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn $HistoriqueId
-            return
+        # Pour les lignes du PO que le fournisseur n'a PAS commentees dans le
+        # corps (silence = pas d'ecart), on ajoute une "confirmation" synthetique
+        # avec les valeurs SAP d'origine telles quelles. Find-TousLesMatches va
+        # alors les matcher en statut OK automatiquement (diff = 0). Sans ca,
+        # ces lignes seraient absentes de $Resultats et donc de Firebase -- ce
+        # qui decale les boutons "Copier prix/quantites vers SAP" du dashboard,
+        # qui s'attendent a UNE valeur par ligne du PO complet, dans l'ordre.
+        foreach ($sap in $itemsSAP) {
+            $nCodeSap = Format-CodeNormalise $sap.CodeManuf
+            if (-not $codesMentionnes.ContainsKey($nCodeSap)) {
+                $itemsFournRempli += [PSCustomObject]@{
+                    LineNbr = 0
+                    Code    = $sap.CodeManuf
+                    Qty     = $sap.Qty
+                    NetUnit = $sap.Price
+                    RawLine = "(non mentionne dans le corps -- valeur SAP d'origine)"
+                }
+            }
         }
+        $itemsFourn = $itemsFournRempli
 
     } else {
         # --- MODE PDF (comportement original, inchange) ---
@@ -1425,6 +1431,14 @@ function Invoke-TraiterComparaison {
 
     # --- Matching (commun aux deux modes) ---
     $resultats = Find-TousLesMatches $itemsSAP $itemsFourn
+
+    # Tri par numero de ligne SAP -- respecte l'ordre original du PO envoye.
+    # Important pour les boutons "Copier prix/quantites vers SAP" du dashboard,
+    # qui collent une valeur par ligne dans l'ordre attendu par SAP. En mode
+    # PDF c'est deja l'ordre naturel (no-op); en mode corps, les lignes
+    # completees automatiquement (non mentionnees par le fournisseur) doivent
+    # se remettre a leur place plutot que de rester a la fin.
+    $resultats = @($resultats | Sort-Object SapLineNbr)
 
     $nbEcarts = ($resultats | Where-Object { $_.Statut -eq "ECART" }).Count
     $nbNonTrouves = ($resultats | Where-Object { $_.Statut -eq "NON_TROUVE" }).Count
