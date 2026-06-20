@@ -95,6 +95,13 @@ $FichierFournisseurs  = Join-Path $DataFolder "fournisseurs_appris.csv"
 $FichierConversations = Join-Path $DataFolder "conversations_traitees.csv"
 $FichierJournal       = Join-Path $DataFolder "journal_confirmations.csv"
 $FichierRapportExcel  = Join-Path $DataFolder "Rapport_Confirmations.xlsx"
+$FichierComportementCorps = Join-Path $DataFolder "comportement_corps.csv"
+
+# Nombre de confirmations identiques consecutives (par adresse exacte) avant que
+# le script applique automatiquement "verifier le corps" sans repasser par le
+# dialogue manuel. Une reponse contraire remet le compteur du cote oppose a zero
+# (voir Set-ReponseCorps).
+$SeuilConfianceCorps = 5
 
 
 # =====================================================================
@@ -433,6 +440,64 @@ function Set-ReponseFournisseur {
     $lignes | Out-File -FilePath $FichierFournisseurs -Encoding ASCII -Force
 }
 
+# =====================================================================
+# FONCTIONS - Apprentissage "verifier le corps" (par adresse EXACTE)
+# Important: deux expediteurs du meme fournisseur peuvent avoir un
+# comportement different (ex: une boite aux lettres d'accuses de
+# reception automatiques vs une representante qui repond en texte
+# libre dans le corps) -- la cle est donc l'adresse complete, jamais
+# le domaine ou le nom du fournisseur.
+# =====================================================================
+
+function Get-CompteursCorps {
+    param([string]$Adresse)
+    $nbCorps = 0; $nbPdf = 0
+    if (Test-Path $FichierComportementCorps) {
+        foreach ($ligne in Get-Content $FichierComportementCorps) {
+            $champs = $ligne -split ","
+            if ($champs.Count -ge 3 -and $champs[0].Trim().ToLower() -eq $Adresse.ToLower()) {
+                $nbCorps = [int]$champs[1]
+                $nbPdf = [int]$champs[2]
+                break
+            }
+        }
+    }
+    return @{ Corps = $nbCorps; Pdf = $nbPdf }
+}
+
+function Get-StatutCorpsConnu {
+    param([string]$Adresse)
+    $c = Get-CompteursCorps $Adresse
+    if ($c.Corps -ge $SeuilConfianceCorps -and $c.Pdf -eq 0) { return "CORPS" }
+    if ($c.Pdf -ge $SeuilConfianceCorps -and $c.Corps -eq 0) { return "PDF" }
+    return "INCERTAIN"
+}
+
+function Set-ReponseCorps {
+    param([string]$Adresse, [bool]$VerifierCorps)
+    $c = Get-CompteursCorps $Adresse
+    # Une reponse qui contredit le pattern etabli remet l'autre compteur a
+    # zero plutot que de laisser les deux s'accumuler en parallele -- on
+    # veut refleter le comportement le plus RECENT de cet expediteur.
+    if ($VerifierCorps) { $c.Corps++; $c.Pdf = 0 } else { $c.Pdf++; $c.Corps = 0 }
+
+    $lignes = @()
+    $trouve = $false
+    if (Test-Path $FichierComportementCorps) {
+        foreach ($ligne in Get-Content $FichierComportementCorps) {
+            $champs = $ligne -split ","
+            if ($champs.Count -ge 3 -and $champs[0].Trim().ToLower() -eq $Adresse.ToLower()) {
+                $lignes += "$Adresse,$($c.Corps),$($c.Pdf)"
+                $trouve = $true
+            } else {
+                $lignes += $ligne
+            }
+        }
+    }
+    if (-not $trouve) { $lignes += "$Adresse,$($c.Corps),$($c.Pdf)" }
+    $lignes | Out-File -FilePath $FichierComportementCorps -Encoding ASCII -Force
+}
+
 function Test-ConversationTraitee {
     param([string]$ConvID)
     if (-not (Test-Path $FichierConversations)) { return $false }
@@ -524,6 +589,102 @@ Si aucun article trouve: ecrire AUCUN_ARTICLE
                     LineNbr = [int]$champs[1]
                     Code    = $champs[2].Trim()
                     Qty     = [int]$champs[3]
+                    NetUnit = [double]($champs[4] -replace ",", ".")
+                    RawLine = if ($champs.Count -ge 6) { $champs[5] } else { "" }
+                }
+            }
+        }
+    }
+
+    return @{
+        Items          = $items
+        NomFournisseur = $nomFournisseur
+        Devise         = $devise
+        BCGromec       = $bcGromec
+        Erreur         = $null
+    }
+}
+
+function Get-ItemsFournisseurDepuisCorps {
+    # Meme contrat de sortie que Get-ItemsFournisseur (Items/NomFournisseur/
+    # Devise/BCGromec/Erreur) pour pouvoir reutiliser Find-TousLesMatches sans
+    # aucune modification. Utilisee quand le fournisseur ecrit les ecarts en
+    # texte libre dans le corps du courriel plutot que dans un PDF chiffre
+    # (le PDF joint, s'il y en a un, n'est alors qu'une copie du PO original
+    # et ne contient PAS les nouveaux prix/quantites).
+    #
+    # Important: on analyse SEULEMENT le dernier message recu (avant la
+    # chaine citee en dessous, du genre "--- Forwarded Message ---" ou
+    # "De: ... Envoye: ..."), jamais toute la chaine -- le format de
+    # citation varie trop d'un client courriel a l'autre pour etre fiable,
+    # et le dernier message est de toute facon celui qui contient la
+    # reponse pertinente.
+    param([string]$CorpsMessage, [string]$Sujet)
+
+    $dictInfo = Get-DictionnaireFournisseurs
+
+    $prompt = @"
+Tu es expert en verification de commandes industrielles pour Gromec Inc.
+Un fournisseur a repondu en TEXTE LIBRE dans le corps d'un courriel (pas dans
+un PDF chiffre) pour signaler des ecarts sur une commande -- typiquement des
+corrections de prix ou de quantite sur certaines lignes seulement.
+
+Voici UNIQUEMENT le dernier message recu (ignore tout texte de citation/chaine
+en dessous, comme "Forwarded Message", "De: ... Envoye: ...", ou des lignes
+commencant par ">"):
+
+SUJET: $Sujet
+
+CORPS:
+$CorpsMessage
+
+DICTIONNAIRE PAR FOURNISSEUR:
+$($dictInfo.Dict)
+
+REGLES GENERALES:
+$($dictInfo.Regles)
+
+Cherche le numero de bon de commande GROMEC (format 90XXXXX, 7-8 chiffres
+commencant par 90) s'il apparait dans ce texte.
+
+Pour chaque article mentionne avec un ecart, identifie le code (souvent le
+CODE MANUF du fournisseur, pas le code SAP Gromec), la quantite si mentionnee
+(laisse vide/0 si seul le prix est corrige), et le nouveau prix unitaire si
+mentionne (laisse vide si seule la quantite est corrigee).
+
+Reponds STRICTEMENT dans ce format, rien d'autre:
+FOURNISSEUR|NomFournisseur||CAD_ou_USD|NumeroBCGromec
+ARTICLE|1|CODE|QTE|PRIX|texte original de la ligne
+ARTICLE|2|CODE2|QTE|PRIX|texte original de la ligne
+Si aucun article avec ecart trouve dans ce texte: ecrire AUCUN_ARTICLE
+Si la quantite n'est pas mentionnee pour une ligne, ecris 0 dans le champ QTE.
+Si le prix n'est pas mentionne pour une ligne, ecris 0 dans le champ PRIX.
+"@
+
+    $reponse = Invoke-ClaudeMessage "" $prompt
+    if ($reponse -like "ERREUR:*") { return @{ Erreur = $reponse } }
+
+    $items = @()
+    $nomFournisseur = ""
+    $devise = "CAD"
+    $bcGromec = ""
+
+    foreach ($ligne in ($reponse -split "`r`n|`n")) {
+        $l = $ligne.Trim()
+        if ($l.StartsWith("FOURNISSEUR|")) {
+            $champs = $l -split '\|'
+            if ($champs.Count -ge 5) {
+                $nomFournisseur = $champs[1]
+                $devise = $champs[3]
+                $bcGromec = $champs[4].Trim()
+            }
+        } elseif ($l.StartsWith("ARTICLE|")) {
+            $champs = $l -split '\|'
+            if ($champs.Count -ge 5) {
+                $items += [PSCustomObject]@{
+                    LineNbr = [int]$champs[1]
+                    Code    = $champs[2].Trim()
+                    Qty     = [int]([double]($champs[3] -replace ",", "."))
                     NetUnit = [double]($champs[4] -replace ",", ".")
                     RawLine = if ($champs.Count -ge 6) { $champs[5] } else { "" }
                 }
@@ -1084,76 +1245,185 @@ function Write-FirebaseEchec {
 }
 
 function Invoke-TraiterComparaison {
-    param($Namespace, $MailConfirmation, [string]$NumeroBCOverride = "", [string]$HistoriqueId = "")
+    param($Namespace, $MailConfirmation, [string]$NumeroBCOverride = "", [string]$HistoriqueId = "", [Nullable[bool]]$VerifierCorps = $null)
 
     $sujet = $MailConfirmation.Subject
     $expediteur = $MailConfirmation.SenderEmailAddress
 
-    $cheminConfirmation = Save-PremierePDF $MailConfirmation
-    if ($cheminConfirmation -eq "") {
-        Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF confirmation introuvable"
-        Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_CONFIRMATION" "" "" $HistoriqueId
-        return
+    # Si l'appelant n'a pas precise explicitement le mode (ex: re-tentative
+    # manuelle depuis le dashboard via Sync-ReessaisManuels), on se fie au
+    # comportement appris pour cette adresse exacte -- par defaut PDF si
+    # encore incertain, pour ne rien changer au comportement existant.
+    if ($null -eq $VerifierCorps) {
+        $VerifierCorps = (Get-StatutCorpsConnu $expediteur) -eq "CORPS"
     }
 
-    # --- Extraction fournisseur (1ere tentative) ---
-    $resFourn = Get-ItemsFournisseur $cheminConfirmation
-    $itemsFourn = @($resFourn.Items)
-    $nomFourn = $resFourn.NomFournisseur
-    $devise = $resFourn.Devise
-    $bcGromec = $resFourn.BCGromec
+    if ($VerifierCorps) {
+        # --- MODE CORPS: les ecarts sont dans le texte du courriel, pas dans
+        # un PDF chiffre. Le PDF joint (s'il y en a un) n'est qu'une copie de
+        # reference et n'est PAS utilise pour l'extraction des ecarts. ---
 
-    # --- Apprentissage automatique si fournisseur inconnu ---
-    if ($itemsFourn.Count -eq 0) {
-        $ajoute = Invoke-ProposerFournisseur $cheminConfirmation
-        if ($ajoute) {
-            $resFourn = Get-ItemsFournisseur $cheminConfirmation
-            $itemsFourn = @($resFourn.Items)
-            $nomFourn = $resFourn.NomFournisseur
-            $devise = $resFourn.Devise
-            $bcGromec = $resFourn.BCGromec
+        $corpsMessage = $MailConfirmation.Body
+        if ($corpsMessage.Length -gt 4000) { $corpsMessage = $corpsMessage.Substring(0, 4000) }
+
+        $resFourn = Get-ItemsFournisseurDepuisCorps $corpsMessage $sujet
+        if ($resFourn.Erreur) {
+            Write-JournalEntry $expediteur "ERREUR_EXTRACTION_CORPS" $resFourn.Erreur
+            Write-FirebaseEchec $MailConfirmation "ERREUR_EXTRACTION_CORPS" "" "" $HistoriqueId
+            return
+        }
+        $itemsFourn = @($resFourn.Items)
+        $nomFourn = $resFourn.NomFournisseur
+        $devise = $resFourn.Devise
+        $bcGromec = $resFourn.BCGromec
+
+        if ($itemsFourn.Count -eq 0) {
+            Write-JournalEntry $expediteur "AUCUN_ECART_DANS_CORPS" "Mode corps actif mais aucun article extrait du texte"
+            Write-FirebaseEchec $MailConfirmation "AUCUN_ECART_DANS_CORPS" $bcGromec $nomFourn $HistoriqueId
+            return
+        }
+
+        # --- Trouver le numero BC pour la recherche dans Envoyes ---
+        if ($NumeroBCOverride -ne "") {
+            $numeroBC = $NumeroBCOverride
+        } else {
+            $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
+            if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
+        }
+
+        $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $numeroBC
+        if ($null -eq $mailEnvoye) {
+            Write-JournalEntry $expediteur "AUCUNE_COMMANDE_TROUVEE" "BC recherche: $numeroBC"
+            Write-FirebaseEchec $MailConfirmation "AUCUNE_COMMANDE_TROUVEE" $numeroBC $nomFourn $HistoriqueId
+            return
+        }
+
+        $cheminCommande = Save-PremierePDF $mailEnvoye
+        if ($cheminCommande -eq "") {
+            Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF commande Gromec introuvable"
+            Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_COMMANDE" $numeroBC $nomFourn $HistoriqueId
+            return
+        }
+
+        $resSAP = Get-ItemsCommandeGromec $cheminCommande
+        $itemsSAP = @($resSAP.Items)
+        Remove-Item $cheminCommande -Force -ErrorAction SilentlyContinue
+
+        if ($itemsSAP.Count -eq 0) {
+            Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Fourn(corps):$($itemsFourn.Count) SAP:$($itemsSAP.Count)"
+            Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn $HistoriqueId
+            return
+        }
+
+        # Completer Qty/NetUnit manquants (0) avec les valeurs du PO Gromec --
+        # le fournisseur, en mode corps, ne corrige souvent qu'UN seul des
+        # deux champs (juste le prix, ou juste la quantite) sur une ligne.
+        # Sans ce remplissage, un champ a 0 creerait un faux ecart.
+        $itemsFournRempli = @()
+        foreach ($itemFourn in $itemsFourn) {
+            $sapCorrespondant = $itemsSAP | Where-Object {
+                $_.CodeManuf -ne "" -and $itemFourn.Code -ne "" -and
+                $_.CodeManuf.ToUpper() -eq $itemFourn.Code.ToUpper()
+            } | Select-Object -First 1
+            if ($null -eq $sapCorrespondant) {
+                $nCode = Format-CodeNormalise $itemFourn.Code
+                $sapCorrespondant = $itemsSAP | Where-Object {
+                    (Format-CodeNormalise $_.CodeManuf) -eq $nCode -and $nCode.Length -ge 4
+                } | Select-Object -First 1
+            }
+            if ($sapCorrespondant) {
+                if ($itemFourn.Qty -eq 0) { $itemFourn.Qty = $sapCorrespondant.Qty }
+                if ($itemFourn.NetUnit -eq 0) { $itemFourn.NetUnit = $sapCorrespondant.Price }
+            }
+            $itemsFournRempli += $itemFourn
+        }
+        $itemsFourn = $itemsFournRempli
+
+        # On ne compare QUE les lignes SAP que le fournisseur a explicitement
+        # mentionnees dans le corps -- pas question de marquer NON_TROUVE
+        # toutes les autres lignes du PO qu'il n'a simplement pas commentees
+        # (silence = pas d'ecart sur ces lignes-la, contrairement au mode PDF
+        # ou une confirmation chiffree couvre normalement TOUTES les lignes).
+        $codesMatches = $itemsFourn | ForEach-Object { Format-CodeNormalise $_.Code }
+        $itemsSAP = @($itemsSAP | Where-Object {
+            $codesMatches -contains (Format-CodeNormalise $_.CodeManuf)
+        })
+
+        if ($itemsSAP.Count -eq 0) {
+            Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Aucune ligne SAP ne correspond aux codes mentionnes dans le corps"
+            Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn $HistoriqueId
+            return
+        }
+
+    } else {
+        # --- MODE PDF (comportement original, inchange) ---
+
+        $cheminConfirmation = Save-PremierePDF $MailConfirmation
+        if ($cheminConfirmation -eq "") {
+            Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF confirmation introuvable"
+            Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_CONFIRMATION" "" "" $HistoriqueId
+            return
+        }
+
+        # --- Extraction fournisseur (1ere tentative) ---
+        $resFourn = Get-ItemsFournisseur $cheminConfirmation
+        $itemsFourn = @($resFourn.Items)
+        $nomFourn = $resFourn.NomFournisseur
+        $devise = $resFourn.Devise
+        $bcGromec = $resFourn.BCGromec
+
+        # --- Apprentissage automatique si fournisseur inconnu ---
+        if ($itemsFourn.Count -eq 0) {
+            $ajoute = Invoke-ProposerFournisseur $cheminConfirmation
+            if ($ajoute) {
+                $resFourn = Get-ItemsFournisseur $cheminConfirmation
+                $itemsFourn = @($resFourn.Items)
+                $nomFourn = $resFourn.NomFournisseur
+                $devise = $resFourn.Devise
+                $bcGromec = $resFourn.BCGromec
+            }
+        }
+
+        # --- Trouver le numero BC pour la recherche dans Envoyes ---
+        # Si un numero a ete fourni manuellement (re-tentative depuis le dashboard),
+        # il a priorite absolue sur la detection automatique
+        if ($NumeroBCOverride -ne "") {
+            $numeroBC = $NumeroBCOverride
+        } else {
+            $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
+            if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
+        }
+
+        $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $numeroBC
+        if ($null -eq $mailEnvoye) {
+            Write-JournalEntry $expediteur "AUCUNE_COMMANDE_TROUVEE" "BC recherche: $numeroBC"
+            Write-FirebaseEchec $MailConfirmation "AUCUNE_COMMANDE_TROUVEE" $numeroBC $nomFourn $HistoriqueId
+            Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
+            return
+        }
+
+        $cheminCommande = Save-PremierePDF $mailEnvoye
+        if ($cheminCommande -eq "") {
+            Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF commande Gromec introuvable"
+            Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_COMMANDE" $numeroBC $nomFourn $HistoriqueId
+            Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
+            return
+        }
+
+        $resSAP = Get-ItemsCommandeGromec $cheminCommande
+        $itemsSAP = @($resSAP.Items)
+
+        Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
+        Remove-Item $cheminCommande -Force -ErrorAction SilentlyContinue
+
+        if ($itemsFourn.Count -eq 0 -or $itemsSAP.Count -eq 0) {
+            Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Fourn:$($itemsFourn.Count) SAP:$($itemsSAP.Count)"
+            Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn $HistoriqueId
+            return
         }
     }
 
-    # --- Trouver le numero BC pour la recherche dans Envoyes ---
-    # Si un numero a ete fourni manuellement (re-tentative depuis le dashboard),
-    # il a priorite absolue sur la detection automatique
-    if ($NumeroBCOverride -ne "") {
-        $numeroBC = $NumeroBCOverride
-    } else {
-        $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
-        if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
-    }
-
-    $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $numeroBC
-    if ($null -eq $mailEnvoye) {
-        Write-JournalEntry $expediteur "AUCUNE_COMMANDE_TROUVEE" "BC recherche: $numeroBC"
-        Write-FirebaseEchec $MailConfirmation "AUCUNE_COMMANDE_TROUVEE" $numeroBC $nomFourn $HistoriqueId
-        Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
-        return
-    }
-
-    $cheminCommande = Save-PremierePDF $mailEnvoye
-    if ($cheminCommande -eq "") {
-        Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF commande Gromec introuvable"
-        Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_COMMANDE" $numeroBC $nomFourn $HistoriqueId
-        Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
-        return
-    }
-
-    $resSAP = Get-ItemsCommandeGromec $cheminCommande
-    $itemsSAP = @($resSAP.Items)
-
-    Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
-    Remove-Item $cheminCommande -Force -ErrorAction SilentlyContinue
-
-    if ($itemsFourn.Count -eq 0 -or $itemsSAP.Count -eq 0) {
-        Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Fourn:$($itemsFourn.Count) SAP:$($itemsSAP.Count)"
-        Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn $HistoriqueId
-        return
-    }
-
-    # --- Matching ---
+    # --- Matching (commun aux deux modes) ---
     $resultats = Find-TousLesMatches $itemsSAP $itemsFourn
 
     $nbEcarts = ($resultats | Where-Object { $_.Statut -eq "ECART" }).Count
@@ -1182,9 +1452,26 @@ function Invoke-TraiterNouveauCourriel {
     $adresseExp = $MailItem.SenderEmailAddress
     $statutConnu = Get-StatutFournisseurConnu $adresseExp
     $estConfirmation = $false
+    $verifierCorps = $false
 
     switch ($statutConnu) {
-        "OUI" { $estConfirmation = $true }
+        "OUI" {
+            $estConfirmation = $true
+            # Meme si la classification "confirmation" est deja connue, le
+            # choix corps/PDF est appris separement (adresse exacte) -- voir
+            # plus bas pour la meme logique de seuil.
+            $statutCorps = Get-StatutCorpsConnu $adresseExp
+            switch ($statutCorps) {
+                "CORPS" { $verifierCorps = $true }
+                "PDF"   { $verifierCorps = $false }
+                default {
+                    $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nCet expediteur est deja connu comme envoyant des confirmations de commande.`n`nFaut-il verifier le CORPS du message pour les ecarts (au lieu du PDF joint) ?"
+                    $rep = [System.Windows.Forms.MessageBox]::Show($q, "Verifier le corps du message?", "YesNo", "Question")
+                    $verifierCorps = ($rep -eq "Yes")
+                    Set-ReponseCorps $adresseExp $verifierCorps
+                }
+            }
+        }
         "NON" { $estConfirmation = $false }
         default {
             $sysPrompt = "Tu analyses des courriels pour determiner si c'est une CONFIRMATION DE COMMANDE FOURNISSEUR (document formel avec numero de commande, articles, quantites, prix ou delai). Reponds UNIQUEMENT: REPONSE: OUI  ou  REPONSE: NON"
@@ -1192,17 +1479,32 @@ function Invoke-TraiterNouveauCourriel {
             $suggestion = Invoke-ClaudeMessage $sysPrompt $usrPrompt
             $suggestionOui = $suggestion -match "OUI"
 
-            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande.'}else{'PAS une confirmation de commande.'})`n`nEst-ce bien une confirmation de commande?"
-            $rep = [System.Windows.Forms.MessageBox]::Show($q, "Confirmation de commande?", "YesNo", "Question")
-            $estConfirmation = ($rep -eq "Yes")
-            Set-ReponseFournisseur $adresseExp $estConfirmation
+            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande.'}else{'PAS une confirmation de commande.'})`n`nEst-ce bien une confirmation de commande?`n`n[Oui] = confirmation, ecarts dans le PDF joint`n[Oui, mais verifier le corps] = confirmation, ecarts ecrits dans le texte du courriel (PDF = juste reference)`n[Non] = pas une confirmation de commande"
+            $rep = [System.Windows.Forms.MessageBox]::Show($q, "Confirmation de commande?", "YesNoCancel", "Question")
+            # Cancel sert de 3e choix "Oui, mais verifier le corps" -- un
+            # MessageBox natif ne supporte pas de libelles de bouton custom,
+            # et le texte de la question ci-dessus explique deja a l'ecran
+            # ce que chaque bouton signifie.
+            if ($rep -eq "Cancel") {
+                $estConfirmation = $true
+                $verifierCorps = $true
+                Set-ReponseFournisseur $adresseExp $true
+                Set-ReponseCorps $adresseExp $true
+            } else {
+                $estConfirmation = ($rep -eq "Yes")
+                Set-ReponseFournisseur $adresseExp $estConfirmation
+                if ($estConfirmation) {
+                    $verifierCorps = $false
+                    Set-ReponseCorps $adresseExp $false
+                }
+            }
         }
     }
 
     if (-not $estConfirmation) { return }
     if (-not $ForcerTraitement) { Set-ConversationTraitee $convID }
 
-    Invoke-TraiterComparaison $Namespace $MailItem
+    Invoke-TraiterComparaison $Namespace $MailItem -VerifierCorps $verifierCorps
 }
 
 # =====================================================================
