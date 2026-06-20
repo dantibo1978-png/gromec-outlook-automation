@@ -125,7 +125,7 @@ function Set-FirebaseValue {
 }
 
 function Write-FirebaseHistorique {
-    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande, [string]$EntryID = "", [string]$StoreID = "")
+    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande, [string]$EntryID = "", [string]$StoreID = "", [string]$HistoriqueId = "")
 
     if ($Resultats.Count -eq 0) { return }
 
@@ -170,9 +170,17 @@ function Write-FirebaseHistorique {
     }
 
     try {
-        $url = "${FirebaseUrl}gromec_vba/historique.json"
-        $jsonBody = $entree | ConvertTo-Json -Depth 10 -Compress
-        Invoke-RestMethod -Uri $url -Method Post -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
+        if ($HistoriqueId -ne "") {
+            # Remplace une entree existante (ex: NON_APPARIE corrigee manuellement)
+            # plutot que d'en creer une nouvelle -- evite les doublons sur le dashboard
+            $url = "${FirebaseUrl}gromec_vba/historique/$HistoriqueId.json"
+            $jsonBody = $entree | ConvertTo-Json -Depth 10 -Compress
+            Invoke-RestMethod -Uri $url -Method Put -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
+        } else {
+            $url = "${FirebaseUrl}gromec_vba/historique.json"
+            $jsonBody = $entree | ConvertTo-Json -Depth 10 -Compress
+            Invoke-RestMethod -Uri $url -Method Post -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
+        }
     } catch {
         # Echec silencieux -- le rapport Excel local reste la source de verite principale
     }
@@ -227,6 +235,57 @@ function Sync-ResolusVersOutlook {
             # pour eviter une boucle de tentatives infructueuses
             Update-FirebaseChamp "gromec_vba/historique/$cle" @{ syncedResolu = $resolu } | Out-Null
         }
+    }
+}
+
+function Sync-ReessaisManuels {
+    param($Namespace)
+
+    # Cherche les entrees NON_APPARIE pour lesquelles un numero de BC a ete
+    # fourni manuellement depuis le dashboard (aReessayer=true), et relance
+    # la comparaison complete avec ce numero -- remplace l'entree existante
+    # par le vrai resultat (succes ou nouvel echec documente)
+    try {
+        $url = "${FirebaseUrl}gromec_vba/historique.json"
+        $historique = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 15
+    } catch {
+        return
+    }
+
+    if ($null -eq $historique) { return }
+
+    foreach ($cle in $historique.PSObject.Properties.Name) {
+        $entree = $historique.$cle
+
+        if ($entree.statut -ne "NON_APPARIE") { continue }
+        if ([bool]$entree.aReessayer -ne $true) { continue }
+
+        $numeroBCManuel = $entree.numeroBCManuel
+        if ([string]::IsNullOrEmpty($numeroBCManuel)) { continue }
+
+        $entryID = $entree.entryID
+        $storeID = $entree.storeID
+        if ([string]::IsNullOrEmpty($entryID)) { continue }
+
+        try {
+            $mail = $Namespace.GetItemFromID($entryID, $storeID)
+        } catch {
+            $mail = $null
+        }
+
+        if ($null -eq $mail) {
+            # Le courriel original n'existe plus -- on documente l'echec et on arrete d'essayer
+            Update-FirebaseChamp "gromec_vba/historique/$cle" @{
+                raisonEchec      = "COURRIEL_ORIGINAL_INTROUVABLE"
+                aReessayer       = $false
+                dateDernierEssai = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
+            } | Out-Null
+            continue
+        }
+
+        # Relance la comparaison complete avec le numero fourni manuellement,
+        # en reutilisant le meme identifiant Firebase (remplace plutot que duplique)
+        Invoke-TraiterComparaison $Namespace $mail $numeroBCManuel $cle
     }
 }
 
@@ -987,7 +1046,19 @@ function Invoke-ProposerFournisseur {
 # =====================================================================
 
 function Write-FirebaseEchec {
-    param($MailConfirmation, [string]$RaisonEchec, [string]$NumeroBCRecherche = "", [string]$NomFournisseurDetecte = "")
+    param($MailConfirmation, [string]$RaisonEchec, [string]$NumeroBCRecherche = "", [string]$NomFournisseurDetecte = "", [string]$HistoriqueId = "")
+
+    if ($HistoriqueId -ne "") {
+        # Mise a jour d'une entree existante (re-tentative manuelle echouee)
+        # -- on garde l'historique de l'essai sans creer de doublon
+        Update-FirebaseChamp "gromec_vba/historique/$HistoriqueId" @{
+            raisonEchec       = $RaisonEchec
+            numeroBCRecherche = $NumeroBCRecherche
+            aReessayer        = $false
+            dateDernierEssai  = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
+        } | Out-Null
+        return
+    }
 
     $entree = @{
         date            = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
@@ -999,6 +1070,8 @@ function Write-FirebaseEchec {
         entryID         = $MailConfirmation.EntryID
         storeID         = $MailConfirmation.Parent.StoreID
         articles        = @()
+        aReessayer      = $false
+        numeroBCManuel  = ""
     }
 
     try {
@@ -1011,7 +1084,7 @@ function Write-FirebaseEchec {
 }
 
 function Invoke-TraiterComparaison {
-    param($Namespace, $MailConfirmation)
+    param($Namespace, $MailConfirmation, [string]$NumeroBCOverride = "", [string]$HistoriqueId = "")
 
     $sujet = $MailConfirmation.Subject
     $expediteur = $MailConfirmation.SenderEmailAddress
@@ -1019,7 +1092,7 @@ function Invoke-TraiterComparaison {
     $cheminConfirmation = Save-PremierePDF $MailConfirmation
     if ($cheminConfirmation -eq "") {
         Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF confirmation introuvable"
-        Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_CONFIRMATION"
+        Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_CONFIRMATION" "" "" $HistoriqueId
         return
     }
 
@@ -1043,13 +1116,19 @@ function Invoke-TraiterComparaison {
     }
 
     # --- Trouver le numero BC pour la recherche dans Envoyes ---
-    $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
-    if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
+    # Si un numero a ete fourni manuellement (re-tentative depuis le dashboard),
+    # il a priorite absolue sur la detection automatique
+    if ($NumeroBCOverride -ne "") {
+        $numeroBC = $NumeroBCOverride
+    } else {
+        $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
+        if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
+    }
 
     $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $numeroBC
     if ($null -eq $mailEnvoye) {
         Write-JournalEntry $expediteur "AUCUNE_COMMANDE_TROUVEE" "BC recherche: $numeroBC"
-        Write-FirebaseEchec $MailConfirmation "AUCUNE_COMMANDE_TROUVEE" $numeroBC $nomFourn
+        Write-FirebaseEchec $MailConfirmation "AUCUNE_COMMANDE_TROUVEE" $numeroBC $nomFourn $HistoriqueId
         Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
         return
     }
@@ -1057,7 +1136,7 @@ function Invoke-TraiterComparaison {
     $cheminCommande = Save-PremierePDF $mailEnvoye
     if ($cheminCommande -eq "") {
         Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF commande Gromec introuvable"
-        Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_COMMANDE" $numeroBC $nomFourn
+        Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_COMMANDE" $numeroBC $nomFourn $HistoriqueId
         Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
         return
     }
@@ -1070,7 +1149,7 @@ function Invoke-TraiterComparaison {
 
     if ($itemsFourn.Count -eq 0 -or $itemsSAP.Count -eq 0) {
         Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Fourn:$($itemsFourn.Count) SAP:$($itemsSAP.Count)"
-        Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn
+        Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn $HistoriqueId
         return
     }
 
@@ -1085,7 +1164,7 @@ function Invoke-TraiterComparaison {
     Set-CategorieConfirmation $MailConfirmation $estOK
     Write-JournalEntry $expediteur $(if ($estOK) { "OK" } else { "ECART" }) "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves"
     Write-RapportExcel $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC
-    Write-FirebaseHistorique $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID
+    Write-FirebaseHistorique $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId
 }
 
 # =====================================================================
@@ -1138,6 +1217,10 @@ try {
     # dashboard web depuis le dernier passage du script -- piggyback sur
     # chaque execution, qu'il s'agisse d'un nouveau courriel ou d'un test manuel
     Sync-ResolusVersOutlook $namespace
+
+    # Relance les comparaisons "non appariees" pour lesquelles un numero de BC
+    # a ete fourni manuellement depuis le dashboard
+    Sync-ReessaisManuels $namespace
 
     $mail = $null
 
