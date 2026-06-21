@@ -1,4 +1,4 @@
-﻿# =====================================================================
+﻿﻿# =====================================================================
 # Verifier-Confirmation.ps1
 # Verification automatique des confirmations de commande fournisseurs
 # Lance de maniere asynchrone depuis Outlook VBA (Shell, sans attente)
@@ -1522,6 +1522,195 @@ function Invoke-TraiterNouveauCourriel {
 }
 
 # =====================================================================
+# SYNCHRONISATION SAP (DTW)
+# =====================================================================
+# Synchronise les commandes "conformes" (statut=OK) vers SAP B1 en ecrivant
+# U_NWR_ConfirmPO = "Y" sur le PO via DTW (Data Transfer Workbench), en
+# ligne de commande. Appelee a la toute fin du programme principal.
+#
+# Traitement un PO a la fois (securitaire, facile a deboguer). Le fichier
+# source DOIT etre en UTF-16 (Unicode) avec tabulation comme separateur,
+# format attendu par le scenario ConfirmPO_PROD.xml.
+
+$Script:DTW_Exe           = "C:\Program Files\sap\Data Transfer Workbench\DTW.exe"
+$Script:DTW_ScenarioXml   = "U:\GromecOutlook\DTW\ConfirmPO_PROD.xml"
+$Script:DTW_FichierSource = "U:\GromecOutlook\DTW\template.txt"
+$Script:DTW_FirebaseUrl   = "https://gromec-outlook-vba-default-rtdb.firebaseio.com"
+
+function Write-FichierSourceDTW {
+    <#
+    Ecrit le fichier source attendu par DTW pour UN SEUL PO.
+    Format : 2 lignes d'en-tete identiques (DocNum / DocEntry / U_NWR_ConfirmPO),
+    puis 1 ligne de donnees. Tabulation comme separateur, encodage Unicode (UTF-16 LE).
+
+    Inclut des tentatives repetees en cas de verrou de fichier temporaire (DTW peut
+    garder le fichier source "ouvert" brievement apres sa fermeture apparente).
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$DocNum,
+        [int]$NombreTentatives = 8,
+        [int]$DelaiSecondes = 3
+    )
+
+    $Tab = "`t"
+    $Lignes = @(
+        "DocNum${Tab}DocEntry${Tab}U_NWR_ConfirmPO",
+        "DocNum${Tab}DocEntry${Tab}U_NWR_ConfirmPO",
+        "${DocNum}${Tab}${Tab}Y"
+    )
+    $Contenu = ($Lignes -join "`r`n") + "`r`n"
+
+    $DerniereErreur = $null
+    for ($i = 1; $i -le $NombreTentatives; $i++) {
+        try {
+            [System.IO.File]::WriteAllText($Script:DTW_FichierSource, $Contenu, [System.Text.Encoding]::Unicode)
+            return
+        } catch {
+            $DerniereErreur = $_
+            Start-Sleep -Seconds $DelaiSecondes
+        }
+    }
+
+    throw "Impossible d'ecrire le fichier source apres $NombreTentatives tentatives : $($DerniereErreur.Exception.Message)"
+}
+
+function Invoke-DTWImport {
+    <#
+    Lance DTW.exe en ligne de commande avec le scenario de production.
+    Retourne $true si le code de sortie indique un succes, $false sinon.
+
+    Verifie d'abord qu'aucune instance de DTW n'est deja ouverte manuellement
+    (ex: Dan en train de l'utiliser) pour eviter tout conflit.
+    #>
+    $DejaOuvert = Get-Process -Name "DTW" -ErrorAction SilentlyContinue
+    if ($DejaOuvert) {
+        return @{ Succes = $false; Erreur = "DTW est deja ouvert manuellement (probablement en cours d'utilisation) -- synchronisation reportee au prochain passage." }
+    }
+
+    try {
+        $Process = Start-Process -FilePath $Script:DTW_Exe `
+            -ArgumentList "-s `"$Script:DTW_ScenarioXml`"" `
+            -Wait -PassThru -WindowStyle Hidden
+
+        if ($Process.ExitCode -eq 0) {
+            Start-Sleep -Seconds 5
+            return @{ Succes = $true; Erreur = $null }
+        } else {
+            Start-Sleep -Seconds 5
+            return @{ Succes = $false; Erreur = "DTW a retourne le code de sortie $($Process.ExitCode)" }
+        }
+    } catch {
+        return @{ Succes = $false; Erreur = $_.Exception.Message }
+    }
+}
+
+function Get-CommandesAConfirmerSAP {
+    <#
+    Interroge Firebase et retourne les entrees historique avec statut="OK"
+    et syncSAP non encore a true.
+    #>
+    $NoeudHistorique = "$Script:DTW_FirebaseUrl/gromec_vba/historique.json"
+
+    try {
+        $Historique = Invoke-RestMethod -Uri $NoeudHistorique -Method Get
+    } catch {
+        Write-Warning "Invoke-SyncDTW : echec de la lecture de l'historique Firebase : $($_.Exception.Message)"
+        return @()
+    }
+
+    if ($null -eq $Historique) { return @() }
+
+    $Resultats = @()
+    foreach ($Cle in $Historique.PSObject.Properties.Name) {
+        $Entree = $Historique.$Cle
+
+        $DejaSync = $false
+        if ($Entree.PSObject.Properties.Name -contains 'syncSAP') {
+            $DejaSync = [bool]$Entree.syncSAP
+        }
+
+        if ($Entree.statut -eq "OK" -and -not $DejaSync) {
+            $Resultats += [PSCustomObject]@{
+                Cle             = $Cle
+                NumeroCommande  = $Entree.numeroCommande
+            }
+        }
+    }
+
+    return $Resultats
+}
+
+function Set-StatutSyncSAP {
+    <#
+    Met a jour le statut de synchronisation SAP pour une entree Firebase donnee.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$Cle,
+        [Parameter(Mandatory)] [bool]$Succes,
+        [string]$MessageErreur = $null
+    )
+
+    $Url = "$Script:DTW_FirebaseUrl/gromec_vba/historique/$Cle.json"
+    $Maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+
+    $Body = @{
+        syncSAP     = $Succes
+        syncSAPDate = $Maintenant
+    }
+    if (-not $Succes -and $MessageErreur) {
+        $Body["syncSAPErreur"] = $MessageErreur
+    }
+
+    try {
+        Invoke-RestMethod -Uri $Url -Method Patch -Body ($Body | ConvertTo-Json) -ContentType "application/json" | Out-Null
+    } catch {
+        Write-Warning "Invoke-SyncDTW : echec de la mise a jour du statut syncSAP pour '$Cle' : $($_.Exception.Message)"
+    }
+}
+
+function Invoke-SyncDTW {
+    <#
+    Fonction principale appelee a la toute fin du programme principal.
+    #>
+    $ACofirmer = Get-CommandesAConfirmerSAP
+
+    if ($ACofirmer.Count -eq 0) {
+        Write-Host "Invoke-SyncDTW : aucune commande conforme en attente de synchronisation SAP."
+        return
+    }
+
+    Write-Host "Invoke-SyncDTW : $($ACofirmer.Count) commande(s) a synchroniser vers SAP."
+
+    foreach ($Item in $ACofirmer) {
+        Write-Host "  -> PO $($Item.NumeroCommande) (cle Firebase: $($Item.Cle))..."
+
+        try {
+            Write-FichierSourceDTW -DocNum $Item.NumeroCommande
+        } catch {
+            Write-Warning "     Echec de la generation du fichier source : $($_.Exception.Message)"
+            Set-StatutSyncSAP -Cle $Item.Cle -Succes $false -MessageErreur "Echec generation fichier source : $($_.Exception.Message)"
+            continue
+        }
+
+        $Resultat = Invoke-DTWImport
+
+        if ($Resultat.Succes) {
+            Write-Host "     OK - synchronise avec succes."
+            Set-StatutSyncSAP -Cle $Item.Cle -Succes $true
+        } elseif ($Resultat.Erreur -like "*deja ouvert manuellement*") {
+            Write-Host "     DTW est occupe (ouvert manuellement) - synchronisation reportee, arret du traitement pour ce passage."
+            return
+        } else {
+            Write-Warning "     ECHEC - $($Resultat.Erreur)"
+            Set-StatutSyncSAP -Cle $Item.Cle -Succes $false -MessageErreur $Resultat.Erreur
+        }
+    }
+
+    Write-Host "Invoke-SyncDTW : termine."
+}
+
+# =====================================================================
 # PROGRAMME PRINCIPAL
 # =====================================================================
 
@@ -1576,6 +1765,16 @@ try {
     }
 
     Invoke-TraiterNouveauCourriel $namespace $mail $Force.IsPresent
+
+    # Synchronisation SAP via DTW (confirmation des commandes "conformes").
+    # Isolee dans son propre try/catch : un probleme ici ne doit jamais
+    # empecher la liberation de l'objet Outlook ni etre confondu avec
+    # une erreur de traitement du courriel courant.
+    try {
+        Invoke-SyncDTW
+    } catch {
+        Write-JournalEntry "" "ERREUR_SYNC_DTW" $_.Exception.Message
+    }
 
 } catch {
     Write-JournalEntry "" "ERREUR_FATALE" $_.Exception.Message
