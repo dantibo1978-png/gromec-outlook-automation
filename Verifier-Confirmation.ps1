@@ -32,7 +32,13 @@ $GitHubRawUrl = "https://raw.githubusercontent.com/dantibo1978-png/gromec-outloo
 
 function Update-ScriptSiNecessaire {
     try {
-        $remoteContent = Invoke-RestMethod -Uri $GitHubRawUrl -TimeoutSec 10
+        # Telechargement force en UTF-8 explicite (plutot que de se fier a
+        # l'en-tete de reponse GitHub, qui peut etre ambigu) pour eviter toute
+        # corruption des caracteres accentues avant meme la comparaison.
+        $webClient = New-Object System.Net.WebClient
+        $webClient.Encoding = [System.Text.Encoding]::UTF8
+        $remoteContent = $webClient.DownloadString($GitHubRawUrl)
+        $webClient.Dispose()
     } catch {
         return  # Pas de connexion ou GitHub indisponible -- on continue avec la version locale
     }
@@ -43,7 +49,7 @@ function Update-ScriptSiNecessaire {
     if ([string]::IsNullOrEmpty($scriptPath)) { return }  # Securite si lance autrement qu'en fichier
 
     try {
-        $localContent = Get-Content -Path $scriptPath -Raw
+        $localContent = Get-Content -Path $scriptPath -Raw -Encoding UTF8
     } catch {
         return
     }
@@ -55,7 +61,11 @@ function Update-ScriptSiNecessaire {
     if ($normLocal -eq $normRemote) { return }  # Deja a jour
 
     try {
-        Set-Content -Path $scriptPath -Value $remoteContent -Encoding UTF8 -Force
+        # Ecriture en UTF-8 AVEC BOM explicite et unique (System.Text.Encoding::UTF8
+        # genere toujours un seul BOM correct) -- evite le bug de double-BOM possible
+        # avec Set-Content -Encoding UTF8 sur PowerShell 5.1.
+        $utf8AvecBom = New-Object System.Text.UTF8Encoding($true)
+        [System.IO.File]::WriteAllText($scriptPath, $remoteContent, $utf8AvecBom)
     } catch {
         return  # Fichier verrouille ou inaccessible en ecriture -- continuer avec version locale
     }
