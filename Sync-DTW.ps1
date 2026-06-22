@@ -204,6 +204,14 @@ function Invoke-TraiterEntree {
         [object]$Entree
     )
 
+    # Relire l'entree fraiche depuis Firebase pour avoir dtw_lignesCochees a jour
+    try {
+        $EntreeFraiche = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$Cle.json" -Method Get -TimeoutSec 10
+        if ($null -ne $EntreeFraiche) { $Entree = $EntreeFraiche }
+    } catch {
+        Write-Log "WARN  Impossible de relire l'entree fraiche, utilisation du cache."
+    }
+
     $copierPrix     = [bool]$Entree.dtw_copierPrix
     $copierQty      = [bool]$Entree.dtw_copierQty
     $docNum         = $Entree.numeroCommande
