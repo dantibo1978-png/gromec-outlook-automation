@@ -1516,7 +1516,14 @@ function Invoke-TraiterNouveauCourriel {
                 Set-ReponseCorps $adresseExp $true
             } else {
                 $estConfirmation = ($rep -eq "Yes")
-                Set-ReponseFournisseur $adresseExp $estConfirmation
+                # N'apprendre que si l'utilisateur CONTREDIT Claude --
+                # si l'utilisateur confirme simplement le choix de Claude,
+                # on ne memorise rien pour ne pas penaliser une adresse
+                # qui envoie parfois des confirmations, parfois non.
+                $utilisateurContreditClaude = ($estConfirmation -ne $suggestionOui)
+                if ($utilisateurContreditClaude) {
+                    Set-ReponseFournisseur $adresseExp $estConfirmation
+                }
                 if ($estConfirmation) {
                     $verifierCorps = $false
                     Set-ReponseCorps $adresseExp $false
