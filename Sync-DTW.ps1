@@ -167,7 +167,13 @@ function Invoke-DTW {
             -ArgumentList "-s `"$ScenarioXml`"" `
             -Wait -PassThru -WindowStyle Hidden
 
-        Start-Sleep -Seconds 5
+        # Attendre que DTW soit completement ferme (jusqu'a 30s)
+        $attente = 0
+        while ((Get-Process -Name "DTW" -ErrorAction SilentlyContinue) -and $attente -lt 30) {
+            Start-Sleep -Seconds 2
+            $attente += 2
+        }
+        Start-Sleep -Seconds 3
 
         if ($proc.ExitCode -eq 0) {
             return @{ Succes = $true; Erreur = $null }
