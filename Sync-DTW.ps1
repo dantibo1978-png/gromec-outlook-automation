@@ -484,26 +484,18 @@ function Invoke-TraiterReclassification {
         # Mettre a jour fournisseurs_appris.csv
         Set-ReponseFournisseur -Adresse $expediteur -EstConfirmation $estConfirmation
 
-        # Si c est une confirmation, retraiter le courriel via Verifier-Confirmation.ps1
+        # Si c est une confirmation, relancer Verifier-Confirmation.ps1 avec -Force
         if ($estConfirmation) {
             $entryID = $Reclassif.entryID
             $storeID = $Reclassif.storeID
+            $ps1Path = "U:\GromecOutlook\Verifier-Confirmation.ps1"
 
-            # Ecrire dans Firebase pour declencher le retraitement
-            $body = @{
-                forcer_retraitement = $true
-                entryID             = $entryID
-                storeID             = $storeID
-                demandeLe           = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
-            } | ConvertTo-Json -Compress
-
-            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/retraitement.json" `
-                -Method Put `
-                -Body $body `
-                -ContentType "application/json" `
-                -TimeoutSec 15 | Out-Null
-
-            Write-Log "INFO  Retraitement force declenche pour : $sujet"
+            Write-Log "INFO  Retraitement force : lancement de Verifier-Confirmation.ps1 pour $sujet"
+            Start-Process -FilePath "powershell.exe" `
+                -ArgumentList "-ExecutionPolicy Bypass -File `"$ps1Path`" -EntryID `"$entryID`" -StoreID `"$storeID`" -Force" `
+                -WindowStyle Hidden `
+                -Wait
+            Write-Log "INFO  Retraitement termine pour : $sujet"
         }
 
         # Effacer le noeud reclassification dans Firebase
