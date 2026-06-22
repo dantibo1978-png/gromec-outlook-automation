@@ -191,10 +191,22 @@ function Invoke-TraiterEntree {
         [object]$Entree
     )
 
-    $copierPrix = [bool]$Entree.dtw_copierPrix
-    $copierQty  = [bool]$Entree.dtw_copierQty
-    $docNum     = $Entree.numeroCommande
-    $articles   = @($Entree.articles)
+    $copierPrix     = [bool]$Entree.dtw_copierPrix
+    $copierQty      = [bool]$Entree.dtw_copierQty
+    $docNum         = $Entree.numeroCommande
+    $articlesTotal  = @($Entree.articles)
+
+    # Filtrer selon les lignes cochees (si dtw_lignesCochees est fourni)
+    $lignesCochees = $null
+    if ($Entree.dtw_lignesCochees -ne $null) {
+        $lignesCochees = @($Entree.dtw_lignesCochees | ForEach-Object { [int]$_ })
+    }
+    $articles = if ($lignesCochees -ne $null -and $lignesCochees.Count -gt 0) {
+        @($articlesTotal | Where-Object { $lignesCochees -contains [int]$_.sapLigne })
+    } else {
+        # Aucune case cochee = comportement par defaut (ecarts seulement)
+        @($articlesTotal | Where-Object { $_.statut -eq 'ECART' })
+    }
 
     Write-Log "INFO  Traitement PO $docNum (cle: $Cle) — prix=$copierPrix qty=$copierQty"
 
