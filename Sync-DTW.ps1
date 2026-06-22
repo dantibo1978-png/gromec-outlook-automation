@@ -343,9 +343,10 @@ function New-PDFAnnote {
 
             $yLigne = $yBase - ($ligneNum - 1) * $hautLigne
 
-            # Rectangle rouge translucide sur la ligne
+            # Rectangle rose translucide sur la ligne
             $cb.SaveState()
-            $cb.SetColorFill(New-Object iTextSharp.text.BaseColor(255, 200, 200))
+            $couleurLigne = New-Object iTextSharp.text.BaseColor(255, 200, 200)
+            $cb.SetColorFill($couleurLigne)
             $cb.Rectangle(25, $yLigne - 3, $pageWidth - 50, $hautLigne)
             $cb.Fill()
             $cb.RestoreState()
