@@ -14,10 +14,12 @@
 $FirebaseUrl        = "https://gromec-outlook-vba-default-rtdb.firebaseio.com"
 $DTW_Exe            = "C:\Program Files\sap\Data Transfer Workbench\DTW.exe"
 $DTW_Dossier        = "U:\GromecOutlook\DTW"
-$DTW_FichierLignes  = "$DTW_Dossier\modif_prix_dans_po.txt"
-$DTW_FichierPrixL2  = "$DTW_Dossier\modif_prix_fourn.txt"
-$DTW_ScenarioLignes = "$DTW_Dossier\UpdatePOLines_PROD.xml"
-$DTW_ScenarioPrixL2 = "$DTW_Dossier\UpdatePriceList2_PROD.xml"
+$DTW_FichierLignes     = "$DTW_Dossier\modif_prix_dans_po.txt"
+$DTW_FichierPrixL2     = "$DTW_Dossier\modif_prix_fourn.txt"
+$DTW_FichierConfirmPO  = "$DTW_Dossier\template.txt"
+$DTW_ScenarioLignes    = "$DTW_Dossier\UpdatePOLines_PROD.xml"
+$DTW_ScenarioPrixL2    = "$DTW_Dossier\UpdatePriceList2_PROD.xml"
+$DTW_ScenarioConfirmPO = "$DTW_Dossier\ConfirmPO_PROD.xml"
 $IntervalleSecondes = 30
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
@@ -231,6 +233,26 @@ function Invoke-TraiterEntree {
         }
         Write-Log "INFO  DTW Price List 2 OK."
     }
+
+    # ── Etape 3 : U_NWR_ConfirmPO = Y (confirmer la commande dans SAP) ────────
+    try {
+        $contenuConfirm = "DocNum`tDocEntry`tU_NWR_ConfirmPO`r`nDocNum`tDocEntry`tU_NWR_ConfirmPO`r`n$docNum`t`tY"
+        [System.IO.File]::WriteAllText($DTW_FichierConfirmPO, $contenuConfirm, [System.Text.Encoding]::Unicode)
+    } catch {
+        Write-Log "WARN  Erreur generation fichier ConfirmPO : $($_.Exception.Message)"
+        Set-StatutDTW -Cle $Cle -Statut 'ok'
+        Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)."
+        return
+    }
+
+    $res3 = Invoke-DTW -ScenarioXml $DTW_ScenarioConfirmPO
+    if (-not $res3.Succes) {
+        Write-Log "WARN  DTW ConfirmPO : $($res3.Erreur)"
+        Set-StatutDTW -Cle $Cle -Statut 'ok'
+        Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)."
+        return
+    }
+    Write-Log "INFO  DTW ConfirmPO OK."
 
     Set-StatutDTW -Cle $Cle -Statut 'ok'
     Write-Log "INFO  PO $docNum traite avec succes."
