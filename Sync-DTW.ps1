@@ -54,7 +54,6 @@ function Set-StatutDTW {
         # Remettre les flags a false pour ne pas retraiter au prochain poll
         dtw_copierPrix     = $false
         dtw_copierQty      = $false
-        dtw_lignesCochees  = $null
     }
     # Si succes DTW, marquer la commande comme conforme dans Firebase
     if ($Statut -eq 'ok') {
