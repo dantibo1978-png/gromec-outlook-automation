@@ -1559,23 +1559,33 @@ function Invoke-TraiterNouveauCourriel {
         if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
 
     } else {
-        # Claude est incertain -- poser la question a Dan
+        # Claude est incertain
         $suggestionOui = $analyse.EstConfirmation
         $pctConfiance  = [math]::Round($analyse.Confiance * 100)
-        $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande'}else{'PAS une confirmation de commande'}) (confiance: $pctConfiance%).`n`nEst-ce bien une confirmation de commande?`n`n[Oui] = confirmation, ecarts dans le PDF joint`n[Oui, mais verifier le corps] = confirmation, ecarts ecrits dans le texte du courriel (PDF = juste reference)`n[Non] = pas une confirmation de commande"
-        $rep = [System.Windows.Forms.MessageBox]::Show($q, "Confirmation de commande?", "YesNoCancel", "Question")
 
-        if ($rep -eq "Cancel") {
-            $estConfirmation = $true; $verifierCorps = $true
-            if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
-            Set-ReponseCorps $adresseExp $true
-        } elseif ($rep -eq "Yes") {
-            $estConfirmation = $true; $verifierCorps = $false
-            if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
-            Set-ReponseCorps $adresseExp $false
+        if ($ForcerTraitement) {
+            # Mode retraitement force (reclassification manuelle) : pas de popup
+            # On fait confiance a la classification du VBA -- toujours traiter comme confirmation
+            Write-Host "INFO  Confiance Claude faible ($pctConfiance%) mais mode -Force : traitement sans popup"
+            $estConfirmation = $true
+            $verifierCorps   = $analyse.VerifierCorps
         } else {
-            $estConfirmation = $false
-            if ($suggestionOui) { Set-ReponseFournisseur $adresseExp $false }
+            # Mode normal : poser la question a Dan
+            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande'}else{'PAS une confirmation de commande'}) (confiance: $pctConfiance%).`n`nEst-ce bien une confirmation de commande?`n`n[Oui] = confirmation, ecarts dans le PDF joint`n[Oui, mais verifier le corps] = confirmation, ecarts ecrits dans le texte du courriel (PDF = juste reference)`n[Non] = pas une confirmation de commande"
+            $rep = [System.Windows.Forms.MessageBox]::Show($q, "Confirmation de commande?", "YesNoCancel", "Question")
+
+            if ($rep -eq "Cancel") {
+                $estConfirmation = $true; $verifierCorps = $true
+                if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
+                Set-ReponseCorps $adresseExp $true
+            } elseif ($rep -eq "Yes") {
+                $estConfirmation = $true; $verifierCorps = $false
+                if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
+                Set-ReponseCorps $adresseExp $false
+            } else {
+                $estConfirmation = $false
+                if ($suggestionOui) { Set-ReponseFournisseur $adresseExp $false }
+            }
         }
     }
 
