@@ -231,6 +231,11 @@ function Invoke-TraiterEntree {
         $articles = @($articlesTotal | Where-Object { $_.statut -eq 'ECART' })
         Write-Log "INFO  Aucune selection specifique -> ecarts seulement ($($articles.Count) articles)"
     }
+    # Si aucun flag copier defini, activer les deux par defaut
+    if (-not $copierPrix -and -not $copierQty) {
+        $copierPrix = $true
+        $copierQty  = $true
+    }
 
     Write-Log "INFO  Traitement PO $docNum (cle: $Cle) — prix=$copierPrix qty=$copierQty"
 
