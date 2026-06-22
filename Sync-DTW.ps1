@@ -19,7 +19,6 @@ $DTW_FichierPrixL2  = "$DTW_Dossier\modif_prix_fourn.txt"
 $DTW_ScenarioLignes = "$DTW_Dossier\UpdatePOLines_PROD.xml"
 $DTW_ScenarioPrixL2 = "$DTW_Dossier\UpdatePriceList2_PROD.xml"
 $IntervalleSecondes = 30
-$Edge_Exe           = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
 # ──────────────────────────────────────────────────────────────────────────────
@@ -253,158 +252,119 @@ function Set-StatutConfirmation {
     }
 }
 
-function Get-LogoBase64 {
+function Get-PDFOriginalDepuisOutlook {
+    <#
+    Cherche la premiere piece jointe PDF dans le courriel original (Sent Items)
+    identifie par EntryID/StoreID, et la sauvegarde dans CheminDestination.
+    Retourne $true si trouve, $false sinon.
+    #>
+    param([string]$EntryID, [string]$StoreID, [string]$CheminDestination)
+
+    $outlook = $null; $namespace = $null; $mail = $null
     try {
-        $bytes = [System.IO.File]::ReadAllBytes($Logo_Gromec)
-        return [System.Convert]::ToBase64String($bytes)
+        $outlook   = New-Object -ComObject Outlook.Application
+        $namespace = $outlook.GetNamespace("MAPI")
+        $mail      = $namespace.GetItemFromID($EntryID, $StoreID)
+
+        foreach ($pj in $mail.Attachments) {
+            if ($pj.FileName -match '\.pdf$') {
+                $pj.SaveAsFile($CheminDestination)
+                return $true
+            }
+        }
+        return $false
     } catch {
-        return ""
+        Write-Log "WARN  Impossible de recuperer le PDF original : $($_.Exception.Message)"
+        return $false
+    } finally {
+        if ($mail)      { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail)      | Out-Null } catch {} }
+        if ($namespace) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($namespace) | Out-Null } catch {} }
+        if ($outlook)   { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook)   | Out-Null } catch {} }
+        [System.GC]::Collect()
     }
 }
 
-function New-BonCommandeHTML {
-    param([object]$Entree)
+function New-PDFAnnote {
+    <#
+    Prend le PDF SAP original et annote les lignes modifiees en rouge.
+    Pour chaque article avec ecart de prix ou de quantite, ajoute un tampon
+    rouge dans la marge droite avec les nouvelles valeurs.
+    Utilise iTextSharp 5.x.
+    #>
+    param([string]$CheminPDFSource, [string]$CheminPDFDest, [array]$Articles)
 
-    $articles  = @($Entree.articles)
-    $bc        = $Entree.numeroCommande
-    $date      = (Get-Date).ToString("d/M/yyyy")
-    $fourn     = $Entree.fournisseur
-    $devise    = if ($Entree.devise) { $Entree.devise } else { "CAD" }
-    $logoB64   = Get-LogoBase64
-    $logoHtml  = if ($logoB64 -ne "") { "<img src='data:image/png;base64,$logoB64' style='height:60px;'>" } else { "<span style='font-size:24px;font-weight:bold;color:#2d6da3;'>GROMEC</span>" }
+    $iTextDLL = "U:\GromecOutlook\lib\itextsharp\lib\itextsharp.dll"
+    Add-Type -Path $iTextDLL
 
-    $lignesHtml = ""
-    $sousTotal  = 0.0
-    $num        = 1
-    foreach ($a in $articles) {
-        $prixUnit  = if ($a.pdfPrix -and [double]$a.pdfPrix -gt 0) { [double]$a.pdfPrix } else { [double]$a.sapPrix }
-        $qty       = if ($a.pdfQty  -and [int]$a.pdfQty    -gt 0) { [int]$a.pdfQty    } else { [int]$a.sapQty    }
-        $total     = $prixUnit * $qty
-        $sousTotal += $total
-        $desc      = if ($a.sapDesc)    { $a.sapDesc    } else { "" }
-        $codeManuf = if ($a.sapCode)    { $a.sapCode    } else { "" }
-        $article   = if ($a.sapArticle) { $a.sapArticle } else { "" }
-        $prixStr   = [string][math]::Round($prixUnit, 2)
-        $totalStr  = [string][math]::Round($total, 2)
-
-        $lignesHtml += "<tr>
-            <td style='text-align:center;padding:6px 4px;border-bottom:1px solid #e0e0e0;'>$num</td>
-            <td style='padding:6px 4px;border-bottom:1px solid #e0e0e0;'>$article</td>
-            <td style='padding:6px 4px;border-bottom:1px solid #e0e0e0;'>$codeManuf</td>
-            <td style='padding:6px 4px;border-bottom:1px solid #e0e0e0;'>$desc</td>
-            <td style='text-align:center;padding:6px 4px;border-bottom:1px solid #e0e0e0;'>$qty</td>
-            <td style='text-align:right;padding:6px 4px;border-bottom:1px solid #e0e0e0;'>$prixStr $</td>
-            <td style='text-align:right;padding:6px 4px;border-bottom:1px solid #e0e0e0;'>$totalStr $</td>
-        </tr>"
-        $num++
-    }
-
-    $tps        = [math]::Round($sousTotal * 0.05,    2)
-    $tvq        = [math]::Round($sousTotal * 0.09975, 2)
-    $totalFinal = [math]::Round($sousTotal + $tps + $tvq, 2)
-    $sousTotalStr  = [string][math]::Round($sousTotal,  2)
-    $tpsStr        = [string][math]::Round($tps,         2)
-    $tvqStr        = [string][math]::Round($tvq,         2)
-    $totalFinalStr = [string][math]::Round($totalFinal,  2)
-
-    $html = @"
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset='UTF-8'>
-<style>
-  body{font-family:Arial,sans-serif;font-size:11px;margin:20px;color:#222;}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}
-  .titre{font-size:28px;font-weight:bold;color:#333;}
-  .adresses{display:flex;justify-content:space-between;margin-bottom:20px;}
-  .adresse-bloc{width:48%;}
-  .adresse-titre{font-weight:bold;border-bottom:2px solid #333;padding-bottom:4px;margin-bottom:8px;}
-  table.articles{width:100%;border-collapse:collapse;margin-top:10px;}
-  table.articles th{background:#2d6da3;color:white;padding:7px 4px;text-align:left;font-size:10px;}
-  table.articles th:nth-child(1),table.articles th:nth-child(5){text-align:center;}
-  table.articles th:nth-child(6),table.articles th:nth-child(7){text-align:right;}
-  .totaux{margin-top:10px;float:right;width:280px;}
-  .totaux table{width:100%;border-collapse:collapse;}
-  .totaux td{padding:4px 8px;}
-  .totaux .total-final{font-weight:bold;font-size:13px;background:#f0f0f0;}
-  .note{margin-top:60px;font-size:10px;border-top:1px solid #ccc;padding-top:10px;}
-  .revised-banner{background:#fff3cd;border:1px solid #ffc107;padding:6px 12px;margin-bottom:16px;font-weight:bold;font-size:12px;color:#856404;}
-</style>
-</head>
-<body>
-  <div class='header'>
-    <div>
-      $logoHtml
-      <div style='margin-top:10px;font-size:10px;color:#555;'>
-        1911 Rue des Outardes<br>Chicoutimi QC, G7K 1C3<br>
-        Tel: 418-549-5961<br>Email: gromec@gromec.com
-      </div>
-    </div>
-    <div style='text-align:right;'>
-      <div class='titre'>Bon de commande</div>
-      <table style='margin-top:10px;font-size:11px;'>
-        <tr><td style='color:#555;padding-right:10px;'>No. bon de commande:</td><td><strong>$bc</strong></td></tr>
-        <tr><td style='color:#555;'>Date du document:</td><td>$date</td></tr>
-        <tr><td style='color:#555;'>Conditions de paiement:</td><td>NET 30 JOURS</td></tr>
-        <tr><td style='color:#555;'>Acheteur:</td><td>Daniel Thibault</td></tr>
-      </table>
-    </div>
-  </div>
-  <div class='revised-banner'>REVISION -- Prix et/ou quantites mis a jour</div>
-  <div class='adresses'>
-    <div class='adresse-bloc'>
-      <div class='adresse-titre'>Achete a :</div>
-      $fourn
-    </div>
-    <div class='adresse-bloc'>
-      <div class='adresse-titre'>Expedie a :</div>
-      1911 Rue des Outardes<br>Chicoutimi QC G7K 1C3<br>CANADA
-    </div>
-  </div>
-  <table class='articles'>
-    <thead><tr>
-      <th style='width:4%;'>#</th>
-      <th style='width:12%;'># Produit</th>
-      <th style='width:13%;'># Code manuf.</th>
-      <th style='width:40%;'>Description</th>
-      <th style='width:7%;'>Qte</th>
-      <th style='width:12%;'>Prix</th>
-      <th style='width:12%;'>Total</th>
-    </tr></thead>
-    <tbody>$lignesHtml</tbody>
-  </table>
-  <div class='totaux'>
-    <table>
-      <tr><td>Sous-Total</td><td style='text-align:right;'>$sousTotalStr $</td></tr>
-      <tr><td>TPS 5.000</td><td style='text-align:right;'>$tpsStr $</td></tr>
-      <tr><td>TVQ 9.975</td><td style='text-align:right;'>$tvqStr $</td></tr>
-      <tr class='total-final'><td>Total $devise</td><td style='text-align:right;'>$totalFinalStr $</td></tr>
-    </table>
-  </div>
-  <div style='clear:both;'></div>
-  <div class='note'>NOTE AU FOURNISSEUR: S.V.P. NOUS CONFIRMER LES PRIX ET DELAIS DE LIVRAISON POUR CHAQUE LIGNE DE COMMANDE AU: DTHIBAULT@GROMEC.COM.</div>
-  <div style='margin-top:30px;font-size:10px;color:#777;'>USAGER: Daniel Thibault &nbsp;&nbsp; Page: 1 de 1</div>
-</body>
-</html>
-"@
-    return $html
-}
-
-function New-PDFDepuisHTML {
-    param([string]$HtmlContent, [string]$CheminPDF)
-
-    if (-not (Test-Path $Temp_Dossier)) { New-Item -ItemType Directory -Path $Temp_Dossier | Out-Null }
-    $htmlTemp = Join-Path $Temp_Dossier "bc_revise_temp.html"
+    $reader  = New-Object iTextSharp.text.pdf.PdfReader($CheminPDFSource)
+    $stamper = New-Object iTextSharp.text.pdf.PdfStamper($reader, [System.IO.File]::Create($CheminPDFDest))
 
     try {
-        [System.IO.File]::WriteAllText($htmlTemp, $HtmlContent, [System.Text.Encoding]::UTF8)
-        $urlFichier = "file:///" + $htmlTemp.Replace("\", "/")
-        $args = "--headless --disable-gpu --no-sandbox --print-to-pdf=`"$CheminPDF`" --print-to-pdf-no-header `"$urlFichier`""
-        $proc = Start-Process -FilePath $Edge_Exe -ArgumentList $args -Wait -PassThru -WindowStyle Hidden
-        Start-Sleep -Seconds 3
-        if (-not (Test-Path $CheminPDF)) { throw "Edge n'a pas genere le fichier PDF." }
+        $pageWidth  = $reader.GetPageSize(1).Width
+        $pageHeight = $reader.GetPageSize(1).Height
+
+        # Police et couleurs
+        $fontRouge  = [iTextSharp.text.pdf.BaseFont]::CreateFont([iTextSharp.text.pdf.BaseFont]::HELVETICA_BOLD, [iTextSharp.text.pdf.BaseFont]::CP1252, $false)
+        $rouge      = [iTextSharp.text.BaseColor]::RED
+        $blanc      = [iTextSharp.text.BaseColor]::WHITE
+        $jauneLight = New-Object iTextSharp.text.BaseColor(255, 255, 180)
+
+        # Position Y de depart du tableau articles (approximation depuis le bas de page)
+        # Le PDF SAP place les lignes articles a environ 55-75% de la hauteur de page
+        # On positionne les annotations en fonction du numero de ligne SAP
+        $yBase      = $pageHeight * 0.62   # Y du haut du tableau articles (approx)
+        $hautLigne  = 18.5                  # hauteur approximative d'une ligne en points
+
+        $cb = $stamper.GetOverContent(1)
+
+        # Banniere REVISION en haut du document
+        $cb.SetColorFill($jauneLight)
+        $cb.Rectangle(30, $pageHeight - 55, $pageWidth - 60, 18)
+        $cb.Fill()
+        $cb.SetColorFill($rouge)
+        $cb.BeginText()
+        $cb.SetFontAndSize($fontRouge, 9)
+        $cb.ShowTextAligned([iTextSharp.text.Element]::ALIGN_CENTER, "** BON DE COMMANDE REVISE -- PRIX ET/OU QUANTITES MIS A JOUR **", $pageWidth / 2, $pageHeight - 46, 0)
+        $cb.EndText()
+
+        # Annotations par ligne modifiee
+        $ligneNum = 0
+        foreach ($a in $Articles) {
+            $ligneNum++
+            $prixSap = [double]$a.sapPrix
+            $prixPdf = if ($a.pdfPrix -and [double]$a.pdfPrix -gt 0) { [double]$a.pdfPrix } else { $prixSap }
+            $qtySap  = [int]$a.sapQty
+            $qtyPdf  = if ($a.pdfQty  -and [int]$a.pdfQty    -gt 0) { [int]$a.pdfQty    } else { $qtySap  }
+
+            $prixModif = [math]::Abs($prixPdf - $prixSap) -gt 0.001
+            $qtyModif  = $qtyPdf -ne $qtySap
+
+            if (-not $prixModif -and -not $qtyModif) { continue }
+
+            $yLigne = $yBase - ($ligneNum - 1) * $hautLigne
+
+            # Rectangle rouge translucide sur la ligne
+            $cb.SaveState()
+            $cb.SetColorFill(New-Object iTextSharp.text.BaseColor(255, 200, 200))
+            $cb.Rectangle(25, $yLigne - 3, $pageWidth - 50, $hautLigne)
+            $cb.Fill()
+            $cb.RestoreState()
+
+            # Texte annotation a droite
+            $annotation = ""
+            if ($prixModif) { $annotation += "Prix: $([math]::Round($prixSap,2))$ -> $([math]::Round($prixPdf,2))$  " }
+            if ($qtyModif)  { $annotation += "Qte: $qtySap -> $qtyPdf" }
+
+            $cb.SetColorFill($rouge)
+            $cb.BeginText()
+            $cb.SetFontAndSize($fontRouge, 7.5)
+            $cb.ShowTextAligned([iTextSharp.text.Element]::ALIGN_RIGHT, $annotation.Trim(), $pageWidth - 30, $yLigne + 3, 0)
+            $cb.EndText()
+        }
+
     } finally {
-        try { Remove-Item $htmlTemp -Force -ErrorAction SilentlyContinue } catch {}
+        $stamper.Close()
+        $reader.Close()
     }
 }
 
@@ -424,7 +384,9 @@ function New-BrouillonOutlook {
         $brouillon = $mailOrig.ReplyAll()
         $brouillon.Subject  = "Bon de commande revise -- BC $bc"
         $brouillon.HTMLBody = "<html><body><p>Bonjour,</p><p>Veuillez trouver ci-joint notre bon de commande revise (BC $bc).</p><p>##POLITESSE##</p></body></html>"
-        $brouillon.Attachments.Add($CheminPDF) | Out-Null
+        if ($CheminPDF -and (Test-Path $CheminPDF)) {
+            $brouillon.Attachments.Add($CheminPDF) | Out-Null
+        }
         $brouillon.Save()
 
         Write-Log "INFO  Brouillon cree dans Outlook pour BC $bc."
@@ -446,19 +408,36 @@ function Invoke-EnvoyerConfirmationFournisseur {
     Write-Log "INFO  Confirmation fournisseur BC $bc (cle: $Cle)."
 
     if (-not (Test-Path $Temp_Dossier)) { New-Item -ItemType Directory -Path $Temp_Dossier | Out-Null }
-    $cheminPDF = Join-Path $Temp_Dossier "BC_Revise_$bc.pdf"
+
+    $cheminPDFOrig  = Join-Path $Temp_Dossier "BC_Original_$bc.pdf"
+    $cheminPDFAnnote = Join-Path $Temp_Dossier "BC_Revise_$bc.pdf"
 
     try {
-        $html = New-BonCommandeHTML -Entree $Entree
-        New-PDFDepuisHTML -HtmlContent $html -CheminPDF $cheminPDF
-        New-BrouillonOutlook -Entree $Entree -CheminPDF $cheminPDF
+        # 1. Recuperer le PDF SAP original depuis la PJ du courriel
+        $pdfTrouve = Get-PDFOriginalDepuisOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -CheminDestination $cheminPDFOrig
+
+        if ($pdfTrouve) {
+            # 2. Annoter le PDF original avec iTextSharp
+            New-PDFAnnote -CheminPDFSource $cheminPDFOrig -CheminPDFDest $cheminPDFAnnote -Articles @($Entree.articles)
+            $cheminPJFinal = $cheminPDFAnnote
+            Write-Log "INFO  PDF original annote avec succes."
+        } else {
+            # Fallback : pas de PDF original trouve -- on avertit mais on continue sans PJ
+            Write-Log "WARN  PDF original introuvable dans la PJ -- brouillon sans PJ PDF."
+            $cheminPJFinal = $null
+        }
+
+        # 3. Creer le brouillon Outlook
+        New-BrouillonOutlook -Entree $Entree -CheminPDF $cheminPJFinal
         Set-StatutConfirmation -Cle $Cle -Statut 'envoye'
         Write-Log "INFO  BC $bc -- brouillon cree avec succes."
+
     } catch {
         Write-Log "ERREUR confirmation fournisseur BC $bc : $($_.Exception.Message)"
         Set-StatutConfirmation -Cle $Cle -Statut 'erreur' -Erreur $_.Exception.Message
     } finally {
-        try { if (Test-Path $cheminPDF) { Remove-Item $cheminPDF -Force } } catch {}
+        try { if (Test-Path $cheminPDFOrig)   { Remove-Item $cheminPDFOrig   -Force } } catch {}
+        try { if (Test-Path $cheminPDFAnnote) { Remove-Item $cheminPDFAnnote -Force } } catch {}
     }
 }
 
