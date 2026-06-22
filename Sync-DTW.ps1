@@ -443,10 +443,96 @@ function Invoke-EnvoyerConfirmationFournisseur {
 }
 
 
+
+function Set-ReponseFournisseur {
+    param([string]$Adresse, [bool]$EstConfirmation)
+    $fichier = "U:\GromecOutlook\fournisseurs_appris.csv"
+    $nbOui = 0; $nbNon = 0
+    $lignes = @(); $trouve = $false
+
+    if (Test-Path $fichier) {
+        foreach ($ligne in Get-Content $fichier) {
+            $champs = $ligne -split ","
+            if ($champs.Count -ge 3 -and $champs[0].Trim().ToLower() -eq $Adresse.ToLower()) {
+                $nbOui = [int]$champs[1]; $nbNon = [int]$champs[2]
+                if ($EstConfirmation) { $nbOui++ } else { $nbNon++ }
+                $lignes += "$Adresse,$nbOui,$nbNon"
+                $trouve = $true
+            } else {
+                $lignes += $ligne
+            }
+        }
+    }
+    if (-not $trouve) {
+        if ($EstConfirmation) { $lignes += "$Adresse,1,0" } else { $lignes += "$Adresse,0,1" }
+    }
+    $lignes | Out-File -FilePath $fichier -Encoding ASCII -Force
+    Write-Log "INFO  fournisseurs_appris.csv mis a jour : $Adresse -> $(if ($EstConfirmation) { 'OUI' } else { 'NON' })"
+}
+
+function Invoke-TraiterReclassification {
+    param([object]$Reclassif)
+
+    $expediteur     = $Reclassif.expediteur
+    $estConfirmation = [bool]$Reclassif.estConfirmation
+    $classification  = $Reclassif.classification
+    $sujet           = $Reclassif.sujet
+
+    Write-Log "INFO  Reclassification manuelle : $expediteur -> $classification"
+
+    try {
+        # Mettre a jour fournisseurs_appris.csv
+        Set-ReponseFournisseur -Adresse $expediteur -EstConfirmation $estConfirmation
+
+        # Si c est une confirmation, retraiter le courriel via Verifier-Confirmation.ps1
+        if ($estConfirmation) {
+            $entryID = $Reclassif.entryID
+            $storeID = $Reclassif.storeID
+
+            # Ecrire dans Firebase pour declencher le retraitement
+            $body = @{
+                forcer_retraitement = $true
+                entryID             = $entryID
+                storeID             = $storeID
+                demandeLe           = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+            } | ConvertTo-Json -Compress
+
+            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/retraitement.json" `
+                -Method Put `
+                -Body $body `
+                -ContentType "application/json" `
+                -TimeoutSec 15 | Out-Null
+
+            Write-Log "INFO  Retraitement force declenche pour : $sujet"
+        }
+
+        # Effacer le noeud reclassification dans Firebase
+        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassification.json" `
+            -Method Delete `
+            -TimeoutSec 15 | Out-Null
+
+        Write-Log "INFO  Reclassification traitee avec succes."
+
+    } catch {
+        Write-Log "ERREUR reclassification : $($_.Exception.Message)"
+    }
+}
+
+
 # ── Boucle principale ─────────────────────────────────────────────────────────
 Write-Log "INFO  Sync-DTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
 
 while ($true) {
+    # Verifier reclassification manuelle (VBA Outlook)
+    try {
+        $reclassif = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassification.json" -Method Get -TimeoutSec 10
+        if ($null -ne $reclassif -and $reclassif -ne "null" -and $reclassif.expediteur) {
+            Invoke-TraiterReclassification -Reclassif $reclassif
+        }
+    } catch {
+        Write-Log "WARN  Erreur lecture noeud reclassification : $($_.Exception.Message)"
+    }
+
     $historique = Get-Historique
 
     if ($null -ne $historique) {
