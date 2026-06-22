@@ -979,6 +979,50 @@ function Save-PremierePDF {
     return ""
 }
 
+function Save-PDFConfirmationFournisseur {
+    # Retourne la PJ PDF qui est la confirmation fournisseur (pas le BC Gromec).
+    # Logique : si une seule PJ PDF -> la prendre.
+    # Si plusieurs PJ PDF -> exclure celle dont le nom ressemble a un BC Gromec
+    # (contient "Commande fournisseur" ou "Purchase Order" ou "Bon de commande").
+    # En dernier recours, prendre la derniere PJ PDF (le BC Gromec est generalement le premier).
+    param($MailItem)
+
+    # Patterns pour identifier les BC Gromec (a exclure)
+    # Exemples: "Commande fournisseur - 9006904.pdf", "Purchase Order - 9006904.pdf"
+    $motsCleBC = @("Commande fournisseur", "Purchase Order", "Bon de commande", "PO_", "BC_")
+
+    $pdfs = @()
+    foreach ($piece in $MailItem.Attachments) {
+        if ($piece.FileName -like "*.pdf") {
+            $pdfs += $piece
+        }
+    }
+
+    if ($pdfs.Count -eq 0) { return "" }
+    if ($pdfs.Count -eq 1) {
+        $chemin = Join-Path $env:TEMP "ps_$([guid]::NewGuid().ToString('N').Substring(0,8))_$($pdfs[0].FileName)"
+        $pdfs[0].SaveAsFile($chemin)
+        return $chemin
+    }
+
+    # Plusieurs PDFs : chercher celui qui n'est PAS un BC Gromec
+    $candidats = @()
+    foreach ($piece in $pdfs) {
+        $estBC = $false
+        foreach ($mot in $motsCleBC) {
+            if ($piece.FileName -like "*$mot*") { $estBC = $true; break }
+        }
+        if (-not $estBC) { $candidats += $piece }
+    }
+
+    # Si on a trouve des candidats non-BC, prendre le premier
+    $choix = if ($candidats.Count -gt 0) { $candidats[0] } else { $pdfs[$pdfs.Count - 1] }
+    $chemin = Join-Path $env:TEMP "ps_$([guid]::NewGuid().ToString('N').Substring(0,8))_$($choix.FileName)"
+    $choix.SaveAsFile($chemin)
+    Write-Host "INFO  PDF confirmation selectionne : $($choix.FileName)"
+    return $chemin
+}
+
 function Set-CategorieConfirmation {
     param($MailItem, [bool]$EstOK)
 
@@ -1374,7 +1418,7 @@ function Invoke-TraiterComparaison {
     } else {
         # --- MODE PDF (comportement original, inchange) ---
 
-        $cheminConfirmation = Save-PremierePDF $MailConfirmation
+        $cheminConfirmation = Save-PDFConfirmationFournisseur $MailConfirmation
         if ($cheminConfirmation -eq "") {
             Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF confirmation introuvable"
             Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_CONFIRMATION" "" "" $HistoriqueId
