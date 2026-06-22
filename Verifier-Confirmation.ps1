@@ -1820,10 +1820,27 @@ try {
 
         $mail = $namespace.GetItemFromID($choix.EntryID, $choix.StoreID)
     } else {
-        $mail = $namespace.GetItemFromID($EntryID, $StoreID)
+        # Tentative 1 : GetItemFromID direct avec le StoreID fourni
+        $mail = $null
+        try { $mail = $namespace.GetItemFromID($EntryID, $StoreID) } catch { $mail = $null }
+
+        # Tentative 2 : si null, iterer sur tous les stores Outlook (robustesse VBA/StoreID mismatch)
+        if ($null -eq $mail) {
+            Write-Host "INFO  GetItemFromID direct a echoue, tentative sur tous les stores..."
+            foreach ($store in $namespace.Stores) {
+                try {
+                    $mail = $namespace.GetItemFromID($EntryID, $store.StoreID)
+                    if ($null -ne $mail) {
+                        Write-Host "INFO  Courriel trouve dans le store : $($store.DisplayName)"
+                        break
+                    }
+                } catch { $mail = $null }
+            }
+        }
     }
 
     if ($null -eq $mail) {
+        Write-Host "ERREUR  Courriel introuvable dans tous les stores Outlook (EntryID invalide ou courriel deplace/supprime)"
         Write-JournalEntry "" "ERREUR" "Courriel introuvable (EntryID invalide)"
         exit 1
     }

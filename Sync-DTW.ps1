@@ -471,9 +471,9 @@ function Set-ReponseFournisseur {
 }
 
 function Invoke-TraiterReclassification {
-    param([object]$Reclassif)
+    param([object]$Reclassif, [string]$CleFirebase)
 
-    $expediteur     = $Reclassif.expediteur
+    $expediteur      = $Reclassif.expediteur
     $estConfirmation = [bool]$Reclassif.estConfirmation
     $classification  = $Reclassif.classification
     $sujet           = $Reclassif.sujet
@@ -498,15 +498,15 @@ function Invoke-TraiterReclassification {
             Write-Log "INFO  Retraitement termine pour : $sujet"
         }
 
-        # Effacer le noeud reclassification dans Firebase
-        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassification.json" `
+        # Effacer cette entree specifique dans Firebase (pas toute la liste)
+        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassifications/$CleFirebase.json" `
             -Method Delete `
             -TimeoutSec 15 | Out-Null
 
-        Write-Log "INFO  Reclassification traitee avec succes."
+        Write-Log "INFO  Reclassification '$CleFirebase' traitee avec succes."
 
     } catch {
-        Write-Log "ERREUR reclassification : $($_.Exception.Message)"
+        Write-Log "ERREUR reclassification '$CleFirebase' : $($_.Exception.Message)"
     }
 }
 
@@ -515,14 +515,19 @@ function Invoke-TraiterReclassification {
 Write-Log "INFO  Sync-DTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
 
 while ($true) {
-    # Verifier reclassification manuelle (VBA Outlook)
+    # Verifier reclassifications manuelles (VBA Outlook) -- liste pour supporter plusieurs en meme temps
     try {
-        $reclassif = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassification.json" -Method Get -TimeoutSec 10
-        if ($null -ne $reclassif -and $reclassif -ne "null" -and $reclassif.expediteur) {
-            Invoke-TraiterReclassification -Reclassif $reclassif
+        $reclassifs = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassifications.json" -Method Get -TimeoutSec 10
+        if ($null -ne $reclassifs -and $reclassifs -ne "null") {
+            foreach ($cleR in $reclassifs.PSObject.Properties.Name) {
+                $reclassif = $reclassifs.$cleR
+                if ($null -ne $reclassif -and $reclassif.expediteur) {
+                    Invoke-TraiterReclassification -Reclassif $reclassif -CleFirebase $cleR
+                }
+            }
         }
     } catch {
-        Write-Log "WARN  Erreur lecture noeud reclassification : $($_.Exception.Message)"
+        Write-Log "WARN  Erreur lecture noeud reclassifications : $($_.Exception.Message)"
     }
 
     $historique = Get-Historique
