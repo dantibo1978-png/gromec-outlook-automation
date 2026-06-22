@@ -156,6 +156,13 @@ function Write-FichierPrixL2DTW {
 function Invoke-DTW {
     param([string]$ScenarioXml)
 
+    # Attendre que tout processus DTW residuel soit ferme (jusqu'a 15s)
+    $attenteInit = 0
+    while ((Get-Process -Name "DTW" -ErrorAction SilentlyContinue) -and $attenteInit -lt 15) {
+        Start-Sleep -Seconds 2
+        $attenteInit += 2
+    }
+
     # Verifier qu'aucune instance manuelle de DTW n'est ouverte
     $dejaOuvert = Get-Process -Name "DTW" -ErrorAction SilentlyContinue
     if ($dejaOuvert) {
