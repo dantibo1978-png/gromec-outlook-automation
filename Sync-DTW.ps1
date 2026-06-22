@@ -49,11 +49,18 @@ function Set-StatutDTW {
     )
     $Maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
     $body = @{
-        dtw_statut    = $Statut
-        dtw_traiteLe  = $Maintenant
+        dtw_statut         = $Statut
+        dtw_traiteLe       = $Maintenant
         # Remettre les flags a false pour ne pas retraiter au prochain poll
-        dtw_copierPrix = $false
-        dtw_copierQty  = $false
+        dtw_copierPrix     = $false
+        dtw_copierQty      = $false
+        dtw_lignesCochees  = $null
+    }
+    # Si succes DTW, marquer la commande comme conforme dans Firebase
+    if ($Statut -eq 'ok') {
+        $body["statut"]  = "OK"
+        $body["confirme"] = $true
+        $body["confirme_le"] = $Maintenant
     }
     if ($Erreur) { $body["dtw_erreur"] = $Erreur }
 
@@ -203,16 +210,26 @@ function Invoke-TraiterEntree {
     $docNum         = $Entree.numeroCommande
     $articlesTotal  = @($Entree.articles)
 
-    # Filtrer selon les lignes cochees (si dtw_lignesCochees est fourni)
-    $lignesCochees = $null
-    if ($Entree.dtw_lignesCochees -ne $null) {
-        $lignesCochees = @($Entree.dtw_lignesCochees | ForEach-Object { [int]$_ })
+    # Filtrer selon les lignes cochees (si dtw_lignesCochees est fourni par le dashboard)
+    $lignesCochees = @()
+    if ($null -ne $Entree.dtw_lignesCochees) {
+        try {
+            $lignesCochees = @($Entree.dtw_lignesCochees | ForEach-Object { [int]"$_" })
+        } catch {
+            $lignesCochees = @()
+        }
     }
-    $articles = if ($lignesCochees -ne $null -and $lignesCochees.Count -gt 0) {
-        @($articlesTotal | Where-Object { $lignesCochees -contains [int]$_.sapLigne })
+
+    # Aussi prendre en compte copierPrix/copierQty depuis Firebase
+    # (pour compatibilite avec l'ancien comportement sans cases a cocher)
+    if ($lignesCochees.Count -gt 0) {
+        # Dashboard a envoye des lignes cochees specifiques
+        $articles = @($articlesTotal | Where-Object { $lignesCochees -contains [int]"$($_.sapLigne)" })
+        Write-Log "INFO  Lignes filtrees selon selection ($($lignesCochees.Count) cochees -> $($articles.Count) articles)"
     } else {
-        # Aucune case cochee = comportement par defaut (ecarts seulement)
-        @($articlesTotal | Where-Object { $_.statut -eq 'ECART' })
+        # Pas de selection specifique -> prendre seulement les ecarts
+        $articles = @($articlesTotal | Where-Object { $_.statut -eq 'ECART' })
+        Write-Log "INFO  Aucune selection specifique -> ecarts seulement ($($articles.Count) articles)"
     }
 
     Write-Log "INFO  Traitement PO $docNum (cle: $Cle) — prix=$copierPrix qty=$copierQty"
@@ -600,9 +617,10 @@ while ($true) {
             }
 
             # ── Import DTW (prix / quantites) ────────────────────────────────────
-            $copierPrix = [bool]$entree.dtw_copierPrix
-            $copierQty  = [bool]$entree.dtw_copierQty
-            if (-not $copierPrix -and -not $copierQty) { continue }
+            $copierPrix    = [bool]$entree.dtw_copierPrix
+            $copierQty     = [bool]$entree.dtw_copierQty
+            $aLignesCochees = ($null -ne $entree.dtw_lignesCochees)
+            if (-not $copierPrix -and -not $copierQty -and -not $aLignesCochees) { continue }
 
             try {
                 Invoke-TraiterEntree -Cle $cle -Entree $entree
