@@ -1533,6 +1533,16 @@ function Invoke-TraiterNouveauCourriel {
     # Claude Haiku analyse TOUJOURS le courriel -- l'historique est contexte seulement
     $analyse = Invoke-ClassifierCourriel $MailItem
 
+    # Prefixe indicateur dans le sujet du courriel (visible dans la liste Outlook)
+    # [OK 94%] = confiant, confirmation | [X 97%] = confiant, pas une confirmation | [? 71%] = incertain
+    $pctAffiche = [math]::Round($analyse.Confiance * 100)
+    $prefixe = if (-not $analyse.EstConfirmation) { "[X $pctAffiche%]" } `
+               elseif ($analyse.Confiance -ge $seuilAuto) { "[OK $pctAffiche%]" } `
+               else { "[? $pctAffiche%]" }
+    if (-not $MailItem.Subject.StartsWith("[")) {
+        try { $MailItem.Subject = "$prefixe $($MailItem.Subject)"; $MailItem.Save() } catch {}
+    }
+
     $estConfirmation = $false
     $verifierCorps   = $false
 
