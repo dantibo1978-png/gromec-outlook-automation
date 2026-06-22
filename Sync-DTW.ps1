@@ -244,7 +244,10 @@ function Invoke-TraiterEntree {
         $copierQty  = $true
     }
 
-    Write-Log "INFO  Traitement PO $docNum (cle: $Cle) — prix=$copierPrix qty=$copierQty"
+    Write-Log "INFO  Traitement PO $docNum (cle: $Cle) — prix=$copierPrix qty=$copierQty articles=$($articles.Count)"
+    if ($articles.Count -gt 0) {
+        Write-Log "INFO  Premier article: sapLigne=$($articles[0].sapLigne) type=$($articles[0].sapLigne.GetType().Name)"
+    }
 
     if ($articles.Count -eq 0) {
         Write-Log "WARN  Aucun article dans l'entree Firebase — abandon."
