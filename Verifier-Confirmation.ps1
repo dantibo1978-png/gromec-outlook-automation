@@ -1465,6 +1465,60 @@ function Invoke-TraiterComparaison {
 # FONCTION - Traitement d'un nouveau courriel (classification + apprentissage)
 # =====================================================================
 
+function Invoke-ClassifierCourriel {
+    param($MailItem)
+
+    $adresseExp = $MailItem.SenderEmailAddress
+    $compteurs = Get-CompteursFournisseur $adresseExp
+    $nbCorps = 0; $nbPdf = 0
+    if (Test-Path $FichierComportementCorps) {
+        foreach ($ligne in Get-Content $FichierComportementCorps) {
+            $champs = $ligne -split ","
+            if ($champs.Count -ge 3 -and $champs[0].Trim().ToLower() -eq $adresseExp.ToLower()) {
+                $nbCorps = [int]$champs[1]; $nbPdf = [int]$champs[2]; break
+            }
+        }
+    }
+
+    $contexte = ""
+    $totalConnu = $compteurs.Oui + $compteurs.Non
+    if ($totalConnu -gt 0) {
+        $contexte = "HISTORIQUE pour $adresseExp : $($compteurs.Oui) confirmation(s), $($compteurs.Non) non-confirmation(s) dans le passe."
+        if ($nbCorps -gt 0 -or $nbPdf -gt 0) {
+            $contexte += " Source habituelle des ecarts: $nbCorps fois dans le corps, $nbPdf fois dans le PDF."
+        }
+    }
+
+    $sysPrompt = "Tu analyses des courriels fournisseurs pour Gromec Inc. (distributeur industriel Quebec). Une CONFIRMATION DE COMMANDE est un document ou courriel dans lequel le fournisseur confirme avoir recu la commande et indique conditions (articles, quantites, prix, delais). INCLUT les reponses par courriel sans PDF si le fournisseur y ecrit les prix/quantites confirmes. N'EST PAS une confirmation: questions, devis, factures seules, avis d'expedition seuls, courriels generaux. Reponds UNIQUEMENT en 3 lignes exactement: CONFIRMATION: OUI\nCONFIANCE: 0.95\nSOURCE: PDF\n- CONFIRMATION: OUI ou NON\n- CONFIANCE: 0.00 a 1.00\n- SOURCE: PDF si ecarts dans PJ PDF, CORPS si ecarts dans le texte du courriel (PDF par defaut si NON)"
+
+    $corps = $MailItem.Body
+    if ($corps.Length -gt 2500) { $corps = $corps.Substring(0, 2500) }
+    $pj = ($MailItem.Attachments | ForEach-Object { $_.FileName }) -join ", "
+
+    $usrPrompt = "$contexte`n`nExpediteur: $($MailItem.SenderName) <$adresseExp>`nSujet: $($MailItem.Subject)`nPieces jointes: $pj`nCorps:`n$corps"
+
+    $body = @{
+        model      = "claude-haiku-4-5-20251001"
+        max_tokens = 60
+        system     = $sysPrompt
+        messages   = @(@{ role = "user"; content = $usrPrompt })
+    } | ConvertTo-Json -Depth 10
+
+    try {
+        $headers = @{ "x-api-key" = $ClaudeApiKey; "anthropic-version" = "2023-06-01" }
+        $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 30
+        $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
+
+        $confirmation = if ($texte -match "CONFIRMATION:\s*(OUI|NON)") { $Matches[1] } else { "NON" }
+        $confiance    = if ($texte -match "CONFIANCE:\s*([\d.]+)")     { [double]$Matches[1] } else { 0.5 }
+        $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
+
+        return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte }
+    } catch {
+        return @{ EstConfirmation = $false; Confiance = 0.0; VerifierCorps = $false; TexteBrut = "ERREUR: $($_.Exception.Message)" }
+    }
+}
+
 function Invoke-TraiterNouveauCourriel {
     param($Namespace, $MailItem, [bool]$ForcerTraitement = $false)
 
@@ -1474,61 +1528,44 @@ function Invoke-TraiterNouveauCourriel {
     }
 
     $adresseExp = $MailItem.SenderEmailAddress
-    $statutConnu = Get-StatutFournisseurConnu $adresseExp
+    $seuilAuto  = 0.85
+
+    # Claude Haiku analyse TOUJOURS le courriel -- l'historique est contexte seulement
+    $analyse = Invoke-ClassifierCourriel $MailItem
+
     $estConfirmation = $false
-    $verifierCorps = $false
+    $verifierCorps   = $false
 
-    switch ($statutConnu) {
-        "OUI" {
-            $estConfirmation = $true
-            # Meme si la classification "confirmation" est deja connue, le
-            # choix corps/PDF est appris separement (adresse exacte) -- voir
-            # plus bas pour la meme logique de seuil.
-            $statutCorps = Get-StatutCorpsConnu $adresseExp
-            switch ($statutCorps) {
-                "CORPS" { $verifierCorps = $true }
-                "PDF"   { $verifierCorps = $false }
-                default {
-                    $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nCet expediteur est deja connu comme envoyant des confirmations de commande.`n`nFaut-il verifier le CORPS du message pour les ecarts (au lieu du PDF joint) ?"
-                    $rep = [System.Windows.Forms.MessageBox]::Show($q, "Verifier le corps du message?", "YesNo", "Question")
-                    $verifierCorps = ($rep -eq "Yes")
-                    Set-ReponseCorps $adresseExp $verifierCorps
-                }
-            }
-        }
-        "NON" { $estConfirmation = $false }
-        default {
-            $sysPrompt = "Tu analyses des courriels pour determiner si c'est une CONFIRMATION DE COMMANDE FOURNISSEUR (document formel avec numero de commande, articles, quantites, prix ou delai). Reponds UNIQUEMENT: REPONSE: OUI  ou  REPONSE: NON"
-            $usrPrompt = "Expediteur: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`nCorps:`n$($MailItem.Body.Substring(0,[Math]::Min(2000,$MailItem.Body.Length)))"
-            $suggestion = Invoke-ClaudeMessage $sysPrompt $usrPrompt
-            $suggestionOui = $suggestion -match "OUI"
+    if ($analyse.Confiance -ge $seuilAuto) {
+        # Claude est confiant -- agir automatiquement sans deranger Dan
+        $estConfirmation = $analyse.EstConfirmation
+        $verifierCorps   = $analyse.VerifierCorps
 
-            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande.'}else{'PAS une confirmation de commande.'})`n`nEst-ce bien une confirmation de commande?`n`n[Oui] = confirmation, ecarts dans le PDF joint`n[Oui, mais verifier le corps] = confirmation, ecarts ecrits dans le texte du courriel (PDF = juste reference)`n[Non] = pas une confirmation de commande"
-            $rep = [System.Windows.Forms.MessageBox]::Show($q, "Confirmation de commande?", "YesNoCancel", "Question")
-            # Cancel sert de 3e choix "Oui, mais verifier le corps" -- un
-            # MessageBox natif ne supporte pas de libelles de bouton custom,
-            # et le texte de la question ci-dessus explique deja a l'ecran
-            # ce que chaque bouton signifie.
-            if ($rep -eq "Cancel") {
-                $estConfirmation = $true
-                $verifierCorps = $true
-                Set-ReponseFournisseur $adresseExp $true
-                Set-ReponseCorps $adresseExp $true
-            } else {
-                $estConfirmation = ($rep -eq "Yes")
-                # N'apprendre que si l'utilisateur CONTREDIT Claude --
-                # si l'utilisateur confirme simplement le choix de Claude,
-                # on ne memorise rien pour ne pas penaliser une adresse
-                # qui envoie parfois des confirmations, parfois non.
-                $utilisateurContreditClaude = ($estConfirmation -ne $suggestionOui)
-                if ($utilisateurContreditClaude) {
-                    Set-ReponseFournisseur $adresseExp $estConfirmation
-                }
-                if ($estConfirmation) {
-                    $verifierCorps = $false
-                    Set-ReponseCorps $adresseExp $false
-                }
-            }
+        if (-not $estConfirmation) { return }  # Skip silencieux
+
+        # Pour le mode corps/PDF, privilegier l'apprentissage existant si disponible
+        $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
+        if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
+        if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
+
+    } else {
+        # Claude est incertain -- poser la question a Dan
+        $suggestionOui = $analyse.EstConfirmation
+        $pctConfiance  = [math]::Round($analyse.Confiance * 100)
+        $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande'}else{'PAS une confirmation de commande'}) (confiance: $pctConfiance%).`n`nEst-ce bien une confirmation de commande?`n`n[Oui] = confirmation, ecarts dans le PDF joint`n[Oui, mais verifier le corps] = confirmation, ecarts ecrits dans le texte du courriel (PDF = juste reference)`n[Non] = pas une confirmation de commande"
+        $rep = [System.Windows.Forms.MessageBox]::Show($q, "Confirmation de commande?", "YesNoCancel", "Question")
+
+        if ($rep -eq "Cancel") {
+            $estConfirmation = $true; $verifierCorps = $true
+            if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
+            Set-ReponseCorps $adresseExp $true
+        } elseif ($rep -eq "Yes") {
+            $estConfirmation = $true; $verifierCorps = $false
+            if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
+            Set-ReponseCorps $adresseExp $false
+        } else {
+            $estConfirmation = $false
+            if ($suggestionOui) { Set-ReponseFournisseur $adresseExp $false }
         }
     }
 
