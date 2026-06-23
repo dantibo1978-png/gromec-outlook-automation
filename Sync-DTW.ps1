@@ -76,12 +76,12 @@ function Set-StatutDTW {
 
 function Write-FichierLignesDTW {
     <#
-    Genere le fichier source pour DTW — Document_Lines (UnitPrice et/ou Quantity).
+    Genere le fichier source pour DTW - Document_Lines (UnitPrice et/ou Quantity).
     Format : 2 lignes d'en-tete identiques, puis 1 ligne par article.
     Encodage : UTF-16 LE (Unicode), separateur tabulation.
 
     Colonnes : ParentKey (DocNum), LineNum (0-indexed), ItemCode, UnitPrice, Quantity
-    On inclut toujours les 2 colonnes meme si on n'en modifie qu'une —
+    On inclut toujours les 2 colonnes meme si on n'en modifie qu'une -
     DTW ne modifie que les champs mappes dans le scenario XML.
     #>
     param(
@@ -126,7 +126,7 @@ function Write-FichierLignesDTW {
 
 function Write-FichierPrixL2DTW {
     <#
-    Genere le fichier source pour DTW — Price List 2 (Items/ItemPrices).
+    Genere le fichier source pour DTW - Price List 2 (Items/ItemPrices).
     Format : 2 lignes d'en-tete identiques, puis 1 ligne par article.
     Colonnes : ItemCode (A), PriceList=1 (B), ListNum=2 (C), Price (D), Currency=vide (E)
     #>
@@ -214,7 +214,7 @@ function Invoke-TraiterEntree {
 
     # Verifier que l'entree est encore en attente (evite double-traitement)
     if ($Entree.dtw_statut -ne 'en_attente') {
-        Write-Log "INFO  Entree $Cle deja traitee (statut=$($Entree.dtw_statut)) — abandon."
+        Write-Log "INFO  Entree $Cle deja traitee (statut=$($Entree.dtw_statut)) - abandon."
         return
     }
 
@@ -259,13 +259,13 @@ function Invoke-TraiterEntree {
         $copierQty  = $true
     }
 
-    Write-Log "INFO  Traitement PO $docNum (cle: $Cle) — prix=$copierPrix qty=$copierQty articles=$($articles.Count)"
+    Write-Log "INFO  Traitement PO $docNum (cle: $Cle) - prix=$copierPrix qty=$copierQty articles=$($articles.Count)"
     if ($articles.Count -gt 0) {
         Write-Log "INFO  Premier article: sapLigne=$($articles[0].sapLigne) type=$($articles[0].sapLigne.GetType().Name)"
     }
 
     if ($articles.Count -eq 0) {
-        Write-Log "WARN  Aucun article dans l'entree Firebase — abandon."
+        Write-Log "WARN  Aucun article dans l'entree Firebase - abandon."
         Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "Aucun article dans l'entree Firebase."
         return
     }
