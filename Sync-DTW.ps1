@@ -655,6 +655,28 @@ while ($true) {
         Write-Log "WARN  Erreur lecture noeud reclassifications : $($_.Exception.Message)"
     }
 
+    # Verifier les entrees a reessayer (NON_TROUVE avec numeroBCManuel fourni)
+    try {
+        $historiquePlat = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json" -Method Get -TimeoutSec 10
+        if ($null -ne $historiquePlat -and $historiquePlat -ne "null") {
+            foreach ($cleR in $historiquePlat.PSObject.Properties.Name) {
+                $entreeR = $historiquePlat.$cleR
+                if ($entreeR.aReessayer -eq $true -and $entreeR.numeroBCManuel -and $entreeR.entryID) {
+                    Write-Log "INFO  Reessai demande pour BC $($entreeR.numeroBCManuel) (cle: $cleR)"
+                    # Remettre aReessayer a false pour eviter boucle
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cleR.json" `
+                        -Method Patch -Body '{"aReessayer":false}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    # Relancer Verifier-Confirmation.ps1 avec EntryID + NumeroBC + Force
+                    $scriptPath = "U:\GromecOutlook\Verifier-Confirmation.ps1"
+                    $cmd = "powershell -ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force"
+                    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force" -WindowStyle Hidden
+                }
+            }
+        }
+    } catch {
+        Write-Log "WARN  Erreur verification aReessayer : $($_.Exception.Message)"
+    }
+
     $historique = Get-Historique
 
     if ($null -ne $historique) {
