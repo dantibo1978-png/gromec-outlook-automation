@@ -14,9 +14,9 @@ jobs:
       - name: Récupérer le contenu du repo
         uses: actions/checkout@v4
 
-      - name: Nettoyer l'historique Firebase (> 14 jours)
+      - name: Nettoyer l'historique Firebase (> 7 jours)
         shell: pwsh
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
         run: |
-          ./Clear-AncienHistorique.ps1 -JoursRetention 14
+          ./Clear-AncienHistorique.ps1 -JoursRetention 7
