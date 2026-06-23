@@ -1527,57 +1527,120 @@ function Invoke-TraiterComparaison {
 # FONCTION - Traitement d'un nouveau courriel (classification + apprentissage)
 # =====================================================================
 
+function Test-DomaineExclu {
+    param([string]$Adresse)
+    # Toujours exclure les courriels internes Gromec
+    if ($Adresse -like "*@gromec.com") { return $true }
+    # Verifier le fichier domaines_exclus.csv
+    $fichierExclus = Join-Path $DataFolder "domaines_exclus.csv"
+    if (-not (Test-Path $fichierExclus)) { return $false }
+    $domaine = ($Adresse -split "@")[-1].ToLower().Trim()
+    foreach ($ligne in Get-Content $fichierExclus) {
+        if ($ligne.Trim().ToLower() -eq $domaine) { return $true }
+    }
+    return $false
+}
+
+function Add-DomaineExclu {
+    param([string]$Adresse)
+    $fichierExclus = Join-Path $DataFolder "domaines_exclus.csv"
+    $domaine = ($Adresse -split "@")[-1].ToLower().Trim()
+    $existants = @()
+    if (Test-Path $fichierExclus) { $existants = Get-Content $fichierExclus | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ -ne "" } }
+    if ($existants -notcontains $domaine) {
+        Add-Content -Path $fichierExclus -Value $domaine -Encoding UTF8
+    }
+    return $domaine
+}
+
 function Invoke-ClassifierCourriel {
     param($MailItem)
 
     $adresseExp = $MailItem.SenderEmailAddress
-    $compteurs = Get-CompteursFournisseur $adresseExp
-    $nbCorps = 0; $nbPdf = 0
-    if (Test-Path $FichierComportementCorps) {
-        foreach ($ligne in Get-Content $FichierComportementCorps) {
-            $champs = $ligne -split ","
-            if ($champs.Count -ge 3 -and $champs[0].Trim().ToLower() -eq $adresseExp.ToLower()) {
-                $nbCorps = [int]$champs[1]; $nbPdf = [int]$champs[2]; break
-            }
-        }
+
+    # Filtre rapide -- domaines exclus et @gromec.com
+    if (Test-DomaineExclu $adresseExp) {
+        return @{ EstConfirmation = $false; Confiance = 1.0; VerifierCorps = $false; TexteBrut = "DOMAINE EXCLU"; Exclu = $true }
     }
 
-    $contexte = ""
+    # Historique comme contexte seulement (pas comme filtre)
+    $compteurs = Get-CompteursFournisseur $adresseExp
+    $contexteHistorique = ""
     $totalConnu = $compteurs.Oui + $compteurs.Non
     if ($totalConnu -gt 0) {
-        $contexte = "HISTORIQUE pour $adresseExp : $($compteurs.Oui) confirmation(s), $($compteurs.Non) non-confirmation(s) dans le passe."
-        if ($nbCorps -gt 0 -or $nbPdf -gt 0) {
-            $contexte += " Source habituelle des ecarts: $nbCorps fois dans le corps, $nbPdf fois dans le PDF."
-        }
+        $contexteHistorique = "HISTORIQUE $adresseExp : $($compteurs.Oui) confirmation(s) passees, $($compteurs.Non) non-confirmation(s)."
     }
 
-    $sysPrompt = "Tu analyses des courriels fournisseurs pour Gromec Inc. (distributeur industriel Quebec). Une CONFIRMATION DE COMMANDE est un document ou courriel dans lequel le fournisseur confirme avoir recu la commande et indique conditions (articles, quantites, prix, delais). INCLUT les reponses par courriel sans PDF si le fournisseur y ecrit les prix/quantites confirmes. N'EST PAS une confirmation: questions, devis, factures seules, avis d'expedition seuls, courriels generaux. Reponds UNIQUEMENT en 3 lignes exactement: CONFIRMATION: OUI\nCONFIANCE: 0.95\nSOURCE: PDF\n- CONFIRMATION: OUI ou NON\n- CONFIANCE: 0.00 a 1.00\n- SOURCE: PDF si ecarts dans PJ PDF, CORPS si ecarts dans le texte du courriel (PDF par defaut si NON)"
+    $sysPrompt = @"
+Tu es un classificateur de courriels pour Gromec Inc. (distributeur industriel, Quebec).
+Tu dois determiner si un courriel est une CONFIRMATION DE COMMANDE fournisseur.
+
+Analyse le sujet, le corps ET toutes les pieces jointes fournies.
+
+Reponds a ces 5 questions par OUI ou NON, puis donne ta conclusion:
+Q1_NUMERO_BC: Y a-t-il un numero de commande Gromec (format 9XXXXXX, ex: 9006906)?
+Q2_PRIX_QTE: Y a-t-il des prix ou quantites confirmes en lien avec une commande?
+Q3_DATE_LIVRAISON: Y a-t-il une date de livraison ou delai de livraison confirme?
+Q4_ACCUSÉ_RECEPTION: Le fournisseur confirme-t-il explicitement avoir recu la commande?
+Q5_DOCUMENT_COMMANDE: Les pieces jointes contiennent-elles un bon de commande ou une confirmation?
+
+REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI).
+N'EST PAS une confirmation: questions, devis seuls, factures seules, avis expedition seuls, newsletters, courriels generaux sans reference a une commande specifique.
+
+Reponds EXACTEMENT en ce format:
+Q1_NUMERO_BC: OUI/NON
+Q2_PRIX_QTE: OUI/NON
+Q3_DATE_LIVRAISON: OUI/NON
+Q4_ACCUSÉ_RECEPTION: OUI/NON
+Q5_DOCUMENT_COMMANDE: OUI/NON
+CONFIRMATION: OUI/NON
+CONFIANCE: 0.00
+SOURCE: PDF/CORPS
+"@
 
     $corps = $MailItem.Body
-    if ($corps.Length -gt 2500) { $corps = $corps.Substring(0, 2500) }
-    $pj = ($MailItem.Attachments | ForEach-Object { $_.FileName }) -join ", "
+    if ($corps.Length -gt 3000) { $corps = $corps.Substring(0, 3000) }
+    $nomsPJ = ($MailItem.Attachments | ForEach-Object { $_.FileName }) -join ", "
 
-    $usrPrompt = "$contexte`n`nExpediteur: $($MailItem.SenderName) <$adresseExp>`nSujet: $($MailItem.Subject)`nPieces jointes: $pj`nCorps:`n$corps"
+    $usrPrompt = "$contexteHistorique`n`nExpediteur: $($MailItem.SenderName) <$adresseExp>`nSujet: $($MailItem.Subject)`nPieces jointes: $nomsPJ`n`nCorps du courriel:`n$corps"
+
+    # Construire les messages avec PJ PDF incluses
+    $contenuMessages = @(@{ type = "text"; text = $usrPrompt })
+
+    foreach ($pj in $MailItem.Attachments) {
+        if ($pj.FileName -like "*.pdf") {
+            try {
+                $cheminTemp = Join-Path $env:TEMP "classif_$([guid]::NewGuid().ToString('N').Substring(0,8))_$($pj.FileName)"
+                $pj.SaveAsFile($cheminTemp)
+                $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($cheminTemp))
+                Remove-Item $cheminTemp -Force -ErrorAction SilentlyContinue
+                $contenuMessages += @{
+                    type   = "document"
+                    source = @{ type = "base64"; media_type = "application/pdf"; data = $b64 }
+                }
+            } catch {}
+        }
+    }
 
     $body = @{
         model      = "claude-haiku-4-5-20251001"
-        max_tokens = 60
+        max_tokens = 150
         system     = $sysPrompt
-        messages   = @(@{ role = "user"; content = $usrPrompt })
-    } | ConvertTo-Json -Depth 10
+        messages   = @(@{ role = "user"; content = $contenuMessages })
+    } | ConvertTo-Json -Depth 15
 
     try {
-        $headers = @{ "x-api-key" = $ClaudeApiKey; "anthropic-version" = "2023-06-01" }
-        $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 30
+        $headers = @{ "x-api-key" = $ClaudeApiKey; "anthropic-version" = "2023-06-01"; "anthropic-beta" = "pdfs-2024-09-25" }
+        $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 45
         $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
 
         $confirmation = if ($texte -match "CONFIRMATION:\s*(OUI|NON)") { $Matches[1] } else { "NON" }
         $confiance    = if ($texte -match "CONFIANCE:\s*([\d.]+)")     { [double]$Matches[1] } else { 0.5 }
         $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
 
-        return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte }
+        return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false }
     } catch {
-        return @{ EstConfirmation = $false; Confiance = 0.0; VerifierCorps = $false; TexteBrut = "ERREUR: $($_.Exception.Message)" }
+        return @{ EstConfirmation = $false; Confiance = 0.0; VerifierCorps = $false; TexteBrut = "ERREUR: $($_.Exception.Message)"; Exclu = $false }
     }
 }
 
@@ -1592,7 +1655,13 @@ function Invoke-TraiterNouveauCourriel {
     $adresseExp = $MailItem.SenderEmailAddress
     $seuilAuto  = 0.85
 
-    # Claude Haiku analyse TOUJOURS le courriel -- l'historique est contexte seulement
+    # Filtre domaine exclu avant d'appeler Haiku
+    if (Test-DomaineExclu $adresseExp) {
+        Write-Log "INFO  Domaine exclu -- courriel ignore : $adresseExp"
+        return
+    }
+
+    # Claude Haiku analyse le courriel avec PJ incluses
     $analyse = Invoke-ClassifierCourriel $MailItem
 
     # Prefixe indicateur dans le sujet du courriel (visible dans la liste Outlook)
