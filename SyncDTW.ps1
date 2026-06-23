@@ -1,11 +1,11 @@
 # =============================================================================
-# Sync-DTW.ps1
+# SyncDTW.ps1
 # Tourne en arriere-plan sur le poste Windows.
 # Poll Firebase toutes les 30s, detecte les flags dtw_copierPrix / dtw_copierQty
 # poses par le dashboard web, genere les fichiers source DTW et lance DTW.exe.
 #
 # Lancement (une seule instance, en arriere-plan) :
-#   powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "U:\GromecOutlook\Sync-DTW.ps1"
+#   powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "U:\GromecOutlook\SyncDTW.ps1"
 #
 # Pour arreter : fermer la fenetre PowerShell ou tuer le processus.
 # =============================================================================
@@ -31,7 +31,7 @@ function Write-Log {
     Write-Host "[$ts] $Message"
     try {
         $niveau = if ($Message -like "ERREUR*") { "erreur" } elseif ($Message -like "WARN*") { "warn" } else { "info" }
-        $body = @{ ts = $ts; msg = $Message; niveau = $niveau; source = "Sync-DTW" }
+        $body = @{ ts = $ts; msg = $Message; niveau = $niveau; source = "SyncDTW" }
         if ($Cle -ne "") { $body["cle"] = $Cle }
         if ($BC -ne "")  { $body["bc"]  = $BC }
         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json" -Method Post -Body ($body | ConvertTo-Json -Compress) -ContentType "application/json" -TimeoutSec 3 | Out-Null
@@ -638,7 +638,7 @@ try {
     Write-Log "WARN  Impossible de synchroniser domaines_exclus : $($_.Exception.Message)"
 }
 
-Write-Log "INFO  Sync-DTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
+Write-Log "INFO  SyncDTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
 
 while ($true) {
     # Verifier reclassifications manuelles (VBA Outlook) -- liste pour supporter plusieurs en meme temps
