@@ -715,5 +715,51 @@ while ($true) {
         }
     }
 
+    # ── ConfirmPO automatique : pousser U_NWR_ConfirmPO=Y pour les commandes conformes ──
+    if ($null -ne $historique) {
+        foreach ($cle in $historique.PSObject.Properties.Name) {
+            $entree = $historique.$cle
+            if ($entree.statut -ne 'OK') { continue }
+            $dejaSync = $false
+            if ($entree.PSObject.Properties.Name -contains 'syncSAP') {
+                $dejaSync = [bool]$entree.syncSAP
+            }
+            if ($dejaSync) { continue }
+
+            $docNum = $entree.numeroCommande
+            if ([string]::IsNullOrEmpty($docNum)) { continue }
+
+            Write-Log "INFO  ConfirmPO auto : PO $docNum (cle: $cle)" -Cle $cle -BC $docNum
+            try {
+                $contenuConfirm = "DocNum`tDocEntry`tU_NWR_ConfirmPO`r`nDocNum`tDocEntry`tU_NWR_ConfirmPO`r`n$docNum`t`tY"
+                [System.IO.File]::WriteAllText($DTW_FichierConfirmPO, $contenuConfirm, [System.Text.Encoding]::Unicode)
+            } catch {
+                Write-Log "WARN  ConfirmPO auto : erreur ecriture fichier pour PO $docNum : $($_.Exception.Message)" -Cle $cle -BC $docNum
+                continue
+            }
+
+            $resConfirm = Invoke-DTW -ScenarioXml $DTW_ScenarioConfirmPO
+            $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+            if ($resConfirm.Succes) {
+                Write-Log "INFO  ConfirmPO auto : PO $docNum OK." -Cle $cle -BC $docNum
+                try {
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
+                        -Method Patch `
+                        -Body (@{ syncSAP = $true; syncSAPDate = $maintenant; confirme = $true; confirme_le = $maintenant } | ConvertTo-Json -Compress) `
+                        -ContentType "application/json" -TimeoutSec 15 | Out-Null
+                } catch {}
+            } else {
+                Write-Log "WARN  ConfirmPO auto : PO $docNum echec : $($resConfirm.Erreur)" -Cle $cle -BC $docNum
+                if ($resConfirm.Erreur -like "*deja ouvert*") { break }
+                try {
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
+                        -Method Patch `
+                        -Body (@{ syncSAP = $false; syncSAPDate = $maintenant; syncSAPErreur = $resConfirm.Erreur } | ConvertTo-Json -Compress) `
+                        -ContentType "application/json" -TimeoutSec 15 | Out-Null
+                } catch {}
+            }
+        }
+    }
+
     Start-Sleep -Seconds $IntervalleSecondes
 }
