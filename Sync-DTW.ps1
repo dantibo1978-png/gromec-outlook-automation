@@ -212,6 +212,21 @@ function Invoke-TraiterEntree {
         Write-Log "WARN  Impossible de relire l'entree fraiche, utilisation du cache."
     }
 
+    # Verifier que l'entree est encore en attente (evite double-traitement)
+    if ($Entree.dtw_statut -ne 'en_attente') {
+        Write-Log "INFO  Entree $Cle deja traitee (statut=$($Entree.dtw_statut)) — abandon."
+        return
+    }
+
+    # Marquer immediatement comme en cours pour eviter double-traitement
+    try {
+        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$Cle.json" `
+            -Method Patch `
+            -Body '{"dtw_statut":"en_cours"}' `
+            -ContentType "application/json" `
+            -TimeoutSec 10 | Out-Null
+    } catch {}
+
     $copierPrix     = [bool]$Entree.dtw_copierPrix
     $copierQty      = [bool]$Entree.dtw_copierQty
     $docNum         = $Entree.numeroCommande
@@ -618,7 +633,7 @@ while ($true) {
             $statut = $entree.dtw_statut
             $statutConfirm = $entree.envoyer_confirmation
             # Traiter seulement les entrees avec quelque chose a faire
-            if ($statut -ne 'en_attente' -and $statutConfirm -ne 'en_attente') { continue }
+            if ($statut -ne 'en_attente' -and $statut -ne 'en_cours' -and $statutConfirm -ne 'en_attente') { continue }
 
             # ── Confirmation fournisseur (PDF + brouillon Outlook) ──────────────
             if ($entree.envoyer_confirmation -eq 'en_attente') {
