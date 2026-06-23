@@ -504,37 +504,46 @@ function Invoke-EnvoyerConfirmationFournisseur {
     $bc = $Entree.numeroCommande
     Write-Log "INFO  Confirmation fournisseur BC $bc (cle: $Cle)."
 
-    if (-not (Test-Path $Temp_Dossier)) { New-Item -ItemType Directory -Path $Temp_Dossier | Out-Null }
-
-    $cheminPDFOrig  = Join-Path $Temp_Dossier "BC_Original_$bc.pdf"
-    $cheminPDFAnnote = Join-Path $Temp_Dossier "BC_Revise_$bc.pdf"
-
     try {
-        # 1. Recuperer le PDF SAP original depuis la PJ du courriel
-        $pdfTrouve = Get-PDFOriginalDepuisOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -CheminDestination $cheminPDFOrig
+        Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction SilentlyContinue
+        Add-Type -AssemblyName System.Windows.Forms  -ErrorAction SilentlyContinue
 
-        if ($pdfTrouve) {
-            # 2. Annoter le PDF original avec iTextSharp
-            New-PDFAnnote -CheminPDFSource $cheminPDFOrig -CheminPDFDest $cheminPDFAnnote -Articles @($Entree.articles)
-            $cheminPJFinal = $cheminPDFAnnote
-            Write-Log "INFO  PDF original annote avec succes."
+        # ── Etape 1 : Ouvrir le BC dans SAP via SendKeys ─────────────────────
+        $sap = Get-Process | Where-Object { $_.MainWindowTitle -like "*SAP Business One*" } | Select-Object -First 1
+        if ($sap) {
+            [Microsoft.VisualBasic.Interaction]::AppActivate($sap.Id)
+            Start-Sleep -Milliseconds 500
+            [System.Windows.Forms.SendKeys]::SendWait("{F9}")
+            Start-Sleep -Seconds 4
+            [System.Windows.Forms.SendKeys]::SendWait("^f")
+            Start-Sleep -Milliseconds 800
+            [System.Windows.Forms.SendKeys]::SendWait($bc)
+            Start-Sleep -Milliseconds 500
+            [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+            Start-Sleep -Seconds 2
+            Write-Log "INFO  BC $bc ouvert dans SAP."
         } else {
-            # Fallback : pas de PDF original trouve -- on avertit mais on continue sans PJ
-            Write-Log "WARN  PDF original introuvable dans la PJ -- brouillon sans PJ PDF."
-            $cheminPJFinal = $null
+            Write-Log "WARN  SAP Business One non trouve -- etape SAP ignoree."
         }
 
-        # 3. Creer le brouillon Outlook
-        New-BrouillonOutlook -Entree $Entree -CheminPDF $cheminPJFinal
+        # ── Etape 2 : Ouvrir le courriel en Repondre a tous dans Outlook ─────
+        $outlook  = New-Object -ComObject Outlook.Application
+        $namespace = $outlook.GetNamespace("MAPI")
+        $mailOrig = $namespace.GetItemFromID($Entree.entryID, $Entree.storeID)
+        if ($mailOrig) {
+            $reponse = $mailOrig.ReplyAll()
+            $reponse.Display()
+            Write-Log "INFO  Repondre a tous ouvert dans Outlook pour BC $bc."
+        } else {
+            Write-Log "WARN  Courriel original introuvable dans Outlook."
+        }
+
         Set-StatutConfirmation -Cle $Cle -Statut 'envoye'
-        Write-Log "INFO  BC $bc -- brouillon cree avec succes."
+        Write-Log "INFO  BC $bc -- confirmation fournisseur preparee avec succes."
 
     } catch {
         Write-Log "ERREUR confirmation fournisseur BC $bc : $($_.Exception.Message)"
         Set-StatutConfirmation -Cle $Cle -Statut 'erreur' -Erreur $_.Exception.Message
-    } finally {
-        try { if (Test-Path $cheminPDFOrig)   { Remove-Item $cheminPDFOrig   -Force } } catch {}
-        try { if (Test-Path $cheminPDFAnnote) { Remove-Item $cheminPDFAnnote -Force } } catch {}
     }
 }
 
