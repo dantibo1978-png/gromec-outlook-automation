@@ -29,7 +29,12 @@ function Write-Log {
     param([string]$Message)
     $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     Write-Host "[$ts] $Message"
-
+    # Ecrire dans Firebase pour le dashboard (non bloquant)
+    try {
+        $niveau = if ($Message -like "ERREUR*") { "erreur" } elseif ($Message -like "WARN*") { "warn" } else { "info" }
+        $body = @{ ts = $ts; msg = $Message; niveau = $niveau } | ConvertTo-Json -Compress
+        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 3 | Out-Null
+    } catch {}
 }
 
 function Get-Historique {
@@ -618,6 +623,20 @@ function Invoke-TraiterReclassification {
 
 
 # ── Boucle principale ─────────────────────────────────────────────────────────
+# Synchroniser domaines_exclus depuis Firebase au demarrage
+try {
+    $domainesFirebase = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/domaines_exclus.json" -Method Get -TimeoutSec 10
+    if ($null -ne $domainesFirebase -and $domainesFirebase -ne "null") {
+        $fichierExclus = "U:\GromecOutlook\domaines_exclus.csv"
+        $domaines = @()
+        $domainesFirebase.PSObject.Properties | ForEach-Object { $domaines += $_.Value }
+        $domaines | Where-Object { $_ -ne "" } | Sort-Object -Unique | Set-Content -Path $fichierExclus -Encoding UTF8
+        Write-Log "INFO  domaines_exclus.csv synchronise ($($domaines.Count) domaine(s))."
+    }
+} catch {
+    Write-Log "WARN  Impossible de synchroniser domaines_exclus : $($_.Exception.Message)"
+}
+
 Write-Log "INFO  Sync-DTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
 
 while ($true) {
