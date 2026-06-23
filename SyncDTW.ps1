@@ -596,7 +596,7 @@ function Invoke-TraiterReclassification {
         # Mettre a jour fournisseurs_appris.csv
         Set-ReponseFournisseur -Adresse $expediteur -EstConfirmation $estConfirmation
 
-        # Si c est une confirmation, relancer Verifier-Confirmation.ps1 avec -Force
+        # Si c est une confirmation, relancer VerifierConfirmation.ps1 avec -Force
         if ($estConfirmation) {
             $entryID = $Reclassif.entryID
             $storeID = $Reclassif.storeID
