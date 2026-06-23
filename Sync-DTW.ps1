@@ -20,7 +20,7 @@ $DTW_FichierConfirmPO  = "$DTW_Dossier\template.txt"
 $DTW_ScenarioLignes    = "$DTW_Dossier\UpdatePOLines_PROD.xml"
 $DTW_ScenarioPrixL2    = "$DTW_Dossier\UpdatePriceList2_PROD.xml"
 $DTW_ScenarioConfirmPO = "$DTW_Dossier\ConfirmPO_PROD.xml"
-$IntervalleSecondes = 30
+$IntervalleSecondes = 15
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
 # ──────────────────────────────────────────────────────────────────────────────
