@@ -387,7 +387,9 @@ function New-PDFAnnote {
     #>
     param([string]$CheminPDFSource, [string]$CheminPDFDest, [array]$Articles)
 
-    $iTextDLL = "U:\GromecOutlook\lib\itextsharp\lib\itextsharp.dll"
+    $iTextDLL      = "U:\GromecOutlook\lib\itextsharp\lib\itextsharp.dll"
+    $bouncyCastleDLL = "U:\GromecOutlook\lib\itextsharp\lib\BouncyCastle.Crypto.dll"
+    Add-Type -Path $bouncyCastleDLL
     Add-Type -Path $iTextDLL
 
     $reader  = New-Object iTextSharp.text.pdf.PdfReader($CheminPDFSource)
