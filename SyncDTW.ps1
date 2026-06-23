@@ -600,9 +600,9 @@ function Invoke-TraiterReclassification {
         if ($estConfirmation) {
             $entryID = $Reclassif.entryID
             $storeID = $Reclassif.storeID
-            $ps1Path = "U:\GromecOutlook\Verifier-Confirmation.ps1"
+            $ps1Path = "U:\GromecOutlook\VerifierConfirmation.ps1"
 
-            Write-Log "INFO  Retraitement force : lancement de Verifier-Confirmation.ps1 pour $sujet"
+            Write-Log "INFO  Retraitement force : lancement de VerifierConfirmation.ps1 pour $sujet"
             Start-Process -FilePath "powershell.exe" `
                 -ArgumentList "-ExecutionPolicy Bypass -File `"$ps1Path`" -EntryID `"$entryID`" -StoreID `"$storeID`" -Force" `
                 -WindowStyle Hidden `
@@ -667,8 +667,8 @@ while ($true) {
                     # Remettre aReessayer a false pour eviter boucle
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cleR.json" `
                         -Method Patch -Body '{"aReessayer":false}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                    # Relancer Verifier-Confirmation.ps1 avec EntryID + NumeroBC + Force
-                    $scriptPath = "U:\GromecOutlook\Verifier-Confirmation.ps1"
+                    # Relancer VerifierConfirmation.ps1 avec EntryID + NumeroBC + Force
+                    $scriptPath = "U:\GromecOutlook\VerifierConfirmation.ps1"
                     $cmd = "powershell -ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force"
                     Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force" -WindowStyle Hidden
                 }
