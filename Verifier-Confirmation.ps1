@@ -121,7 +121,7 @@ $SeuilConfianceCorps = 5
 function Write-Log {
     param([string]$Message)
     $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-    Write-Host "[$ts] $Message"
+    Write-Log "[$ts] $Message"
     # Ecrire dans Firebase pour le dashboard
     try {
         $niveau = if ($Message -like "ERREUR*") { "erreur" } elseif ($Message -like "WARN*") { "warn" } else { "info" }
@@ -953,15 +953,21 @@ function Find-CourrielEnvoyeCorrespondant {
     $limiteDate = (Get-Date).AddDays(-$JoursRecherche)
 
     if ($NumeroBC -ne "") {
-        # Etape 1: chercher le BC dans sujet/corps des envoyes
+        # Etape 1: chercher TOUS les courriels avec le BC dans sujet/corps des envoyes
+        # et retourner le PLUS VIEUX (premier courriel de la chaine = BC original avec PDF)
+        $candidats = @()
         foreach ($item in $items) {
             if ($item.Class -ne 43) { continue }  # 43 = olMail
             if ($item.SentOn -lt $limiteDate) { break }
             if ($item.Attachments.Count -gt 0) {
                 if ($item.Subject -like "*$NumeroBC*" -or $item.Body -like "*$NumeroBC*") {
-                    return $item
+                    $candidats += $item
                 }
             }
+        }
+        if ($candidats.Count -gt 0) {
+            # Prendre le plus vieux (dernier dans la liste triee recent->vieux)
+            return $candidats[-1]
         }
     }
 
@@ -1031,7 +1037,7 @@ function Save-PDFConfirmationFournisseur {
     $choix = if ($candidats.Count -gt 0) { $candidats[0] } else { $pdfs[$pdfs.Count - 1] }
     $chemin = Join-Path $env:TEMP "ps_$([guid]::NewGuid().ToString('N').Substring(0,8))_$($choix.FileName)"
     $choix.SaveAsFile($chemin)
-    Write-Host "INFO  PDF confirmation selectionne : $($choix.FileName)"
+    Write-Log "INFO  PDF confirmation selectionne : $($choix.FileName)"
     return $chemin
 }
 
@@ -1622,7 +1628,7 @@ function Invoke-TraiterNouveauCourriel {
         if ($ForcerTraitement) {
             # Mode retraitement force (reclassification manuelle) : pas de popup
             # On fait confiance a la classification du VBA -- toujours traiter comme confirmation
-            Write-Host "INFO  Confiance Claude faible ($pctConfiance%) mais mode -Force : traitement sans popup"
+            Write-Log "INFO  Confiance Claude faible ($pctConfiance%) mais mode -Force : traitement sans popup"
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
         } else {
@@ -1806,14 +1812,14 @@ function Invoke-SyncDTW {
     $ACofirmer = Get-CommandesAConfirmerSAP
 
     if ($ACofirmer.Count -eq 0) {
-        Write-Host "Invoke-SyncDTW : aucune commande conforme en attente de synchronisation SAP."
+        Write-Log "Invoke-SyncDTW : aucune commande conforme en attente de synchronisation SAP."
         return
     }
 
-    Write-Host "Invoke-SyncDTW : $($ACofirmer.Count) commande(s) a synchroniser vers SAP."
+    Write-Log "Invoke-SyncDTW : $($ACofirmer.Count) commande(s) a synchroniser vers SAP."
 
     foreach ($Item in $ACofirmer) {
-        Write-Host "  -> PO $($Item.NumeroCommande) (cle Firebase: $($Item.Cle))..."
+        Write-Log "  -> PO $($Item.NumeroCommande) (cle Firebase: $($Item.Cle))..."
 
         try {
             Write-FichierSourceDTW -DocNum $Item.NumeroCommande
@@ -1826,10 +1832,10 @@ function Invoke-SyncDTW {
         $Resultat = Invoke-DTWImport
 
         if ($Resultat.Succes) {
-            Write-Host "     OK - synchronise avec succes."
+            Write-Log "     OK - synchronise avec succes."
             Set-StatutSyncSAP -Cle $Item.Cle -Succes $true
         } elseif ($Resultat.Erreur -like "*deja ouvert manuellement*") {
-            Write-Host "     DTW est occupe (ouvert manuellement) - synchronisation reportee, arret du traitement pour ce passage."
+            Write-Log "     DTW est occupe (ouvert manuellement) - synchronisation reportee, arret du traitement pour ce passage."
             return
         } else {
             Write-Warning "     ECHEC - $($Resultat.Erreur)"
@@ -1837,7 +1843,7 @@ function Invoke-SyncDTW {
         }
     }
 
-    Write-Host "Invoke-SyncDTW : termine."
+    Write-Log "Invoke-SyncDTW : termine."
 }
 
 # =====================================================================
@@ -1892,12 +1898,12 @@ try {
 
         # Tentative 2 : si null, iterer sur tous les stores Outlook (robustesse VBA/StoreID mismatch)
         if ($null -eq $mail) {
-            Write-Host "INFO  GetItemFromID direct a echoue, tentative sur tous les stores..."
+            Write-Log "INFO  GetItemFromID direct a echoue, tentative sur tous les stores..."
             foreach ($store in $namespace.Stores) {
                 try {
                     $mail = $namespace.GetItemFromID($EntryID, $store.StoreID)
                     if ($null -ne $mail) {
-                        Write-Host "INFO  Courriel trouve dans le store : $($store.DisplayName)"
+                        Write-Log "INFO  Courriel trouve dans le store : $($store.DisplayName)"
                         break
                     }
                 } catch { $mail = $null }
@@ -1906,7 +1912,7 @@ try {
     }
 
     if ($null -eq $mail) {
-        Write-Host "ERREUR  Courriel introuvable dans tous les stores Outlook (EntryID invalide ou courriel deplace/supprime)"
+        Write-Log "ERREUR  Courriel introuvable dans tous les stores Outlook (EntryID invalide ou courriel deplace/supprime)"
         Write-JournalEntry "" "ERREUR" "Courriel introuvable (EntryID invalide)"
         exit 1
     }
