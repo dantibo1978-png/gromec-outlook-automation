@@ -1,14 +1,14 @@
 # =====================================================================
-# Verifier-Confirmation.ps1
+# VerifierConfirmation.ps1
 # Verification automatique des confirmations de commande fournisseurs
 # Lance de maniere asynchrone depuis Outlook VBA (Shell, sans attente)
 # -- Outlook ne gele jamais, tout le travail se fait ici, en dehors
 # de son fil d'execution.
 #
 # Utilisation:
-#   powershell -ExecutionPolicy Bypass -File Verifier-Confirmation.ps1 -EntryID "..." -StoreID "..."
-#   powershell -ExecutionPolicy Bypass -File Verifier-Confirmation.ps1 -Interactive
-#   powershell -ExecutionPolicy Bypass -File Verifier-Confirmation.ps1 -EntryID "..." -StoreID "..." -Force
+#   powershell -ExecutionPolicy Bypass -File VerifierConfirmation.ps1 -EntryID "..." -StoreID "..."
+#   powershell -ExecutionPolicy Bypass -File VerifierConfirmation.ps1 -Interactive
+#   powershell -ExecutionPolicy Bypass -File VerifierConfirmation.ps1 -EntryID "..." -StoreID "..." -Force
 # =====================================================================
 
 param(
