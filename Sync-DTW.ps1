@@ -29,12 +29,7 @@ function Write-Log {
     param([string]$Message)
     $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     Write-Host "[$ts] $Message"
-    # Ecrire dans Firebase pour le dashboard (non bloquant)
-    try {
-        $niveau = if ($Message -like "ERREUR*") { "erreur" } elseif ($Message -like "WARN*") { "warn" } else { "info" }
-        $body = @{ ts = $ts; msg = $Message; niveau = $niveau } | ConvertTo-Json -Compress
-        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 3 | Out-Null
-    } catch {}
+
 }
 
 function Get-Historique {
