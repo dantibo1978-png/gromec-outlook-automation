@@ -768,7 +768,7 @@ function Get-ItemsCommandeGromec {
         $fichierCache = Join-Path $DossierCachePO "$NumeroBC.json"
         if (Test-Path $fichierCache) {
             $age = (Get-Date) - (Get-Item $fichierCache).LastWriteTime
-            if ($age.TotalHours -lt 24) {
+            if ($age.TotalDays -lt 30) {
                 try {
                     $cached = Get-Content $fichierCache -Raw | ConvertFrom-Json
                     $items = @($cached | ForEach-Object {
