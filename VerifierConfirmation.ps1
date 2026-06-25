@@ -1669,9 +1669,15 @@ function Invoke-TraiterNouveauCourriel {
     $prefixe = if (-not $analyse.EstConfirmation) { "[X $pctAffiche%]" } `
                elseif ($analyse.Confiance -ge $seuilAuto) { "[OK $pctAffiche%]" } `
                else { "[? $pctAffiche%]" }
-    if (-not $MailItem.Subject.StartsWith("[")) {
-        try { $MailItem.Subject = "$prefixe $($MailItem.Subject)"; $MailItem.Save() } catch {}
-    }
+    try {
+        if ($MailItem.Subject.StartsWith("[")) {
+            # Remplacer le prefixe existant (ex: [X 95%] -> [OK 95%])
+            $MailItem.Subject = $MailItem.Subject -replace '^\[.*?\]\s*', "$prefixe "
+        } else {
+            $MailItem.Subject = "$prefixe $($MailItem.Subject)"
+        }
+        $MailItem.Save()
+    } catch {}
 
     $estConfirmation = $false
     $verifierCorps   = $false
