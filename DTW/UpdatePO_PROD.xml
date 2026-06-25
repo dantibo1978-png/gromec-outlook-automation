@@ -1,0 +1,84 @@
+<Transfer>
+  <Logon>
+    <UserName>bj1oeqHmNFjVJmD259C9Mw==.RXQspvt1DAgpNeSD+BdeN2k6WIi9j8kHdu5waMCGj68=.HA8ksllhLdQdYAzUNe3pPg==</UserName>
+    <Password>BJVws6YoBHiLcmIJdKVQ/Q==.8Ej0GbpnjMy0Rvb0ldjB9gejnoqgLZDCbm/toosXWHo=.aSLNiHXDgm2YSLCAzT+b4w==</Password>
+    <Company>SAP_GROMEC_PROD</Company>
+    <CompanyID />
+    <Server>NDB@hana:30013</Server>
+    <ServerID />
+    <UserAuthentication>False</UserAuthentication>
+    <Language>ln_English</Language>
+    <LicenseServer />
+    <ChooseDB>False</ChooseDB>
+    <DBType>9</DBType>
+    <DBUser>
+    </DBUser>
+    <SybasePort />
+    <DBPassword>u4chMxsTFIj7vpJdyQi3gw==.ExFC2jtm97f+oVF2ORvVI5vCeHu5JjrsdfWssqyRMYk=.Ty2VqGMSgxcOzL62slJYMg==</DBPassword>
+  </Logon>
+  <ObjectCode>oPurchaseOrders</ObjectCode>
+  <FileExtractor>
+    <Extorlogin>
+      <ExID />
+      <ExPW />
+      <ExDSN />
+    </Extorlogin>
+    <FilesTypes>2</FilesTypes>
+    <Files>
+      <Documents>U:\GromecOutlook\DTW\modif_po_header.txt</Documents>
+      <Document_Lines>U:\GromecOutlook\DTW\modif_prix_dans_po.txt</Document_Lines>
+    </Files>
+  </FileExtractor>
+  <Map>
+    <Fields>
+      <Documents>
+        <SourceFields>
+          <RecordKey />
+          <DocNum />
+          <DocEntry />
+          <U_NWR_ConfirmPO />
+        </SourceFields>
+        <TargetFields>
+          <RecordKey>RecordKey</RecordKey>
+          <DocNum>DocNum</DocNum>
+          <DocEntry>DocEntry</DocEntry>
+          <U_NWR_ConfirmPO>U_NWR_ConfirmPO</U_NWR_ConfirmPO>
+        </TargetFields>
+      </Documents>
+      <Document_Lines>
+        <SourceFields>
+          <RecordKey />
+          <ParentKey />
+          <LineNum />
+          <ItemCode />
+          <ItemDescription />
+          <Quantity />
+          <ShipDate />
+          <UnitPrice />
+        </SourceFields>
+        <TargetFields>
+          <RecordKey>RecordKey</RecordKey>
+          <LineNum>LineNum</LineNum>
+          <ItemCode>ItemCode</ItemCode>
+          <ItemDescription>ItemDescription</ItemDescription>
+          <Quantity>Quantity</Quantity>
+          <ShipDate>ShipDate</ShipDate>
+          <UnitPrice>UnitPrice</UnitPrice>
+        </TargetFields>
+      </Document_Lines>
+    </Fields>
+  </Map>
+  <Run>
+    <Import>0</Import>
+    <Rollback>True</Rollback>
+    <NoRollback>0</NoRollback>
+    <MaxError>10</MaxError>
+    <Update>1</Update>
+    <TestRun>0</TestRun>
+    <AddAllItems>Checked</AddAllItems>
+    <LineData>0</LineData>
+    <DataType>2</DataType>
+    <MultiThread>False</MultiThread>
+    <ThreadNum>4</ThreadNum>
+  </Run>
+</Transfer>
