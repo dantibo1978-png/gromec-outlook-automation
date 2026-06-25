@@ -1676,7 +1676,17 @@ function Invoke-TraiterNouveauCourriel {
     $estConfirmation = $false
     $verifierCorps   = $false
 
-    if ($analyse.Confiance -ge $seuilAuto) {
+    if ($ForcerTraitement) {
+        # Mode reclassification manuelle : ignorer le verdict de Claude,
+        # toujours traiter comme confirmation (Dan a dit que c'en est une)
+        Write-Log "INFO  Mode -Force : traitement force comme confirmation (Claude: $(if($analyse.EstConfirmation){'OUI'}else{'NON'}) $([math]::Round($analyse.Confiance*100))%)"
+        $estConfirmation = $true
+        $verifierCorps   = $analyse.VerifierCorps
+        $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
+        if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
+        if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
+
+    } elseif ($analyse.Confiance -ge $seuilAuto) {
         # Claude est confiant -- agir automatiquement sans deranger Dan
         $estConfirmation = $analyse.EstConfirmation
         $verifierCorps   = $analyse.VerifierCorps
@@ -1694,9 +1704,7 @@ function Invoke-TraiterNouveauCourriel {
         $pctConfiance  = [math]::Round($analyse.Confiance * 100)
 
         if ($ForcerTraitement) {
-            # Mode retraitement force (reclassification manuelle) : pas de popup
-            # On fait confiance a la classification du VBA -- toujours traiter comme confirmation
-            Write-Log "INFO  Confiance Claude faible ($pctConfiance%) mais mode -Force : traitement sans popup"
+            # Ne devrait plus arriver (gere en haut) mais securite
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
         } else {
