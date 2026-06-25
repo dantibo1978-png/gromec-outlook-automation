@@ -35,6 +35,13 @@ function New-PDFBonDeCommande {
     # ── Encoding ──────────────────────────────────────────────────────
     $latin1 = [System.Text.Encoding]::GetEncoding("ISO-8859-1")
 
+    # Accented characters compatible with PowerShell 5.1
+    $eAcute = [char]0xe9    # é
+    $eGrave = [char]0xe8    # è
+    $aGrave = [char]0xe0    # à
+    $eCirc  = [char]0xea    # ê
+    $EAcute = [char]0xc9    # É
+
     function Esc([string]$s) {
         if (-not $s) { return "" }
         return $s.Replace('\','\\').Replace('(', '\(').Replace(')', '\)')
@@ -147,13 +154,13 @@ function New-PDFBonDeCommande {
             }
 
             # ── Title ──
-            T 355 ($cy - 10) "Bon de commande r`u{00e9}vis`u{00e9}" "F2" 16
+            T 355 ($cy - 10) "Bon de commande r${eAcute}vis${eAcute}" "F2" 16
 
             # ── Company info ──
             $iy = $cy - 80
             T $ml $iy "1911 Rue des Outardes" "F1" 8
             T $ml ($iy-10) "Chicoutimi QC, G7K 1C3" "F1" 8
-            T $ml ($iy-20) "T`u{00e9}l: 418-549-5961" "F1" 8
+            T $ml ($iy-20) "T${eAcute}l: 418-549-5961" "F1" 8
             T $ml ($iy-30) "Email: gromec@gromec.com" "F1" 8
 
             # ── Info box (right) ──
@@ -186,9 +193,9 @@ function New-PDFBonDeCommande {
             # ── Addresses ──
             $ay = $fy - 10; $mid = 306
             RFS $ml $ay ($mid-$ml-5) 14 0.17 0.24 0.45
-            [void]$sb.AppendLine("1 1 1 rg"); T ($ml+5) ($ay+3) "Achet`u{00e9} `u{00e0}:" "F2" 9; [void]$sb.AppendLine("0 0 0 rg")
+            [void]$sb.AppendLine("1 1 1 rg"); T ($ml+5) ($ay+3) "Achet${eAcute} ${aGrave}:" "F2" 9; [void]$sb.AppendLine("0 0 0 rg")
             RFS ($mid+5) $ay ($mr-$mid-5) 14 0.17 0.24 0.45
-            [void]$sb.AppendLine("1 1 1 rg"); T ($mid+10) ($ay+3) "Exp`u{00e9}di`u{00e9} `u{00e0}:" "F2" 9; [void]$sb.AppendLine("0 0 0 rg")
+            [void]$sb.AppendLine("1 1 1 rg"); T ($mid+10) ($ay+3) "Exp${eAcute}di${eAcute} ${aGrave}:" "F2" 9; [void]$sb.AppendLine("0 0 0 rg")
 
             # Supplier
             $sa = $ay - 13
@@ -205,7 +212,7 @@ function New-PDFBonDeCommande {
             $sa2 -= 11; T ($mid+10) $sa2 "1911 Rue des Outardes" "F1" 8
             $sa2 -= 11; T ($mid+10) $sa2 "Chicoutimi QC G7K 1C3" "F1" 8
             $sa2 -= 11; T ($mid+10) $sa2 "CANADA" "F1" 8
-            $sa2 -= 11; T ($mid+10) $sa2 "T`u{00e9}l:" "F1" 8
+            $sa2 -= 11; T ($mid+10) $sa2 "T${eAcute}l:" "F1" 8
 
             $abh = 70
             RS $ml ($ay-$abh) ($mid-$ml-5) $abh
@@ -213,7 +220,7 @@ function New-PDFBonDeCommande {
 
             $tableY = $ay - $abh - 20
         } else {
-            T $ml ($cy-5) "GROMEC - Bon de commande r`u{00e9}vis`u{00e9}" "F2" 12
+            T $ml ($cy-5) "GROMEC - Bon de commande r${eAcute}vis${eAcute}" "F2" 12
             TR $mr ($cy-5) "No: $NumeroCommande" "F1" 10
             $tableY = $cy - 30
         }
@@ -221,7 +228,7 @@ function New-PDFBonDeCommande {
         # ── Table header ──
         $tw = $mr - $ml
         $cols = @($ml, 65, 150, 240, 420, 465, 525)
-        $hdrs = @("#","# Produit","# Code manuf.","Description.","Qt`u{00e9}","Prix","Total")
+        $hdrs = @("#","# Produit","# Code manuf.","Description.","Qt${eAcute}","Prix","Total")
         $thH = 16
 
         RFS $ml $tableY $tw $thH 0.17 0.24 0.45
@@ -309,13 +316,13 @@ function New-PDFBonDeCommande {
             # Signature
             $sy = $fy2 - 5
             LN $ml ($sy-30) 250 ($sy-30) 0.5
-            T $ml ($sy-42) "Signataire autoris`u{00e9}" "F3" 8
+            T $ml ($sy-42) "Signataire autoris${eAcute}" "F3" 8
 
             # Note
             $ny = $sy - 65
             [void]$sb.AppendLine("0.15 0.15 0.15 rg")
-            T $ml $ny      "NOTE AU FOURNISSEUR: S.V.P. NOUS CONFIRMER LES PRIX ET D`u{00c9}LAIS DE LIVRAISON POUR CHAQUE LIGNE DE" "F2" 6
-            T $ml ($ny-8)  "COMMANDE AU: DTHIBAULT@GROMEC.COM. TOUTE MODIFICATION DE PRIX DEVRA `u{00ca}TRE COMMUNIQU`u{00c9}E DANS LES" "F2" 6
+            T $ml $ny      "NOTE AU FOURNISSEUR: S.V.P. NOUS CONFIRMER LES PRIX ET D${EAcute}LAIS DE LIVRAISON POUR CHAQUE LIGNE DE" "F2" 6
+            T $ml ($ny-8)  "COMMANDE AU: DTHIBAULT@GROMEC.COM. TOUTE MODIFICATION DE PRIX DEVRA ${eCirc}TRE COMMUNIQU${EAcute}E DANS LES" "F2" 6
             T $ml ($ny-16) "24 HEURES. SANS QUOI LE PAIEMENT SERA FAIT SELON LES PRIX DE NOTRE COMMANDE." "F2" 6
             [void]$sb.AppendLine("0 0 0 rg")
 
