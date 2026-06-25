@@ -132,6 +132,8 @@ $FichierConversations = Join-Path $DataFolder "conversations_traitees.csv"
 $FichierJournal       = Join-Path $DataFolder "journal_confirmations.csv"
 $FichierRapportExcel  = Join-Path $DataFolder "Rapport_Confirmations.xlsx"
 $FichierComportementCorps = Join-Path $DataFolder "comportement_corps.csv"
+$DossierCachePO = Join-Path $DataFolder "cache_po"
+if (-not (Test-Path $DossierCachePO)) { New-Item -ItemType Directory -Path $DossierCachePO -Force | Out-Null }
 
 # Nombre de confirmations identiques consecutives (par adresse exacte) avant que
 # le script applique automatiquement "verifier le corps" sans repasser par le
@@ -759,7 +761,28 @@ Si le prix n'est pas mentionne pour une ligne, ecris 0 dans le champ PRIX.
 }
 
 function Get-ItemsCommandeGromec {
-    param([string]$CheminPDF)
+    param([string]$CheminPDF, [string]$NumeroBC = "")
+
+    # Cache par numero de BC
+    if ($NumeroBC -ne "") {
+        $fichierCache = Join-Path $DossierCachePO "$NumeroBC.json"
+        if (Test-Path $fichierCache) {
+            $age = (Get-Date) - (Get-Item $fichierCache).LastWriteTime
+            if ($age.TotalHours -lt 24) {
+                try {
+                    $cached = Get-Content $fichierCache -Raw | ConvertFrom-Json
+                    $items = @($cached | ForEach-Object {
+                        [PSCustomObject]@{
+                            LineNbr = [int]$_.LineNbr; Article = $_.Article; CodeManuf = $_.CodeManuf
+                            Desc = $_.Desc; Qty = [int]$_.Qty; Price = [double]$_.Price; RawLine = $_.RawLine
+                        }
+                    })
+                    return @{ Items = $items; Erreur = $null }
+                } catch {}
+            }
+        }
+    }
+
     $b64 = ConvertTo-Base64File $CheminPDF
     if ([string]::IsNullOrEmpty($b64)) { return $null }
 
@@ -796,6 +819,12 @@ LIGNE|1|NumArticleSAP|CodeManuf|Description|Quantite|PrixUnitaire
             }
         }
     }
+    if ($NumeroBC -ne "" -and $items.Count -gt 0) {
+        try {
+            $items | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $DossierCachePO "$NumeroBC.json") -Encoding UTF8
+        } catch {}
+    }
+
     return @{ Items = $items; Erreur = $null }
 }
 
@@ -1412,7 +1441,7 @@ function Invoke-TraiterComparaison {
             return
         }
 
-        $resSAP = Get-ItemsCommandeGromec $cheminCommande
+        $resSAP = Get-ItemsCommandeGromec $cheminCommande $numeroBC
         $itemsSAP = @($resSAP.Items)
         Remove-Item $cheminCommande -Force -ErrorAction SilentlyContinue
 
@@ -1523,7 +1552,7 @@ function Invoke-TraiterComparaison {
             return
         }
 
-        $resSAP = Get-ItemsCommandeGromec $cheminCommande
+        $resSAP = Get-ItemsCommandeGromec $cheminCommande $numeroBC
         $itemsSAP = @($resSAP.Items)
 
         Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
@@ -1692,6 +1721,14 @@ function Invoke-TraiterNouveauCourriel {
     $convID = $MailItem.ConversationID
     if (-not $ForcerTraitement) {
         if (Test-ConversationTraitee $convID) { return }
+    }
+
+    # Point 3 : skip si deja classifie (categorie verte ou rouge)
+    if (-not $ForcerTraitement) {
+        $cats = $MailItem.Categories
+        if ($cats -like "*Confirmation OK*" -or $cats -like "*Confirmation - Ecart*") {
+            return
+        }
     }
 
     $adresseExp = $MailItem.SenderEmailAddress
