@@ -320,6 +320,7 @@ function Invoke-TraiterEntree {
     } catch {
         Write-Log "WARN  Erreur generation fichier ConfirmPO : $($_.Exception.Message)" -Cle $Cle -BC $docNum
         Set-StatutDTW -Cle $Cle -Statut 'ok'
+        Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
         Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)." -Cle $Cle -BC $docNum
         return
     }
@@ -328,15 +329,44 @@ function Invoke-TraiterEntree {
     if (-not $res3.Succes) {
         Write-Log "WARN  DTW ConfirmPO : $($res3.Erreur)" -Cle $Cle -BC $docNum
         Set-StatutDTW -Cle $Cle -Statut 'ok'
+        Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
         Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)." -Cle $Cle -BC $docNum
         return
     }
     Write-Log "INFO  DTW ConfirmPO OK." -Cle $Cle -BC $docNum
 
     Set-StatutDTW -Cle $Cle -Statut 'ok'
+    Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
     Write-Log "INFO  PO $docNum traite avec succes." -Cle $Cle -BC $docNum
 }
 
+
+function Set-CategorieOutlook {
+    param([string]$EntryID, [string]$StoreID, [bool]$EstOK)
+    if (-not $EntryID -or -not $StoreID) { return }
+    $outlook = $null
+    try {
+        $outlook   = New-Object -ComObject Outlook.Application
+        $namespace = $outlook.GetNamespace("MAPI")
+        $mail      = $namespace.GetItemFromID($EntryID, $StoreID)
+        if ($null -eq $mail) { return }
+
+        $catOK    = "Confirmation OK"
+        $catEcart = "Confirmation - Ecart"
+        $cats = $mail.Categories
+        if ([string]::IsNullOrEmpty($cats)) { $cats = "" }
+        $cats = $cats -replace [regex]::Escape($catOK), "" -replace [regex]::Escape($catEcart), ""
+        $cats = ($cats -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }) -join ", "
+        $nouvelleCat = if ($EstOK) { $catOK } else { $catEcart }
+        $mail.Categories = if ($cats -ne "") { "$cats, $nouvelleCat" } else { $nouvelleCat }
+        $mail.Save()
+        Write-Log "INFO  Categorie Outlook mise a jour : $nouvelleCat"
+    } catch {
+        Write-Log "WARN  Impossible de mettre a jour la categorie Outlook : $($_.Exception.Message)"
+    } finally {
+        if ($outlook) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook) | Out-Null }
+    }
+}
 
 function Set-StatutConfirmation {
     param([string]$Cle, [string]$Statut, [string]$Erreur = $null)
