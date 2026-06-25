@@ -94,7 +94,33 @@ if (-not (Test-Path $ConfigPath)) {
 
 $Config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 
-$ClaudeApiKey   = $Config.ClaudeApiKey
+# Supporte ClaudeApiKey en clair OU ClaudeApiKeyEncrypted (DPAPI)
+if ($Config.ClaudeApiKeyEncrypted) {
+    try {
+        Add-Type -AssemblyName System.Security
+        $bytes = [Convert]::FromBase64String($Config.ClaudeApiKeyEncrypted)
+        $decrypted = [System.Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+        $ClaudeApiKey = [System.Text.Encoding]::UTF8.GetString($decrypted)
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Impossible de dechiffrer ClaudeApiKeyEncrypted : $($_.Exception.Message)", "Erreur", "OK", "Error") | Out-Null
+        exit 1
+    }
+} else {
+    $ClaudeApiKey = $Config.ClaudeApiKey
+}
+
+# Migration auto : si la cle est encore en clair, la chiffrer et supprimer l'ancienne
+if ($Config.ClaudeApiKey -and -not $Config.ClaudeApiKeyEncrypted) {
+    try {
+        Add-Type -AssemblyName System.Security
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Config.ClaudeApiKey)
+        $encrypted = [System.Security.Cryptography.ProtectedData]::Protect($bytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+        $b64 = [Convert]::ToBase64String($encrypted)
+        $Config | Add-Member -NotePropertyName "ClaudeApiKeyEncrypted" -NotePropertyValue $b64 -Force
+        $Config.PSObject.Properties.Remove("ClaudeApiKey")
+        $Config | ConvertTo-Json -Depth 5 | Set-Content $ConfigPath -Encoding UTF8
+    } catch {}
+}
 $ClaudeModel    = $Config.ClaudeModel
 $ClaudeApiUrl   = $Config.ClaudeApiUrl
 $FirebaseUrl    = $Config.FirebaseUrl
@@ -359,16 +385,21 @@ function Invoke-ClaudeMessage {
         messages   = @(@{ role = "user"; content = $UserPrompt })
     } | ConvertTo-Json -Depth 10
 
-    try {
-        $headers = @{
-            "x-api-key"         = $ClaudeApiKey
-            "anthropic-version" = "2023-06-01"
+    $headers = @{
+        "x-api-key"         = $ClaudeApiKey
+        "anthropic-version" = "2023-06-01"
+    }
+    $delai = 2
+    for ($tentative = 1; $tentative -le 3; $tentative++) {
+        try {
+            $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 90
+            $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
+            return $texte
+        } catch {
+            if ($tentative -eq 3) { return "ERREUR: $($_.Exception.Message)" }
+            Start-Sleep -Seconds $delai
+            $delai *= 2
         }
-        $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 90
-        $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
-        return $texte
-    } catch {
-        return "ERREUR: $($_.Exception.Message)"
     }
 }
 
@@ -398,16 +429,21 @@ function Invoke-ClaudeDocument {
         )
     } | ConvertTo-Json -Depth 10
 
-    try {
-        $headers = @{
-            "x-api-key"         = $ClaudeApiKey
-            "anthropic-version" = "2023-06-01"
+    $headers = @{
+        "x-api-key"         = $ClaudeApiKey
+        "anthropic-version" = "2023-06-01"
+    }
+    $delai = 2
+    for ($tentative = 1; $tentative -le 3; $tentative++) {
+        try {
+            $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 120
+            $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
+            return $texte
+        } catch {
+            if ($tentative -eq 3) { return "ERREUR: $($_.Exception.Message)" }
+            Start-Sleep -Seconds $delai
+            $delai *= 2
         }
-        $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 120
-        $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
-        return $texte
-    } catch {
-        return "ERREUR: $($_.Exception.Message)"
     }
 }
 
@@ -1628,18 +1664,25 @@ SOURCE: PDF/CORPS
         messages   = @(@{ role = "user"; content = $contenuMessages })
     } | ConvertTo-Json -Depth 15
 
-    try {
-        $headers = @{ "x-api-key" = $ClaudeApiKey; "anthropic-version" = "2023-06-01"; "anthropic-beta" = "pdfs-2024-09-25" }
-        $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 45
-        $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
+    $headers = @{ "x-api-key" = $ClaudeApiKey; "anthropic-version" = "2023-06-01"; "anthropic-beta" = "pdfs-2024-09-25" }
+    $delai = 2
+    for ($tentative = 1; $tentative -le 3; $tentative++) {
+        try {
+            $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 45
+            $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
 
-        $confirmation = if ($texte -match "CONFIRMATION:\s*(OUI|NON)") { $Matches[1] } else { "NON" }
-        $confiance    = if ($texte -match "CONFIANCE:\s*([\d.]+)")     { [double]$Matches[1] } else { 0.5 }
-        $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
+            $confirmation = if ($texte -match "CONFIRMATION:\s*(OUI|NON)") { $Matches[1] } else { "NON" }
+            $confiance    = if ($texte -match "CONFIANCE:\s*([\d.]+)")     { [double]$Matches[1] } else { 0.5 }
+            $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
 
-        return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false }
-    } catch {
-        return @{ EstConfirmation = $false; Confiance = 0.0; VerifierCorps = $false; TexteBrut = "ERREUR: $($_.Exception.Message)"; Exclu = $false }
+            return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false }
+        } catch {
+            if ($tentative -eq 3) {
+                return @{ EstConfirmation = $false; Confiance = 0.0; VerifierCorps = $false; TexteBrut = "ERREUR: $($_.Exception.Message)"; Exclu = $false }
+            }
+            Start-Sleep -Seconds $delai
+            $delai *= 2
+        }
     }
 }
 

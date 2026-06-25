@@ -10,6 +10,50 @@
 # Pour arreter : fermer la fenetre PowerShell ou tuer le processus.
 # =============================================================================
 
+# ── Auto-update depuis GitHub ─────────────────────────────────────────────────
+$GitHubRawUrl = "https://raw.githubusercontent.com/dantibo1978-png/gromec-outlook-automation/main/SyncDTW.ps1"
+
+function Update-ScriptSiNecessaire {
+    try {
+        $webClient = New-Object System.Net.WebClient
+        $webClient.Encoding = [System.Text.Encoding]::UTF8
+        $remoteContent = $webClient.DownloadString($GitHubRawUrl)
+        $webClient.Dispose()
+    } catch {
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($remoteContent)) { return }
+
+    $scriptPath = $PSCommandPath
+    if ([string]::IsNullOrEmpty($scriptPath)) { return }
+
+    try {
+        $localContent = Get-Content -Path $scriptPath -Raw -Encoding UTF8
+    } catch {
+        return
+    }
+
+    $normLocal  = ($localContent  -replace "`r`n", "`n").Trim()
+    $normRemote = ($remoteContent -replace "`r`n", "`n").Trim()
+
+    if ($normLocal -eq $normRemote) { return }
+
+    try {
+        $utf8AvecBom = New-Object System.Text.UTF8Encoding($true)
+        [System.IO.File]::WriteAllText($scriptPath, $remoteContent, $utf8AvecBom)
+    } catch {
+        return
+    }
+
+    Start-Process -FilePath "powershell.exe" -ArgumentList @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $scriptPath
+    ) -WindowStyle Hidden
+    exit 0
+}
+
+Update-ScriptSiNecessaire
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 $FirebaseUrl        = "https://gromec-outlook-vba-default-rtdb.firebaseio.com"
 $DTW_Exe            = "C:\Program Files\sap\Data Transfer Workbench\DTW.exe"
