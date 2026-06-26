@@ -1380,6 +1380,20 @@ function Write-FirebaseEchec {
     }
 }
 
+function Test-BCDejaTraitee {
+    param([string]$NumeroBC)
+    if ([string]::IsNullOrEmpty($NumeroBC)) { return $false }
+    try {
+        $historique = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json?orderBy=%22numeroCommande%22&equalTo=%22$NumeroBC%22" -Method Get -TimeoutSec 10
+        if ($null -ne $historique -and $historique.PSObject.Properties.Count -gt 0) {
+            foreach ($cle in $historique.PSObject.Properties.Name) {
+                if ($historique.$cle.statut -eq "OK") { return $true }
+            }
+        }
+    } catch {}
+    return $false
+}
+
 function Invoke-TraiterComparaison {
     param($Namespace, $MailConfirmation, [string]$NumeroBCOverride = "", [string]$HistoriqueId = "", [Nullable[bool]]$VerifierCorps = $null)
 
@@ -1425,6 +1439,11 @@ function Invoke-TraiterComparaison {
         } else {
             $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
             if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
+        }
+
+        if (Test-BCDejaTraitee $numeroBC) {
+            Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
+            return
         }
 
         $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $numeroBC
@@ -1534,6 +1553,12 @@ function Invoke-TraiterComparaison {
         } else {
             $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
             if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
+        }
+
+        if (Test-BCDejaTraitee $numeroBC) {
+            Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
+            Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
+            return
         }
 
         $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $numeroBC
@@ -1649,7 +1674,7 @@ Q4_ACCUSÉ_RECEPTION: Le fournisseur confirme-t-il explicitement avoir recu la c
 Q5_DOCUMENT_COMMANDE: Les pieces jointes contiennent-elles un bon de commande ou une confirmation?
 
 REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI).
-N'EST PAS une confirmation: questions, devis seuls, factures seules, avis expedition seuls, newsletters, courriels generaux sans reference a une commande specifique.
+N'EST PAS une confirmation: questions, devis seuls, factures seules, avis expedition seuls, newsletters, courriels generaux sans reference a une commande specifique, MTR (Material Test Reports/certificats de materiaux), certificats de conformite, rapports d'inspection, documents de qualite, bons de livraison seuls.
 
 Reponds EXACTEMENT en ce format:
 Q1_NUMERO_BC: OUI/NON
