@@ -1605,6 +1605,13 @@ function Invoke-TraiterComparaison {
     $nbNonTrouves = ($resultats | Where-Object { $_.Statut -eq "NON_TROUVE" }).Count
     $estOK = ($nbEcarts -eq 0 -and $nbNonTrouves -eq 0)
 
+    if (-not $estOK -and $numeroBC -ne "") {
+        $fichierCache = Join-Path $DossierCachePO "$numeroBC.json"
+        if (Test-Path $fichierCache) {
+            Remove-Item $fichierCache -Force -ErrorAction SilentlyContinue
+            Write-Log "INFO  Cache PO $numeroBC invalide (ecarts detectes)."
+        }
+    }
 
     Set-CategorieConfirmation $MailConfirmation $estOK
     Write-JournalEntry $expediteur $(if ($estOK) { "OK" } else { "ECART" }) "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves"
