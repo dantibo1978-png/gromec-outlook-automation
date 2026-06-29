@@ -64,6 +64,8 @@ $DTW_FichierConfirmPO  = "$DTW_Dossier\template.txt"
 $DTW_ScenarioLignes    = "$DTW_Dossier\UpdatePOLines_PROD.xml"
 $DTW_ScenarioPrixL2    = "$DTW_Dossier\UpdatePriceList2_PROD.xml"
 $DTW_ScenarioConfirmPO = "$DTW_Dossier\ConfirmPO_PROD.xml"
+$DTW_FichierPrix       = "$DTW_Dossier\import_prix.txt"
+$DTW_ScenarioPrix      = "$DTW_Dossier\UpdatePriceList_PROD.xml"
 $IntervalleSecondes = 15
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
@@ -832,6 +834,54 @@ while ($true) {
                 } catch {}
             }
         }
+    }
+
+    # ── Import prix depuis le dashboard (drop zone) ────────────────────────────
+    try {
+        $importsPrix = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix.json" -Method Get -TimeoutSec 10
+        if ($null -ne $importsPrix -and $importsPrix -ne "null") {
+            foreach ($cleIP in $importsPrix.PSObject.Properties.Name) {
+                $imp = $importsPrix.$cleIP
+                if ($imp.statut -ne 'en_attente') { continue }
+
+                $nomFichier = $imp.fichier
+                Write-Log "INFO  Import prix dashboard : $nomFichier (cle: $cleIP)"
+
+                try {
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
+
+                    [System.IO.File]::WriteAllText($DTW_FichierPrix, $imp.contenu, [System.Text.Encoding]::Unicode)
+
+                    $resPrix = Invoke-DTW -ScenarioXml $DTW_ScenarioPrix
+                    $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+
+                    if ($resPrix.Succes) {
+                        Write-Log "INFO  Import prix dashboard : $nomFichier OK."
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
+                            -Method Patch `
+                            -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    } else {
+                        Write-Log "WARN  Import prix dashboard : $nomFichier echec : $($resPrix.Erreur)"
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
+                            -Method Patch `
+                            -Body (@{ statut = 'erreur'; erreur = $resPrix.Erreur; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    }
+                } catch {
+                    Write-Log "ERREUR Import prix dashboard '$nomFichier' : $($_.Exception.Message)"
+                    try {
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
+                            -Method Patch `
+                            -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    } catch {}
+                }
+            }
+        }
+    } catch {
+        Write-Log "WARN  Erreur lecture noeud imports_prix : $($_.Exception.Message)"
     }
 
     Start-Sleep -Seconds $IntervalleSecondes

@@ -658,6 +658,28 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
     Actualiser
   </button>
+  <button class="filter-chip" id="btnImportPrix" style="margin-left:auto;border-color:var(--accent);color:var(--accent);">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Import prix DTW
+  </button>
+</div>
+
+<!-- Modal import prix -->
+<div id="modalImport" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:28px;max-width:520px;width:90%;">
+    <h3 style="font-family:'Space Grotesk',sans-serif;margin:0 0 6px;font-size:20px;">Import de prix DTW</h3>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 18px;">Deposez un fichier .txt (format DTW tab-separated Unicode) pour importer des prix dans SAP.</p>
+    <div id="dropZone" style="border:2px dashed var(--rule);border-radius:8px;padding:40px 20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" style="width:40px;height:40px;margin-bottom:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <p style="margin:0;color:var(--muted);font-size:14px;" id="dropLabel">Glissez le fichier ici ou cliquez pour parcourir</p>
+      <input type="file" id="fileInput" accept=".txt" style="display:none;">
+    </div>
+    <div id="importStatus" style="margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:13px;display:none;"></div>
+    <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
+      <button id="btnImportCancel" style="padding:8px 18px;border-radius:6px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:14px;">Annuler</button>
+      <button id="btnImportSend" disabled style="padding:8px 18px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:14px;font-weight:600;opacity:0.5;">Envoyer a DTW</button>
+    </div>
+  </div>
 </div>
 
 <main id="mainList">
@@ -1358,6 +1380,106 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
 
 chargerLogs();
 setInterval(chargerLogs, 8000);
+</script>
+
+<script>
+(function(){
+  const modal = document.getElementById('modalImport');
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const dropLabel = document.getElementById('dropLabel');
+  const btnSend = document.getElementById('btnImportSend');
+  const btnCancel = document.getElementById('btnImportCancel');
+  const status = document.getElementById('importStatus');
+  let fileContent = null;
+  let fileName = null;
+
+  document.getElementById('btnImportPrix').addEventListener('click', () => {
+    modal.style.display = 'flex';
+    resetModal();
+  });
+
+  btnCancel.addEventListener('click', () => { modal.style.display = 'none'; });
+  modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--accent)'; dropZone.style.background = 'rgba(94,168,255,0.06)'; });
+  dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--rule)'; dropZone.style.background = ''; });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--rule)'; dropZone.style.background = '';
+    if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files.length > 0) handleFile(fileInput.files[0]); });
+
+  function resetModal(){
+    fileContent = null; fileName = null;
+    dropLabel.textContent = 'Glissez le fichier ici ou cliquez pour parcourir';
+    btnSend.disabled = true; btnSend.style.opacity = '0.5';
+    status.style.display = 'none'; status.textContent = '';
+    fileInput.value = '';
+  }
+
+  function handleFile(file){
+    if (!file.name.endsWith('.txt')) {
+      dropLabel.textContent = 'Fichier invalide — .txt seulement';
+      dropLabel.style.color = 'var(--ecart)';
+      setTimeout(() => { dropLabel.style.color = 'var(--muted)'; }, 2000);
+      return;
+    }
+    fileName = file.name;
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const buf = new Uint8Array(e.target.result);
+      // Detect UTF-16 LE BOM (FF FE) and decode accordingly
+      let text;
+      if (buf[0] === 0xFF && buf[1] === 0xFE) {
+        text = new TextDecoder('utf-16le').decode(buf);
+      } else {
+        text = new TextDecoder('utf-8').decode(buf);
+      }
+      fileContent = text;
+      const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+      const nbArticles = Math.max(0, lines.length - 2);
+      dropLabel.innerHTML = '<span style="color:var(--ok);">' + fileName + '</span><br><span style="color:var(--muted);font-size:12px;">' + nbArticles + ' ligne(s) de donnees</span>';
+      btnSend.disabled = false; btnSend.style.opacity = '1';
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  btnSend.addEventListener('click', async () => {
+    if (!fileContent) return;
+    btnSend.disabled = true; btnSend.textContent = 'Envoi...';
+    status.style.display = 'block';
+    status.style.color = 'var(--muted)';
+    status.textContent = 'Envoi vers Firebase...';
+
+    const payload = {
+      type: 'import_prix',
+      fichier: fileName,
+      contenu: fileContent,
+      date: new Date().toISOString(),
+      statut: 'en_attente'
+    };
+
+    try {
+      const rep = await fetch(FIREBASE_URL + 'gromec_vba/imports_prix.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!rep.ok) throw new Error('HTTP ' + rep.status);
+      const result = await rep.json();
+      status.style.color = 'var(--ok)';
+      status.textContent = 'Envoye! SyncDTW va traiter l\'import sous peu. (ID: ' + result.name + ')';
+      btnSend.textContent = 'Envoye';
+    } catch(e) {
+      status.style.color = 'var(--ecart)';
+      status.textContent = 'Erreur: ' + e.message;
+      btnSend.disabled = false; btnSend.textContent = 'Reessayer';
+    }
+  });
+})();
 </script>
 
 </body>
