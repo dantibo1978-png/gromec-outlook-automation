@@ -1827,17 +1827,54 @@ function Invoke-TraiterNouveauCourriel {
             $verifierCorps   = $analyse.VerifierCorps
         } else {
             # Mode normal : poser la question a Dan
-            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande'}else{'PAS une confirmation de commande'}) (confiance: $pctConfiance%).`n`nEst-ce bien une confirmation de commande?`n`n[Oui] = confirmation, ecarts dans le PDF joint`n[Oui, mais verifier le corps] = confirmation, ecarts ecrits dans le texte du courriel (PDF = juste reference)`n[Non] = pas une confirmation de commande"
-            $rep = [System.Windows.Forms.MessageBox]::Show($q, "Confirmation de commande?", "YesNoCancel", "Question")
+            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande'}else{'PAS une confirmation de commande'}) (confiance: $pctConfiance%).`n`nEst-ce bien une confirmation de commande?"
 
-            if ($rep -eq "Cancel") {
-                $estConfirmation = $true; $verifierCorps = $true
-                if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
-                Set-ReponseCorps $adresseExp $true
-            } elseif ($rep -eq "Yes") {
+            Add-Type -AssemblyName System.Windows.Forms
+            $form = New-Object System.Windows.Forms.Form
+            $form.Text = "Confirmation de commande?"
+            $form.Size = New-Object System.Drawing.Size(420, 220)
+            $form.StartPosition = "CenterScreen"
+            $form.FormBorderStyle = "FixedDialog"
+            $form.MaximizeBox = $false; $form.MinimizeBox = $false
+
+            $lbl = New-Object System.Windows.Forms.Label
+            $lbl.Text = $q
+            $lbl.Location = New-Object System.Drawing.Point(15, 15)
+            $lbl.Size = New-Object System.Drawing.Size(385, 90)
+            $form.Controls.Add($lbl)
+
+            $btnPDF = New-Object System.Windows.Forms.Button
+            $btnPDF.Text = "Oui - PDF joint"
+            $btnPDF.Location = New-Object System.Drawing.Point(15, 120)
+            $btnPDF.Size = New-Object System.Drawing.Size(115, 35)
+            $btnPDF.Add_Click({ $form.Tag = "PDF"; $form.Close() })
+            $form.Controls.Add($btnPDF)
+
+            $btnCorps = New-Object System.Windows.Forms.Button
+            $btnCorps.Text = "Oui - Corps du courriel"
+            $btnCorps.Location = New-Object System.Drawing.Point(140, 120)
+            $btnCorps.Size = New-Object System.Drawing.Size(155, 35)
+            $btnCorps.Add_Click({ $form.Tag = "Corps"; $form.Close() })
+            $form.Controls.Add($btnCorps)
+
+            $btnNon = New-Object System.Windows.Forms.Button
+            $btnNon.Text = "Non"
+            $btnNon.Location = New-Object System.Drawing.Point(305, 120)
+            $btnNon.Size = New-Object System.Drawing.Size(90, 35)
+            $btnNon.Add_Click({ $form.Tag = "Non"; $form.Close() })
+            $form.Controls.Add($btnNon)
+
+            $form.ShowDialog() | Out-Null
+            $rep = $form.Tag
+
+            if ($rep -eq "PDF") {
                 $estConfirmation = $true; $verifierCorps = $false
                 if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
                 Set-ReponseCorps $adresseExp $false
+            } elseif ($rep -eq "Corps") {
+                $estConfirmation = $true; $verifierCorps = $true
+                if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
+                Set-ReponseCorps $adresseExp $true
             } else {
                 $estConfirmation = $false
                 if ($suggestionOui) { Set-ReponseFournisseur $adresseExp $false }
