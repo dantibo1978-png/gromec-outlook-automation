@@ -794,7 +794,9 @@ while ($true) {
     if ($null -ne $historique) {
         foreach ($cle in $historique.PSObject.Properties.Name) {
             $entree = $historique.$cle
-            if ($entree.statut -ne 'OK') { continue }
+            $estOK     = ($entree.statut -eq 'OK')
+            $estResolu = ($entree.statut -eq 'ECART' -and $entree.resolu -eq $true)
+            if (-not $estOK -and -not $estResolu) { continue }
             $dejaSync = $false
             if ($entree.PSObject.Properties.Name -contains 'syncSAP') {
                 $dejaSync = [bool]$entree.syncSAP
