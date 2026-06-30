@@ -1010,42 +1010,49 @@ function Find-TousLesMatches {
 function Find-CourrielEnvoyeCorrespondant {
     param($Namespace, $MailConfirmation, [string]$NumeroBC)
 
-    $sentFolder = $Namespace.GetDefaultFolder(5)  # 5 = olFolderSentMail
-    $items = $sentFolder.Items
-    $items.Sort("[SentOn]", $true)  # plus recent en premier
-
     $limiteDate = (Get-Date).AddDays(-$JoursRecherche)
+    $adresseFournisseur = $MailConfirmation.SenderEmailAddress
 
-    if ($NumeroBC -ne "") {
-        # Etape 1: chercher TOUS les courriels avec le BC dans sujet/corps des envoyes
-        # et retourner le PLUS VIEUX (premier courriel de la chaine = BC original avec PDF)
-        $candidats = @()
+    # Construire la liste de tous les dossiers Envoyes (tous comptes)
+    $dossiersSent = @()
+    try { $dossiersSent += $Namespace.GetDefaultFolder(5) } catch {}
+    foreach ($store in $Namespace.Stores) {
+        try {
+            $sent = $store.GetDefaultFolder(5)
+            if ($sent -and ($dossiersSent.Count -eq 0 -or $sent.EntryID -ne $dossiersSent[0].EntryID)) {
+                $dossiersSent += $sent
+            }
+        } catch {}
+    }
+
+    $candidatsBC  = @()
+    $candidatsFourn = @()
+
+    foreach ($sentFolder in $dossiersSent) {
+        try {
+            $items = $sentFolder.Items
+            $items.Sort("[SentOn]", $true)
+        } catch { continue }
+
         foreach ($item in $items) {
-            if ($item.Class -ne 43) { continue }  # 43 = olMail
+            if ($item.Class -ne 43) { continue }
             if ($item.SentOn -lt $limiteDate) { break }
-            if ($item.Attachments.Count -gt 0) {
-                if ($item.Subject -like "*$NumeroBC*" -or $item.Body -like "*$NumeroBC*") {
-                    $candidats += $item
+            if ($item.Attachments.Count -eq 0) { continue }
+
+            if ($NumeroBC -ne "" -and ($item.Subject -like "*$NumeroBC*" -or $item.Body -like "*$NumeroBC*")) {
+                $candidatsBC += $item
+            }
+
+            if ($candidatsBC.Count -eq 0) {
+                foreach ($dest in $item.Recipients) {
+                    if ($dest.Address -eq $adresseFournisseur) { $candidatsFourn += $item; break }
                 }
             }
         }
-        if ($candidats.Count -gt 0) {
-            # Prendre le plus vieux (dernier dans la liste triee recent->vieux)
-            return $candidats[-1]
-        }
     }
 
-    # Etape 2: fallback par adresse email du fournisseur
-    $adresseFournisseur = $MailConfirmation.SenderEmailAddress
-    foreach ($item in $items) {
-        if ($item.Class -ne 43) { continue }
-        if ($item.SentOn -lt $limiteDate) { break }
-        if ($item.Attachments.Count -eq 0) { continue }
-        foreach ($dest in $item.Recipients) {
-            if ($dest.Address -eq $adresseFournisseur) { return $item }
-        }
-    }
-
+    if ($candidatsBC.Count -gt 0) { return $candidatsBC[-1] }
+    if ($candidatsFourn.Count -gt 0) { return $candidatsFourn[-1] }
     return $null
 }
 
