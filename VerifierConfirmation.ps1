@@ -1025,8 +1025,9 @@ function Find-CourrielEnvoyeCorrespondant {
         } catch {}
     }
 
-    $candidatsBC  = @()
-    $candidatsFourn = @()
+    $candidatsBCAvecPDF  = @()
+    $candidatsBCSansPDF  = @()
+    $candidatsFourn      = @()
 
     foreach ($sentFolder in $dossiersSent) {
         try {
@@ -1037,21 +1038,34 @@ function Find-CourrielEnvoyeCorrespondant {
         foreach ($item in $items) {
             if ($item.Class -ne 43) { continue }
             if ($item.SentOn -lt $limiteDate) { break }
-            if ($item.Attachments.Count -eq 0) { continue }
 
-            if ($NumeroBC -ne "" -and ($item.Subject -like "*$NumeroBC*" -or $item.Body -like "*$NumeroBC*")) {
-                $candidatsBC += $item
+            $aPDF = $false
+            foreach ($pj in $item.Attachments) {
+                if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
             }
 
-            if ($candidatsBC.Count -eq 0) {
-                foreach ($dest in $item.Recipients) {
-                    if ($dest.Address -eq $adresseFournisseur) { $candidatsFourn += $item; break }
+            if ($NumeroBC -ne "" -and ($item.Subject -like "*$NumeroBC*" -or $item.Body -like "*$NumeroBC*")) {
+                if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
+            }
+
+            if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
+                if ($aPDF) {
+                    foreach ($dest in $item.Recipients) {
+                        if ($dest.Address -eq $adresseFournisseur) { $candidatsFourn += $item; break }
+                    }
                 }
             }
         }
     }
 
-    if ($candidatsBC.Count -gt 0) { return $candidatsBC[-1] }
+    # Priorite: BC + PDF > BC sans PDF > fournisseur + PDF
+    # Parmi les candidats avec PDF, prendre le plus vieux ayant un sujet de commande, sinon le plus recent avec PDF
+    if ($candidatsBCAvecPDF.Count -gt 0) {
+        $avecSujetPO = @($candidatsBCAvecPDF | Where-Object { $_.Subject -like "*Commande*" -or $_.Subject -like "*Purchase Order*" -or $_.Subject -like "*Bon de commande*" })
+        if ($avecSujetPO.Count -gt 0) { return $avecSujetPO[-1] }  # le plus vieux avec sujet PO
+        return $candidatsBCAvecPDF[0]  # le plus recent avec PDF
+    }
+    if ($candidatsBCSansPDF.Count -gt 0) { return $candidatsBCSansPDF[-1] }
     if ($candidatsFourn.Count -gt 0) { return $candidatsFourn[-1] }
     return $null
 }
