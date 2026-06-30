@@ -2113,15 +2113,10 @@ try {
 
     Invoke-TraiterNouveauCourriel $namespace $mail $Force.IsPresent
 
-    # Synchronisation SAP via DTW (confirmation des commandes "conformes").
-    # Isolee dans son propre try/catch : un probleme ici ne doit jamais
-    # empecher la liberation de l'objet Outlook ni etre confondu avec
-    # une erreur de traitement du courriel courant.
-    try {
-        Invoke-SyncDTW
-    } catch {
-        Write-JournalEntry "" "ERREUR_SYNC_DTW" $_.Exception.Message
-    }
+    # NOTE: la synchronisation SAP via DTW (ConfirmPO) est geree exclusivement
+    # par SyncDTW.ps1 dans sa boucle independante. L'appeler aussi ici causait
+    # des lancements concurrents de DTW.exe (un par courriel traite) qui se
+    # bloquaient mutuellement et redemarraient SyncDTW.ps1 en boucle.
 
 } catch {
     Write-JournalEntry "" "ERREUR_FATALE" $_.Exception.Message
