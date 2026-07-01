@@ -59,9 +59,10 @@ $FirebaseUrl        = "https://gromec-outlook-vba-default-rtdb.firebaseio.com"
 $DTW_Exe            = "C:\Program Files\sap\Data Transfer Workbench\DTW.exe"
 $DTW_Dossier        = "U:\GromecOutlook\DTW"
 $DTW_FichierLignes     = "$DTW_Dossier\modif_prix_dans_po.txt"
+$DTW_FichierHeader     = "$DTW_Dossier\modif_po_header.txt"
 $DTW_FichierPrixL2     = "$DTW_Dossier\modif_prix_fourn.txt"
 $DTW_FichierConfirmPO  = "$DTW_Dossier\template.txt"
-$DTW_ScenarioLignes    = "$DTW_Dossier\UpdatePOLines_PROD.xml"
+$DTW_ScenarioPO        = "$DTW_Dossier\UpdatePO_PROD.xml"
 $DTW_ScenarioPrixL2    = "$DTW_Dossier\UpdatePriceList2_PROD.xml"
 $DTW_ScenarioConfirmPO = "$DTW_Dossier\ConfirmPO_PROD.xml"
 $DTW_FichierPrix       = "$DTW_Dossier\import_prix.txt"
@@ -169,12 +170,24 @@ function Write-FichierLignesDTW {
     for ($i = 1; $i -le 8; $i++) {
         try {
             [System.IO.File]::WriteAllText($DTW_FichierLignes, $Contenu, [System.Text.Encoding]::Unicode)
-            return
+            break
         } catch {
+            if ($i -eq 8) { throw "Impossible d'ecrire $DTW_FichierLignes apres 8 tentatives" }
             Start-Sleep -Seconds 3
         }
     }
-    throw "Impossible d'ecrire $DTW_FichierLignes apres 8 tentatives"
+
+    $HeaderPO = "RecordKey`tDocNum`tDocEntry`tU_NWR_ConfirmPO"
+    $ContenuHeader = "${HeaderPO}`r`n${HeaderPO}`r`n${DocNum}`t${DocNum}`t`tY`r`n"
+    for ($i = 1; $i -le 8; $i++) {
+        try {
+            [System.IO.File]::WriteAllText($DTW_FichierHeader, $ContenuHeader, [System.Text.Encoding]::Unicode)
+            return
+        } catch {
+            if ($i -eq 8) { throw "Impossible d'ecrire $DTW_FichierHeader apres 8 tentatives" }
+            Start-Sleep -Seconds 3
+        }
+    }
 }
 
 function Write-FichierPrixL2DTW {
@@ -323,7 +336,7 @@ function Invoke-TraiterEntree {
         return
     }
 
-    # ── Etape 1 : Document_Lines (UnitPrice et/ou Quantity) ─────────────────
+    # ── Etape 1 : Document_Lines + ConfirmPO (scenario fusionne) ─────────────
     try {
         Write-FichierLignesDTW -DocNum $docNum -Articles $articles -CopierPrix $copierPrix -CopierQty $copierQty
     } catch {
@@ -331,13 +344,13 @@ function Invoke-TraiterEntree {
         return
     }
 
-    $res = Invoke-DTW -ScenarioXml $DTW_ScenarioLignes
+    $res = Invoke-DTW -ScenarioXml $DTW_ScenarioPO
     if (-not $res.Succes) {
-        Write-Log "ERREUR DTW lignes : $($res.Erreur)" -Cle $Cle -BC $docNum
-        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW lignes : $($res.Erreur)"
+        Write-Log "ERREUR DTW PO (lignes+confirm) : $($res.Erreur)" -Cle $Cle -BC $docNum
+        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW PO : $($res.Erreur)"
         return
     }
-    Write-Log "INFO  DTW lignes OK." -Cle $Cle -BC $docNum
+    Write-Log "INFO  DTW PO (lignes+confirm) OK." -Cle $Cle -BC $docNum
 
     # ── Etape 2 : Price List 2 (seulement si on copie les prix) ─────────────
     if ($copierPrix) {
@@ -345,40 +358,18 @@ function Invoke-TraiterEntree {
             Write-FichierPrixL2DTW -Articles $articles
         } catch {
             Write-Log "WARN  Erreur generation fichier Price List 2 : $($_.Exception.Message)" -Cle $Cle -BC $docNum
-            Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW lignes OK, mais erreur Price List 2 : $($_.Exception.Message)"
+            Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW PO OK, mais erreur Price List 2 : $($_.Exception.Message)"
             return
         }
 
         $res2 = Invoke-DTW -ScenarioXml $DTW_ScenarioPrixL2
         if (-not $res2.Succes) {
             Write-Log "WARN  DTW Price List 2 : $($res2.Erreur)" -Cle $Cle -BC $docNum
-            Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW lignes OK, mais DTW Price List 2 : $($res2.Erreur)"
+            Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW PO OK, mais DTW Price List 2 : $($res2.Erreur)"
             return
         }
         Write-Log "INFO  DTW Price List 2 OK." -Cle $Cle -BC $docNum
     }
-
-    # ── Etape 3 : U_NWR_ConfirmPO = Y (confirmer la commande dans SAP) ────────
-    try {
-        $contenuConfirm = "DocNum`tDocEntry`tU_NWR_ConfirmPO`r`nDocNum`tDocEntry`tU_NWR_ConfirmPO`r`n$docNum`t`tY"
-        [System.IO.File]::WriteAllText($DTW_FichierConfirmPO, $contenuConfirm, [System.Text.Encoding]::Unicode)
-    } catch {
-        Write-Log "WARN  Erreur generation fichier ConfirmPO : $($_.Exception.Message)" -Cle $Cle -BC $docNum
-        Set-StatutDTW -Cle $Cle -Statut 'ok'
-        Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
-        Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)." -Cle $Cle -BC $docNum
-        return
-    }
-
-    $res3 = Invoke-DTW -ScenarioXml $DTW_ScenarioConfirmPO
-    if (-not $res3.Succes) {
-        Write-Log "WARN  DTW ConfirmPO : $($res3.Erreur)" -Cle $Cle -BC $docNum
-        Set-StatutDTW -Cle $Cle -Statut 'ok'
-        Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
-        Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)." -Cle $Cle -BC $docNum
-        return
-    }
-    Write-Log "INFO  DTW ConfirmPO OK." -Cle $Cle -BC $docNum
 
     Set-StatutDTW -Cle $Cle -Statut 'ok'
     Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
