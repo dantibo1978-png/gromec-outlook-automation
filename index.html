@@ -914,7 +914,7 @@ function rendreFiche(d){
     return `
     <div class="fiche" data-id="${d.id}">
       <div class="fiche-head" onclick="toggleFiche('${d.id}')">
-        <span class="stamp stamp-attente">NON TROUVÉ</span>
+        <span class="stamp ${d.resolu ? 'stamp-ok' : 'stamp-attente'}">${d.resolu ? 'RÉSOLU' : 'NON TROUVÉ'}</span>
         <div class="fiche-info">
           <p class="fiche-fournisseur">${d.fournisseur || 'Expéditeur inconnu'}</p>
           <div class="fiche-meta">
@@ -923,10 +923,7 @@ function rendreFiche(d){
             <span>${(d.sujet||'').substring(0,60)}</span>
           </div>
         </div>
-        <label class="resolu-toggle resolu-inline" onclick="event.stopPropagation()">
-          <input type="checkbox" ${d.resolu ? 'checked' : ''} onchange="toggleResolu('${d.id}', this.checked)">
-          <span>Résolu</span>
-        </label>
+        ${!d.resolu ? `<label class="resolu-toggle resolu-inline" onclick="event.stopPropagation()"><input type="checkbox" onchange="toggleResolu('${d.id}', this.checked)"><span>Résolu</span></label>` : ''}
         <button class="suppr-btn" onclick="event.stopPropagation(); supprimerFiche('${d.id}')">✕ Effacer</button>
         <span class="chevron"></span>
       </div>
