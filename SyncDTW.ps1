@@ -84,6 +84,23 @@ function Write-Log {
     } catch {}
 }
 
+function Invoke-PurgeVieuxLogs {
+    # Supprime les entrees de gromec_vba/logs de plus de 3 jours pour limiter
+    # la taille du noeud (et donc la bande passante Firebase consommee par
+    # le dashboard qui relit ce noeud regulierement).
+    try {
+        $cutoff = (Get-Date).AddDays(-3).ToString("yyyy-MM-dd HH:mm:ss")
+        $logs = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json?orderBy=%22ts%22&endAt=%22$cutoff%22" -Method Get -TimeoutSec 20
+        if ($null -eq $logs -or $logs -eq "null") { return }
+        $nb = 0
+        foreach ($cle in $logs.PSObject.Properties.Name) {
+            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs/$cle.json" -Method Delete -TimeoutSec 10 | Out-Null
+            $nb++
+        }
+        if ($nb -gt 0) { Write-Log "INFO  Purge logs : $nb entree(s) de plus de 3 jours supprimee(s)." }
+    } catch {}
+}
+
 function Get-Historique {
     try {
         $rep = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json" -Method Get -TimeoutSec 15
@@ -715,7 +732,14 @@ try {
 
 Write-Log "INFO  SyncDTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
 
+$DerniereePurgeLogs = Get-Date "2000-01-01"
+
 while ($true) {
+    if (((Get-Date) - $DerniereePurgeLogs).TotalHours -ge 1) {
+        Invoke-PurgeVieuxLogs
+        $DerniereePurgeLogs = Get-Date
+    }
+
     # Verifier reclassifications manuelles (VBA Outlook) -- liste pour supporter plusieurs en meme temps
     try {
         $reclassifs = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassifications.json" -Method Get -TimeoutSec 10

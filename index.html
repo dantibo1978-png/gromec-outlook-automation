@@ -1327,7 +1327,7 @@ function toggleLogPanel(){
 }
 
 function chargerLogs(){
-  fetch(FIREBASE_URL + 'gromec_vba/logs.json')
+  fetch(FIREBASE_URL + 'gromec_vba/logs.json?orderBy="$key"&limitToLast=300')
     .then(r => r.json())
     .then(json => {
       logsData = json || {};
@@ -1433,7 +1433,7 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
 })();
 
 chargerLogs();
-setInterval(chargerLogs, 8000);
+setInterval(chargerLogs, 20000);
 </script>
 
 <script>
