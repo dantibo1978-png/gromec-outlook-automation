@@ -754,8 +754,8 @@ function estEffectivementOK(d){
 
 function rendreStats(){
   const total = donnees.length;
-  const nonApparies = donnees.filter(d => d.statut === 'NON_APPARIE').length;
-  const comparables = donnees.filter(d => d.statut !== 'NON_APPARIE');
+  const nonApparies = donnees.filter(d => d.statut === 'NON_APPARIE' && !d.resolu).length;
+  const comparables = donnees.filter(d => d.statut !== 'NON_APPARIE' || d.resolu);
   const ok = comparables.filter(d => estEffectivementOK(d)).length;
   const ecarts = comparables.length - ok;
   document.getElementById('statRow').innerHTML = `
@@ -1206,9 +1206,9 @@ function rendreTout(){
 
   const texteRecherche = document.getElementById('searchBox').value.toLowerCase();
   let filtrees = donnees.filter(d => {
-    if (filtreActif === 'ecart' && (d.statut === 'NON_APPARIE' || estEffectivementOK(d))) return false;
-    if (filtreActif === 'ok' && (d.statut === 'NON_APPARIE' || !estEffectivementOK(d))) return false;
-    if (filtreActif === 'attente' && d.statut !== 'NON_APPARIE') return false;
+    if (filtreActif === 'ecart' && ((d.statut === 'NON_APPARIE' && !d.resolu) || estEffectivementOK(d))) return false;
+    if (filtreActif === 'ok' && ((d.statut === 'NON_APPARIE' && !d.resolu) || !estEffectivementOK(d))) return false;
+    if (filtreActif === 'attente' && (d.statut !== 'NON_APPARIE' || d.resolu)) return false;
     if (texteRecherche){
       const cible = ((d.fournisseur||'') + ' ' + (d.sujet||'')).toLowerCase();
       if (!cible.includes(texteRecherche)) return false;
