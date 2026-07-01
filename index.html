@@ -394,6 +394,13 @@
     accent-color:var(--ok);
     cursor:pointer;
   }
+  .resolu-inline{
+    margin-bottom:0;
+    padding:5px 10px;
+    font-size:12px;
+    border-radius:5px;
+    flex-shrink:0;
+  }
   .sync-attente{
     color:var(--warn);
     font-size:14px;
@@ -916,6 +923,10 @@ function rendreFiche(d){
             <span>${(d.sujet||'').substring(0,60)}</span>
           </div>
         </div>
+        <label class="resolu-toggle resolu-inline" onclick="event.stopPropagation()">
+          <input type="checkbox" ${d.resolu ? 'checked' : ''} onchange="toggleResolu('${d.id}', this.checked)">
+          <span>Résolu</span>
+        </label>
         <button class="suppr-btn" onclick="event.stopPropagation(); supprimerFiche('${d.id}')">✕ Effacer</button>
         <span class="chevron"></span>
       </div>
@@ -1027,6 +1038,7 @@ function rendreFiche(d){
         </div>
       </div>
       <span class="fiche-ecarts ${!estOK ? 'ecarts-some' : 'ecarts-zero'}">${estOriginellementEcart ? (estOK ? 'Résolu' : (d.nbEcarts || 0) + ' écart' + (d.nbEcarts!==1?'s':'')) : 'Conforme'}</span>
+      ${estOriginellementEcart && !estOK ? `<label class="resolu-toggle resolu-inline" onclick="event.stopPropagation()"><input type="checkbox" ${d.resolu ? 'checked' : ''} onchange="toggleResolu('${d.id}', this.checked)"><span>Résolu</span></label>` : ''}
       <button class="suppr-btn" onclick="event.stopPropagation(); supprimerFiche('${d.id}')">&#x2715; Effacer</button>
       <span class="chevron"></span>
     </div>
