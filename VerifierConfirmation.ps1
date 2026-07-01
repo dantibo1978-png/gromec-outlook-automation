@@ -711,6 +711,17 @@ CODE MANUF du fournisseur, pas le code SAP Gromec), la quantite si mentionnee
 (laisse vide/0 si seul le prix est corrige), et le nouveau prix unitaire si
 mentionne (laisse vide si seule la quantite est corrigee).
 
+ATTENTION -- TABLEAUX STRUCTURES: certains fournisseurs (ex: BMI) repondent
+avec un tableau ligne par ligne contenant des colonnes du genre "QTE COM."
+(quantite commandee/demandee) et "QTE PROP." (quantite proposee/disponible
+par le fournisseur). Si ces deux colonnes existent et different pour une
+ligne, c'est un ECART DE QUANTITE meme si le texte libre du message ne le
+mentionne pas explicitement (le message peut ne parler que des ecarts de
+prix). Dans ce cas, prends la quantite PROPOSEE par le fournisseur comme
+valeur QTE de la ligne. Passe TOUT le tableau, ligne par ligne, meme les
+lignes non mentionnees dans le texte libre -- ne te fie pas seulement aux
+numeros de ligne cites en texte.
+
 Reponds STRICTEMENT dans ce format, rien d'autre:
 FOURNISSEUR|NomFournisseur||CAD_ou_USD|NumeroBCGromec
 ARTICLE|1|CODE|QTE|PRIX|texte original de la ligne

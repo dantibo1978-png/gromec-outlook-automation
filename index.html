@@ -451,6 +451,16 @@
     animation:none;
   }
   .ligne-check{ width:16px; height:16px; cursor:pointer; accent-color:var(--accent); }
+  .qty-edit{
+    width:60px;
+    background:var(--panel-2);
+    border:1px solid var(--rule);
+    border-radius:4px;
+    color:var(--text);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    padding:2px 5px;
+  }
   .dtw-btn.etat-erreur{
     border-color:var(--ecart);
     color:var(--ecart);
@@ -963,7 +973,7 @@ function rendreFiche(d){
       <td>${a.sapLigne ?? ''}</td>
       <td>${a.sapArticle ?? ''}</td>
       <td class="desc">${a.sapDesc ?? ''}</td>
-      <td>${a.sapQty ?? ''} / ${a.pdfQty || '—'}</td>
+      <td>${a.sapQty ?? ''} / <input type="number" class="qty-edit" value="${a.pdfQty ?? 0}" onclick="event.stopPropagation()" onchange="modifierQuantite(event, '${d.id}', ${a.sapLigne}, this.value)"></td>
       <td class="${diffQtyClass}">${a.diffQty ?? 0}</td>
       <td>${fmtPrix(a.sapPrix, d.devise)} / ${fmtPrix(a.pdfPrix, d.devise)}</td>
       <td class="${diffUnitClass}">${a.diffUnit ? a.diffUnit.toFixed(4) : '0.0000'}</td>
@@ -1158,6 +1168,37 @@ async function soumettreBCManuel(id){
 function enregistrerCaseEtat(event, ficheId, ligne) {
   event.stopPropagation();
   casesEtatManuel.set(ficheId + '|' + ligne, event.target.checked);
+}
+
+async function modifierQuantite(event, ficheId, ligne, nouvelleValeur){
+  event.stopPropagation();
+  const entree = donnees.find(d => d.id === ficheId);
+  if (!entree || !entree.articles) return;
+
+  const nouvelleQty = parseInt(nouvelleValeur, 10);
+  if (isNaN(nouvelleQty)) return;
+
+  const articles = entree.articles.map(a => {
+    if (a.sapLigne !== ligne) return a;
+    const diffQty = nouvelleQty - (a.sapQty ?? 0);
+    const diffUnitNonZero = a.diffUnit && Math.abs(a.diffUnit) > 0.0001;
+    const statut = (diffQty !== 0 || diffUnitNonZero) ? 'ECART' : 'OK';
+    return { ...a, pdfQty: nouvelleQty, diffQty, statut };
+  });
+
+  entree.articles = articles;
+  entree.nbEcarts = articles.filter(a => a.statut === 'ECART').length;
+  rendreTout();
+
+  try{
+    await fetch(FIREBASE_URL + 'gromec_vba/historique/' + ficheId + '.json', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ articles, nbEcarts: entree.nbEcarts })
+    });
+  }catch(e){
+    console.error('Erreur lors de la mise à jour de la quantité', e);
+  }
 }
 
 function rendreTout(){
