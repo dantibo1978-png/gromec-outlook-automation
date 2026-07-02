@@ -1049,7 +1049,6 @@ function rendreFiche(d){
         </div>
       </div>
       <span class="fiche-ecarts ${!estOK ? 'ecarts-some' : 'ecarts-zero'}">${estOriginellementEcart ? (estOK ? 'Résolu' : (d.nbEcarts || 0) + ' écart' + (d.nbEcarts!==1?'s':'')) : 'Conforme'}</span>
-      ${estOriginellementEcart && !estOK ? `<label class="resolu-toggle resolu-inline" onclick="event.stopPropagation()"><input type="checkbox" ${d.resolu ? 'checked' : ''} onchange="toggleResolu('${d.id}', this.checked)"><span>Résolu</span></label>` : ''}
       <button class="suppr-btn" onclick="event.stopPropagation(); supprimerFiche('${d.id}')">&#x2715; Effacer</button>
       <span class="chevron"></span>
     </div>
