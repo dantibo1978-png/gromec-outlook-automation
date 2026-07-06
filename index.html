@@ -61,6 +61,12 @@
     text-transform:uppercase;
     margin:0 0 8px;
   }
+  .derniere-maj{
+    color:var(--muted);
+    text-transform:none;
+    letter-spacing:normal;
+    font-weight:400;
+  }
   h1{
     font-family:'Space Grotesk', sans-serif;
     font-size:28px;
@@ -663,7 +669,7 @@
 <body>
 
 <header>
-  <p class="eyebrow">Gromec Inc. — Achats</p>
+  <p class="eyebrow">Gromec Inc. — Achats <span id="derniereMaj" class="derniere-maj"></span></p>
   <h1>Vérification des commandes / Remplacement de Charles St-Laurent</h1>
   <p class="subtitle">Confirmations fournisseurs comparées automatiquement aux bons de commande envoyés.</p>
   <div class="stat-row" id="statRow"></div>
@@ -750,6 +756,9 @@ async function chargerDonnees(){
   }
   btn.classList.remove('spinning');
   rendreTout();
+
+  const majEl = document.getElementById('derniereMaj');
+  if (majEl) majEl.textContent = '· Dernière mise à jour : ' + fmtDate(new Date().toISOString());
 }
 
 function estEffectivementOK(d){
