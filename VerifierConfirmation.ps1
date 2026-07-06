@@ -1814,12 +1814,11 @@ function Invoke-TraiterNouveauCourriel {
                elseif ($analyse.Confiance -ge $seuilAuto) { "[OK $pctAffiche%]" } `
                else { "[? $pctAffiche%]" }
     try {
-        if ($MailItem.Subject.StartsWith("[")) {
-            # Remplacer le prefixe existant (ex: [X 95%] -> [OK 95%])
-            $MailItem.Subject = $MailItem.Subject -replace '^\[.*?\]\s*', "$prefixe "
-        } else {
-            $MailItem.Subject = "$prefixe $($MailItem.Subject)"
-        }
+        # Retirer TOUS les anciens prefixes [X ..%]/[OK ..%]/[? ..%], meme s'ils
+        # ne sont pas au tout debut (ex: apres "RE: " ajoute par Outlook a
+        # chaque reponse), pour eviter l'empilement au fil des echanges.
+        $sujetNettoye = $MailItem.Subject -replace '\[(X|OK|\?)\s*\d{1,3}%\]\s*', ''
+        $MailItem.Subject = "$prefixe $sujetNettoye".Trim()
         $MailItem.Save()
     } catch {}
 
