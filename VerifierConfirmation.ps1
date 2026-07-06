@@ -722,13 +722,31 @@ valeur QTE de la ligne. Passe TOUT le tableau, ligne par ligne, meme les
 lignes non mentionnees dans le texte libre -- ne te fie pas seulement aux
 numeros de ligne cites en texte.
 
+ATTENTION -- VENTE PAR CAISSE/BOITE: certains fournisseurs indiquent qu'un
+article est vendu uniquement par multiple d'une unite d'emballage, sans
+donner de nouvelle quantite exacte, ex: "Ligne 1 vendue en caisse de 4X",
+"vendu par boite de 12". Dans ce cas tu ne connais pas la quantite finale
+(elle depend de la quantite d'origine commandee, que tu n'as pas ici) --
+laisse le champ QTE a 0 mais remplis le champ CAISSE avec la taille de
+l'emballage mentionnee (4, 12, etc.). Si aucune contrainte de caisse/boite
+n'est mentionnee pour la ligne, ecris 0 dans CAISSE.
+
+IMPORTANT -- NUMERO DE LIGNE: si le fournisseur reference une ligne par son
+numero dans le PO original (ex: "Ligne 1", "ligne 9") SANS donner de code
+produit pour cette ligne, mets ce numero de ligne du PO dans le premier
+champ (apres ARTICLE|) et laisse CODE vide -- ca permettra de retrouver la
+bonne ligne du PO Gromec par sa position. Ne mets un numero sequentiel
+arbitraire (1, 2, 3...) que si aucun numero de ligne explicite n'est donne
+ET qu'un code produit permet d'identifier l'article autrement.
+
 Reponds STRICTEMENT dans ce format, rien d'autre:
 FOURNISSEUR|NomFournisseur||CAD_ou_USD|NumeroBCGromec
-ARTICLE|1|CODE|QTE|PRIX|texte original de la ligne
-ARTICLE|2|CODE2|QTE|PRIX|texte original de la ligne
+ARTICLE|1|CODE|QTE|PRIX|CAISSE|texte original de la ligne
+ARTICLE|2|CODE2|QTE|PRIX|CAISSE|texte original de la ligne
 Si aucun article avec ecart trouve dans ce texte: ecrire AUCUN_ARTICLE
 Si la quantite n'est pas mentionnee pour une ligne, ecris 0 dans le champ QTE.
 Si le prix n'est pas mentionne pour une ligne, ecris 0 dans le champ PRIX.
+Si aucune contrainte de caisse/boite, ecris 0 dans le champ CAISSE.
 "@
 
     $reponse = Invoke-ClaudeMessage "" $prompt
@@ -751,12 +769,23 @@ Si le prix n'est pas mentionne pour une ligne, ecris 0 dans le champ PRIX.
         } elseif ($l.StartsWith("ARTICLE|")) {
             $champs = $l -split '\|'
             if ($champs.Count -ge 5) {
+                # Format attendu: ARTICLE|N|CODE|QTE|PRIX|CAISSE|RawLine (CAISSE et RawLine optionnels
+                # pour compatibilite avec d'anciennes reponses ne respectant pas le nouveau format)
+                $caisseVal = 0
+                $rawVal = ""
+                if ($champs.Count -ge 7) {
+                    try { $caisseVal = [int]([double]($champs[5].Trim() -replace ",", ".")) } catch { $caisseVal = 0 }
+                    $rawVal = $champs[6]
+                } elseif ($champs.Count -eq 6) {
+                    $rawVal = $champs[5]
+                }
                 $items += [PSCustomObject]@{
-                    LineNbr = [int]$champs[1]
-                    Code    = $champs[2].Trim()
-                    Qty     = [int]([double]($champs[3] -replace ",", "."))
-                    NetUnit = [double]($champs[4] -replace ",", ".")
-                    RawLine = if ($champs.Count -ge 6) { $champs[5] } else { "" }
+                    LineNbr    = [int]$champs[1]
+                    Code       = $champs[2].Trim()
+                    Qty        = [int]([double]($champs[3] -replace ",", "."))
+                    NetUnit    = [double]($champs[4] -replace ",", ".")
+                    CaisseSize = $caisseVal
+                    RawLine    = $rawVal
                 }
             }
         }
@@ -1513,14 +1542,28 @@ function Invoke-TraiterComparaison {
                 $_.CodeManuf -ne "" -and $itemFourn.Code -ne "" -and
                 $_.CodeManuf.ToUpper() -eq $itemFourn.Code.ToUpper()
             } | Select-Object -First 1
-            if ($null -eq $sapCorrespondant) {
+            if ($null -eq $sapCorrespondant -and $itemFourn.Code -ne "") {
                 $nCode = Format-CodeNormalise $itemFourn.Code
                 $sapCorrespondant = $itemsSAP | Where-Object {
                     (Format-CodeNormalise $_.CodeManuf) -eq $nCode -and $nCode.Length -ge 4
                 } | Select-Object -First 1
             }
+            # Fallback: le fournisseur ne donne aucun code, seulement un numero
+            # de ligne du PO original (ex: "Ligne 1 vendue en caisse de 4X") --
+            # utiliser la position dans le PO Gromec (meme numerotation que
+            # celle vue par le fournisseur).
+            if ($null -eq $sapCorrespondant -and $itemFourn.Code -eq "" -and $itemFourn.LineNbr -gt 0) {
+                $sapCorrespondant = $itemsSAP | Where-Object { $_.LineNbr -eq $itemFourn.LineNbr } | Select-Object -First 1
+            }
             if ($sapCorrespondant) {
-                if ($itemFourn.Qty -eq 0) { $itemFourn.Qty = $sapCorrespondant.Qty }
+                if ($itemFourn.Code -eq "") { $itemFourn.Code = $sapCorrespondant.CodeManuf }
+                if ($itemFourn.CaisseSize -gt 0) {
+                    # Vente par multiple d'emballage -- arrondir la quantite
+                    # d'origine au multiple superieur le plus proche.
+                    $itemFourn.Qty = [int]([math]::Ceiling($sapCorrespondant.Qty / $itemFourn.CaisseSize) * $itemFourn.CaisseSize)
+                } elseif ($itemFourn.Qty -eq 0) {
+                    $itemFourn.Qty = $sapCorrespondant.Qty
+                }
                 if ($itemFourn.NetUnit -eq 0) { $itemFourn.NetUnit = $sapCorrespondant.Price }
                 $codesMentionnes[(Format-CodeNormalise $sapCorrespondant.CodeManuf)] = $true
             }
