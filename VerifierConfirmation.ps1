@@ -350,7 +350,7 @@ function Get-DictionnaireFournisseurs {
     $regles = Get-FirebaseValue "gromec_vba/regles_generales"
     if ([string]::IsNullOrEmpty($dict)) {
         # Fallback minimal si Firebase inaccessible
-        $dict = "* ASC: netUnit=colonne NET, qty=QUANTITY+B/O QTY`n* WIKA Instruments: code=colonne Item, qty=QtyUnit avant pcs, netUnit=Unit price`n* Boshart (Confirmation): code=Item Number/Customer PN, qty=Quantity, netUnit=Net Price`n* Goulds Pumps: prix souvent USD -- indiquer USD"
+        $dict = "* ASC: netUnit=colonne NET, qty=QUANTITY+B/O QTY`n* WIKA Instruments: code=colonne Item, qty=QtyUnit avant pcs, netUnit=Unit price`n* Boshart (Confirmation): code=Item Number/Customer PN, qty=Quantity, netUnit=Net Price`n* Goulds Pumps: prix souvent USD -- indiquer USD`n* CCTF: qty UM souvent FT (pieds) mais le prix affiche (Unit Price) est TOUJOURS par tranche de 100 unites quand la colonne Price UM = CFT -- diviser le prix affiche par 100 pour obtenir le prix unitaire net reel (ex: 148.00 CFT -> 1.48/FT, 84.00 CFT -> 0.84/FT)."
         $regles = "- qty = quantite commandee TOTALE (inclure back-order si present)`n- netUnit = prix UNITAIRE net final`n- code = code article du FOURNISSEUR (pas le code SAP Gromec)`n- Si devise USD detectee: ecrire USD, sinon CAD"
     }
     return @{ Dict = $dict; Regles = $regles }
