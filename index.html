@@ -1233,6 +1233,15 @@ function rendreTout(){
     [...document.querySelectorAll('.fiche.open')].map(el => el.dataset.id)
   );
 
+  // Sauvegarder la position de defilement interne du tableau d'articles de
+  // chaque carte ouverte -- sinon rendreFiche recree ce conteneur a neuf a
+  // chaque rafraichissement (30s) et son scroll repart toujours a 0.
+  const scrollTables = new Map();
+  document.querySelectorAll('.fiche.open .table-scroll').forEach(el => {
+    const ficheId = el.closest('.fiche')?.dataset.id;
+    if (ficheId) scrollTables.set(ficheId, el.scrollTop);
+  });
+
   // Les etats manuels sont dans casesEtatManuel (variable globale)
 
   main.innerHTML = filtrees.map(rendreFiche).join('');
@@ -1241,6 +1250,12 @@ function rendreTout(){
   cartesOuvertes.forEach(id => {
     const el = document.querySelector(`.fiche[data-id="${id}"]`);
     if (el) el.classList.add('open');
+  });
+
+  // Restaurer la position de defilement du tableau d'articles
+  scrollTables.forEach((valeur, ficheId) => {
+    const el = document.querySelector(`.fiche[data-id="${ficheId}"] .table-scroll`);
+    if (el) el.scrollTop = valeur;
   });
 
   // Restaurer l'etat manuel des cases a cocher
