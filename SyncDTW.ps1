@@ -101,6 +101,37 @@ function Invoke-PurgeVieuxLogs {
     } catch {}
 }
 
+function Invoke-PurgeHistoriqueTraite {
+    # Supprime les entrees de gromec_vba/historique deja completement traitees
+    # (confirmees OK et synchronisees SAP, ou "non trouve" marquees resolues)
+    # apres quelques jours, pour limiter la taille du noeud et la bande
+    # passante consommee par le dashboard. Le dashboard n'a plus besoin de
+    # ces entrees une fois qu'elles sont reglees.
+    try {
+        $historique = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json" -Method Get -TimeoutSec 20
+        if ($null -eq $historique -or $historique -eq "null") { return }
+
+        $cutoff = (Get-Date).AddDays(-7)
+        $nb = 0
+        foreach ($cle in $historique.PSObject.Properties.Name) {
+            $entree = $historique.$cle
+            $dateEntree = $null
+            try { $dateEntree = [datetime]::Parse($entree.date) } catch { continue }
+            if ($dateEntree -gt $cutoff) { continue }
+
+            $traite = $false
+            if ($entree.statut -eq 'OK' -and $entree.syncSAP -eq $true) { $traite = $true }
+            if ($entree.statut -eq 'NON_APPARIE' -and $entree.resolu -eq $true) { $traite = $true }
+
+            if ($traite) {
+                Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" -Method Delete -TimeoutSec 10 | Out-Null
+                $nb++
+            }
+        }
+        if ($nb -gt 0) { Write-Log "INFO  Purge historique : $nb entree(s) traitee(s) de plus de 7 jours supprimee(s)." }
+    } catch {}
+}
+
 function Get-Historique {
     try {
         $rep = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json" -Method Get -TimeoutSec 15
@@ -737,6 +768,7 @@ $DerniereePurgeLogs = Get-Date "2000-01-01"
 while ($true) {
     if (((Get-Date) - $DerniereePurgeLogs).TotalHours -ge 1) {
         Invoke-PurgeVieuxLogs
+        Invoke-PurgeHistoriqueTraite
         $DerniereePurgeLogs = Get-Date
     }
 
