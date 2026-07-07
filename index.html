@@ -695,12 +695,17 @@
 <div id="modalImport" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
   <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:28px;max-width:520px;width:90%;">
     <h3 style="font-family:'Space Grotesk',sans-serif;margin:0 0 6px;font-size:20px;">Import de prix DTW</h3>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 18px;">Deposez un fichier .txt (format DTW tab-separated Unicode) pour importer des prix dans SAP.</p>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 14px;">Deposez un fichier .txt OU collez un tableau (format DTW tab-separated) pour importer des prix dans SAP.</p>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button type="button" class="import-mode-tab active" data-mode="fichier" style="flex:1;padding:8px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-size:13px;">Fichier</button>
+      <button type="button" class="import-mode-tab" data-mode="coller" style="flex:1;padding:8px;border-radius:6px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:13px;">Coller un tableau</button>
+    </div>
     <div id="dropZone" style="border:2px dashed var(--rule);border-radius:8px;padding:40px 20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;">
       <svg viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" style="width:40px;height:40px;margin-bottom:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <p style="margin:0;color:var(--muted);font-size:14px;" id="dropLabel">Glissez le fichier ici ou cliquez pour parcourir</p>
       <input type="file" id="fileInput" accept=".txt" style="display:none;">
     </div>
+    <textarea id="pasteZone" style="display:none;width:100%;height:180px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:12px;resize:vertical;" placeholder="Collez ici le tableau copie depuis SAP (Ctrl+V)…"></textarea>
     <div id="importStatus" style="margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:13px;display:none;"></div>
     <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
       <button id="btnImportCancel" style="padding:8px 18px;border-radius:6px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:14px;">Annuler</button>
@@ -722,7 +727,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-07-07 14:40";
+const DERNIERE_MAJ_CODE = "2026-07-07 15:00";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1487,15 +1492,44 @@ setInterval(chargerLogs, 20000);
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
   const dropLabel = document.getElementById('dropLabel');
+  const pasteZone = document.getElementById('pasteZone');
   const btnSend = document.getElementById('btnImportSend');
   const btnCancel = document.getElementById('btnImportCancel');
   const status = document.getElementById('importStatus');
+  const modeTabs = document.querySelectorAll('.import-mode-tab');
   let fileContent = null;
   let fileName = null;
+  let modeActif = 'fichier';
 
   document.getElementById('btnImportPrix').addEventListener('click', () => {
     modal.style.display = 'flex';
     resetModal();
+  });
+
+  modeTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      modeActif = tab.dataset.mode;
+      modeTabs.forEach(t => {
+        const actif = t === tab;
+        t.classList.toggle('active', actif);
+        t.style.background = actif ? 'var(--accent)' : 'var(--panel-2)';
+        t.style.borderColor = actif ? 'var(--accent)' : 'var(--rule)';
+        t.style.color = actif ? '#fff' : 'var(--text)';
+      });
+      dropZone.style.display = (modeActif === 'fichier') ? '' : 'none';
+      pasteZone.style.display = (modeActif === 'coller') ? '' : 'none';
+      btnSend.disabled = true; btnSend.style.opacity = '0.5';
+      status.style.display = 'none';
+    });
+  });
+
+  pasteZone.addEventListener('input', () => {
+    const texte = pasteZone.value;
+    fileContent = texte;
+    fileName = 'colle_dashboard_' + Date.now() + '.txt';
+    const lignes = texte.split(/\r?\n/).filter(l => l.trim() !== '');
+    btnSend.disabled = lignes.length < 3;
+    btnSend.style.opacity = btnSend.disabled ? '0.5' : '1';
   });
 
   btnCancel.addEventListener('click', () => { modal.style.display = 'none'; });
@@ -1517,6 +1551,17 @@ setInterval(chargerLogs, 20000);
     btnSend.disabled = true; btnSend.style.opacity = '0.5';
     status.style.display = 'none'; status.textContent = '';
     fileInput.value = '';
+    pasteZone.value = '';
+    modeActif = 'fichier';
+    modeTabs.forEach(t => {
+      const actif = t.dataset.mode === 'fichier';
+      t.classList.toggle('active', actif);
+      t.style.background = actif ? 'var(--accent)' : 'var(--panel-2)';
+      t.style.borderColor = actif ? 'var(--accent)' : 'var(--rule)';
+      t.style.color = actif ? '#fff' : 'var(--text)';
+    });
+    dropZone.style.display = '';
+    pasteZone.style.display = 'none';
   }
 
   function handleFile(file){
