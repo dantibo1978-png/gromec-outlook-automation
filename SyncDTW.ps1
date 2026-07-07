@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # SyncDTW.ps1
 # Tourne en arriere-plan sur le poste Windows.
 # Poll Firebase toutes les 30s, detecte les flags dtw_copierPrix / dtw_copierQty
