@@ -476,123 +476,188 @@ function Set-StatutConfirmation {
     }
 }
 
-function Get-PDFOriginalDepuisOutlook {
+function Convert-HtmlVersPDF {
     <#
-    Cherche la premiere piece jointe PDF dans le courriel original (Sent Items)
-    identifie par EntryID/StoreID, et la sauvegarde dans CheminDestination.
-    Retourne $true si trouve, $false sinon.
+    Convertit un fichier HTML en PDF via Microsoft Edge en mode headless
+    (deja installe sur toute machine Windows 10/11 -- aucune dependance
+    externe comme iTextSharp/wkhtmltopdf). Ne prend jamais le controle du
+    clavier/souris de l'utilisateur (contrairement a l'ancienne methode
+    SendKeys), tourne entierement en arriere-plan.
     #>
-    param([string]$EntryID, [string]$StoreID, [string]$CheminDestination)
+    param([string]$CheminHtml, [string]$CheminPdfDest)
 
-    $outlook = $null; $namespace = $null; $mail = $null
-    try {
-        $outlook   = New-Object -ComObject Outlook.Application
-        $namespace = $outlook.GetNamespace("MAPI")
-        $mail      = $namespace.GetItemFromID($EntryID, $StoreID)
+    $edgeCandidates = @(
+        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+    )
+    $edge = $edgeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $edge) { throw "Microsoft Edge introuvable pour la conversion HTML vers PDF." }
 
-        foreach ($pj in $mail.Attachments) {
-            if ($pj.FileName -match '\.pdf$') {
-                $pj.SaveAsFile($CheminDestination)
-                return $true
-            }
-        }
-        return $false
-    } catch {
-        Write-Log "WARN  Impossible de recuperer le PDF original : $($_.Exception.Message)"
-        return $false
-    } finally {
-        if ($mail)      { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail)      | Out-Null } catch {} }
-        if ($namespace) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($namespace) | Out-Null } catch {} }
-        if ($outlook)   { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook)   | Out-Null } catch {} }
-        [System.GC]::Collect()
+    if (Test-Path $CheminPdfDest) { Remove-Item $CheminPdfDest -Force -ErrorAction SilentlyContinue }
+
+    $uriFichier = "file:///" + ($CheminHtml -replace '\\', '/')
+    $argsList = @(
+        "--headless",
+        "--disable-gpu",
+        "--no-sandbox",
+        "--print-to-pdf=`"$CheminPdfDest`"",
+        "--no-pdf-header-footer",
+        "`"$uriFichier`""
+    )
+    $proc = Start-Process -FilePath $edge -ArgumentList $argsList -Wait -PassThru -WindowStyle Hidden
+
+    # Edge headless peut prendre un instant a finir d'ecrire le fichier
+    $attente = 0
+    while (-not (Test-Path $CheminPdfDest) -and $attente -lt 10) { Start-Sleep -Milliseconds 500; $attente++ }
+
+    if (-not (Test-Path $CheminPdfDest)) {
+        throw "Echec de la generation PDF (code de sortie Edge: $($proc.ExitCode))."
     }
 }
 
-function New-PDFAnnote {
+function New-HtmlBonCommandeRevise {
     <#
-    Prend le PDF SAP original et annote les lignes modifiees en rouge.
-    Pour chaque article avec ecart de prix ou de quantite, ajoute un tampon
-    rouge dans la marge droite avec les nouvelles valeurs.
-    Utilise iTextSharp 5.x.
+    Construit le HTML du bon de commande revise a partir des donnees deja
+    en main dans Firebase (entete + articles captures lors de la comparaison
+    initiale) -- ne touche jamais a SAP ni au PDF original. Reproduit la
+    mise en page du vrai gabarit Gromec (logo, disposition), avec un bandeau
+    "revise" et les lignes modifiees surlignees en jaune.
     #>
-    param([string]$CheminPDFSource, [string]$CheminPDFDest, [array]$Articles)
+    param([object]$Entree, [string]$CheminSortie)
 
-    $iTextDLL      = "U:\GromecOutlook\lib\itextsharp\lib\itextsharp.dll"
-    $bouncyCastleDLL = "U:\GromecOutlook\lib\itextsharp\lib\BouncyCastle.Crypto.dll"
-    Add-Type -Path $bouncyCastleDLL
-    Add-Type -Path $iTextDLL
+    $entete = $Entree.entete
+    if ($null -eq $entete) { $entete = @{ } }
 
-    $reader  = New-Object iTextSharp.text.pdf.PdfReader($CheminPDFSource)
-    $stamper = New-Object iTextSharp.text.pdf.PdfStamper($reader, [System.IO.File]::Create($CheminPDFDest))
-
-    try {
-        $pageWidth  = $reader.GetPageSize(1).Width
-        $pageHeight = $reader.GetPageSize(1).Height
-
-        # Police et couleurs
-        $fontRouge  = [iTextSharp.text.pdf.BaseFont]::CreateFont([iTextSharp.text.pdf.BaseFont]::HELVETICA_BOLD, [iTextSharp.text.pdf.BaseFont]::CP1252, $false)
-        $rouge      = [iTextSharp.text.BaseColor]::RED
-        $blanc      = [iTextSharp.text.BaseColor]::WHITE
-        $jauneLight = New-Object iTextSharp.text.BaseColor(255, 255, 180)
-
-        # Position Y de depart du tableau articles (approximation depuis le bas de page)
-        # Le PDF SAP place les lignes articles a environ 55-75% de la hauteur de page
-        # On positionne les annotations en fonction du numero de ligne SAP
-        $yBase      = $pageHeight * 0.62   # Y du haut du tableau articles (approx)
-        $hautLigne  = 18.5                  # hauteur approximative d'une ligne en points
-
-        $cb = $stamper.GetOverContent(1)
-
-        # Banniere REVISION en haut du document
-        $cb.SetColorFill($jauneLight)
-        $cb.Rectangle(30, $pageHeight - 55, $pageWidth - 60, 18)
-        $cb.Fill()
-        $cb.SetColorFill($rouge)
-        $cb.BeginText()
-        $cb.SetFontAndSize($fontRouge, 9)
-        $cb.ShowTextAligned([iTextSharp.text.Element]::ALIGN_CENTER, "** BON DE COMMANDE REVISE -- PRIX ET/OU QUANTITES MIS A JOUR **", $pageWidth / 2, $pageHeight - 46, 0)
-        $cb.EndText()
-
-        # Annotations par ligne modifiee
-        $ligneNum = 0
-        foreach ($a in $Articles) {
-            $ligneNum++
-            $prixSap = [double]$a.sapPrix
-            $prixPdf = if ($a.pdfPrix -and [double]$a.pdfPrix -gt 0) { [double]$a.pdfPrix } else { $prixSap }
-            $qtySap  = [int]$a.sapQty
-            $qtyPdf  = if ($a.pdfQty  -and [int]$a.pdfQty    -gt 0) { [int]$a.pdfQty    } else { $qtySap  }
-
-            $prixModif = [math]::Abs($prixPdf - $prixSap) -gt 0.001
-            $qtyModif  = $qtyPdf -ne $qtySap
-
-            if (-not $prixModif -and -not $qtyModif) { continue }
-
-            $yLigne = $yBase - ($ligneNum - 1) * $hautLigne
-
-            # Rectangle rose translucide sur la ligne
-            $cb.SaveState()
-            $couleurLigne = New-Object iTextSharp.text.BaseColor(255, 200, 200)
-            $cb.SetColorFill($couleurLigne)
-            $cb.Rectangle(25, $yLigne - 3, $pageWidth - 50, $hautLigne)
-            $cb.Fill()
-            $cb.RestoreState()
-
-            # Texte annotation a droite
-            $annotation = ""
-            if ($prixModif) { $annotation += "Prix: $([math]::Round($prixSap,2))$ -> $([math]::Round($prixPdf,2))$  " }
-            if ($qtyModif)  { $annotation += "Qte: $qtySap -> $qtyPdf" }
-
-            $cb.SetColorFill($rouge)
-            $cb.BeginText()
-            $cb.SetFontAndSize($fontRouge, 7.5)
-            $cb.ShowTextAligned([iTextSharp.text.Element]::ALIGN_RIGHT, $annotation.Trim(), $pageWidth - 30, $yLigne + 3, 0)
-            $cb.EndText()
-        }
-
-    } finally {
-        $stamper.Close()
-        $reader.Close()
+    $logoBase64 = ""
+    if (Test-Path $Logo_Gromec) {
+        try { $logoBase64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($Logo_Gromec)) } catch {}
     }
+
+    $devise = if ($Entree.devise) { $Entree.devise } else { "CAD" }
+
+    $lignesHtml = ""
+    $i = 0
+    $sousTotal = 0.0
+    $articlesTries = @($Entree.articles | Sort-Object { [int]$_.sapLigne })
+    foreach ($a in $articlesTries) {
+        $i++
+        $prixSap = [double]$a.sapPrix
+        $prixConfirme = if ($a.pdfPrix -and [double]$a.pdfPrix -gt 0) { [double]$a.pdfPrix } else { $prixSap }
+        $qteSap = [int]$a.sapQty
+        $qteConfirmee = if ($a.pdfQty -and [int]$a.pdfQty -gt 0) { [int]$a.pdfQty } else { $qteSap }
+        $total = [math]::Round($prixConfirme * $qteConfirmee, 2)
+        $sousTotal += $total
+
+        $modifie = ([math]::Abs($prixConfirme - $prixSap) -gt 0.001) -or ($qteConfirmee -ne $qteSap)
+        $classe = if ($modifie) { "alt modifie" } elseif ($i % 2 -eq 0) { "alt" } else { "" }
+
+        $lignesHtml += "<tr class=`"$classe`"><td>$i</td><td>$($a.sapArticle)</td><td>$($a.sapCode)</td><td>$($a.sapDesc)</td><td class=`"num`">$("{0:N2}" -f $qteConfirmee)</td><td class=`"num`">$("{0:N2}" -f $prixConfirme) `$</td><td class=`"num`">$("{0:N2}" -f $total) `$</td></tr>`n"
+    }
+
+    $tps = [math]::Round($sousTotal * 0.05, 2)
+    $tvq = [math]::Round($sousTotal * 0.09975, 2)
+    $totalFinal = [math]::Round($sousTotal + $tps + $tvq, 2)
+    $attention = if ($entete.fournisseurAttention) { "À L'ATTENTION DE: $($entete.fournisseurAttention)" } else { "" }
+
+    $html = @"
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  @page { size: 612px 792px; margin: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; margin: 0; padding: 36px 42px; width: 528px; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .logo { height: 46px; }
+  .titre { font-size: 26px; color: #444; font-weight: normal; text-align: right; }
+  .infobox { text-align: right; font-size: 11px; margin-top: 6px; }
+  .infobox table { margin-left: auto; border-collapse: collapse; }
+  .infobox td { padding: 1px 0; }
+  .infobox td.lbl { font-weight: bold; padding-right: 10px; }
+  .infobox td.val.bc { font-size: 15px; font-weight: bold; }
+  .adr { font-size: 11px; margin-top: 6px; line-height: 1.4; }
+  .cols { display: flex; justify-content: space-between; margin-top: 18px; }
+  .col { width: 48%; }
+  .col-hd { display:flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 3px; margin-bottom: 6px; font-weight: bold; }
+  table.items { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 10.5px; }
+  table.items th { text-align: left; border-bottom: 1px solid #333; padding: 6px 4px; font-size: 10.5px; }
+  table.items th.num { text-align: right; }
+  table.items td { padding: 8px 4px; vertical-align: top; }
+  table.items td.num { text-align: right; }
+  table.items tr.alt { background: #f0f0f0; }
+  .modifie { background: #fff3b0 !important; font-weight: bold; }
+  .totaux { margin-top: 26px; display:flex; justify-content: flex-end; }
+  .totaux table { border-collapse: collapse; font-size: 11px; }
+  .totaux td { padding: 2px 6px; text-align: right; }
+  .totaux tr.total td { font-weight: bold; border-top: 1px solid #333; padding-top: 4px; }
+  .bandeau-revise { background:#fdecea; border:1px solid #e57373; color:#b23b3b; font-weight:bold; padding:8px 12px; margin-bottom:16px; font-size:12px; text-align:center; border-radius:4px; }
+  .note { margin-top: 40px; display:flex; gap: 16px; border-top: 1px solid #999; padding-top: 8px; }
+  .signature { font-size: 10px; text-align:center; width: 140px; }
+  .signature img { max-height: 40px; }
+  .note-txt { font-size: 9.5px; text-align: justify; flex:1; }
+  .footer { margin-top: 20px; font-size: 10px; display:flex; justify-content: space-between; }
+</style></head>
+<body>
+  <div class="bandeau-revise">BON DE COMMANDE RÉVISÉ — prix mis à jour suite à confirmation fournisseur</div>
+  <div class="top">
+    <img class="logo" src="data:image/png;base64,$logoBase64">
+    <div class="titre">Bon de commande</div>
+  </div>
+  <div class="top" style="margin-top:4px;">
+    <div class="adr">
+      1911 Rue des Outardes<br>Chicoutimi QC,G7K 1C3<br>Tél: 418-549-5961<br>Email: gromec@gromec.com
+    </div>
+    <div class="infobox">
+      <table>
+        <tr><td class="lbl">No. bon de commande:</td><td class="val bc">$($Entree.numeroCommande)</td></tr>
+        <tr><td class="lbl">Date du document:</td><td class="val">$($entete.dateDocument)</td></tr>
+        <tr><td class="lbl">Conditions de paiement:</td><td class="val">$($entete.conditionsPaiement)</td></tr>
+        <tr><td class="lbl">Date de livraison:</td><td class="val">$($entete.dateLivraison)</td></tr>
+        <tr><td class="lbl">Acheteur:</td><td class="val">Daniel Thibault</td></tr>
+        <tr><td class="lbl">No Compte :</td><td class="val">$($entete.noCompteAchete)</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="cols">
+    <div class="col">
+      <div class="col-hd"><span>Acheté à :</span><span>$($entete.noCompteAchete)</span></div>
+      $($entete.fournisseurNom)<br>
+      $($entete.fournisseurAdresse1)<br>
+      $($entete.fournisseurAdresse2)<br>
+      $($entete.fournisseurPays)<br>
+      TÉL.: $($entete.fournisseurTel)<br>
+      $attention
+    </div>
+    <div class="col">
+      <div class="col-hd"><span>Expédié à :</span></div>
+      1911 Rue des Outardes<br>Chicoutimi QC G7K 1C3<br>CANADA
+    </div>
+  </div>
+  <table class="items">
+    <thead><tr><th>#</th><th># Produit</th><th># Code manuf.</th><th>Description.</th><th class="num">Qté</th><th class="num">Prix</th><th class="num">Total</th></tr></thead>
+    <tbody>
+      $lignesHtml
+    </tbody>
+  </table>
+  <div class="totaux">
+    <table>
+      <tr><td>Sous-Total</td><td>$("{0:N2}" -f $sousTotal) `$</td></tr>
+      <tr><td>TPS 5.000</td><td>$("{0:N2}" -f $tps) `$</td></tr>
+      <tr><td>TVQ 9.975</td><td>$("{0:N2}" -f $tvq) `$</td></tr>
+      <tr class="total"><td>Total $devise</td><td>$("{0:N2}" -f $totalFinal) `$</td></tr>
+    </table>
+  </div>
+  <div class="note">
+    <div class="signature">
+      <div style="height:34px;"></div>
+      <div style="border-top:1px solid #333; padding-top:2px;">Signataire autorisé</div>
+    </div>
+    <div class="note-txt">
+      NOTE AU FOURNISSEUR: S.V.P. NOUS CONFIRMER LES PRIX ET DÉLAIS DE LIVRAISON POUR CHAQUE LIGNE DE COMMANDE AU: DTHIBAULT@GROMEC.COM. TOUTE MODIFICATION DE PRIX DEVRA ÊTRE COMMUNIQUÉE DANS LES 24 HEURES. SANS QUOI LE PAIEMENT SERA FAIT SELON LES PRIX DE NOTRE COMMANDE.
+    </div>
+  </div>
+  <div class="footer"><span>USAGER: Daniel Thibault</span><span>Page: 1 de 1</span></div>
+</body></html>
+"@
+
+    [System.IO.File]::WriteAllText($CheminSortie, $html, [System.Text.Encoding]::UTF8)
 }
 
 function New-BrouillonOutlook {
@@ -610,7 +675,7 @@ function New-BrouillonOutlook {
 
         $brouillon = $mailOrig.ReplyAll()
         $brouillon.Subject  = "Bon de commande revise -- BC $bc"
-        $brouillon.HTMLBody = "<html><body><p>Bonjour,</p><p>Veuillez trouver ci-joint notre bon de commande revise (BC $bc).</p><p>##POLITESSE##</p></body></html>"
+        $brouillon.HTMLBody = "<html><body><p>Bonjour,</p><p>Veuillez trouver ci-joint notre bon de commande revise (BC $bc).</p><p>Merci, bonne journee</p></body></html>"
         if ($CheminPDF -and (Test-Path $CheminPDF)) {
             $brouillon.Attachments.Add($CheminPDF) | Out-Null
         }
@@ -634,39 +699,20 @@ function Invoke-EnvoyerConfirmationFournisseur {
     $bc = $Entree.numeroCommande
     Write-Log "INFO  Confirmation fournisseur BC $bc (cle: $Cle)." -Cle $Cle -BC $bc
 
+    $cheminHtml = Join-Path $Temp_Dossier "bc_revise_$bc.html"
+    $cheminPdf  = Join-Path $Temp_Dossier "bc_revise_$bc.pdf"
+
     try {
-        Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction SilentlyContinue
-        Add-Type -AssemblyName System.Windows.Forms  -ErrorAction SilentlyContinue
+        if (-not (Test-Path $Temp_Dossier)) { New-Item -ItemType Directory -Path $Temp_Dossier -Force | Out-Null }
 
-        # ── Etape 1 : Ouvrir le BC dans SAP via SendKeys ─────────────────────
-        $sap = Get-Process | Where-Object { $_.MainWindowTitle -like "*SAP Business One*" } | Select-Object -First 1
-        if ($sap) {
-            [Microsoft.VisualBasic.Interaction]::AppActivate($sap.Id)
-            Start-Sleep -Milliseconds 500
-            [System.Windows.Forms.SendKeys]::SendWait("{F9}")
-            Start-Sleep -Seconds 4
-            [System.Windows.Forms.SendKeys]::SendWait("^f")
-            Start-Sleep -Milliseconds 800
-            [System.Windows.Forms.SendKeys]::SendWait($bc)
-            Start-Sleep -Milliseconds 500
-            [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-            Start-Sleep -Seconds 2
-            Write-Log "INFO  BC $bc ouvert dans SAP."
-        } else {
-            Write-Log "WARN  SAP Business One non trouve -- etape SAP ignoree."
-        }
+        # Genere le PDF revise nous-memes a partir des donnees deja en main
+        # (entete + articles captures lors de la comparaison) -- aucune
+        # interaction avec SAP, aucun SendKeys, ne bloque jamais le poste.
+        New-HtmlBonCommandeRevise -Entree $Entree -CheminSortie $cheminHtml
+        Convert-HtmlVersPDF -CheminHtml $cheminHtml -CheminPdfDest $cheminPdf
+        Write-Log "INFO  PDF revise genere pour BC $bc."
 
-        # ── Etape 2 : Ouvrir le courriel en Repondre a tous dans Outlook ─────
-        $outlook  = New-Object -ComObject Outlook.Application
-        $namespace = $outlook.GetNamespace("MAPI")
-        $mailOrig = $namespace.GetItemFromID($Entree.entryID, $Entree.storeID)
-        if ($mailOrig) {
-            $reponse = $mailOrig.ReplyAll()
-            $reponse.Display()
-            Write-Log "INFO  Repondre a tous ouvert dans Outlook pour BC $bc."
-        } else {
-            Write-Log "WARN  Courriel original introuvable dans Outlook."
-        }
+        New-BrouillonOutlook -Entree $Entree -CheminPDF $cheminPdf
 
         Set-StatutConfirmation -Cle $Cle -Statut 'envoye'
         Write-Log "INFO  BC $bc -- confirmation fournisseur preparee avec succes."
@@ -674,6 +720,9 @@ function Invoke-EnvoyerConfirmationFournisseur {
     } catch {
         Write-Log "ERREUR confirmation fournisseur BC $bc : $($_.Exception.Message)"
         Set-StatutConfirmation -Cle $Cle -Statut 'erreur' -Erreur $_.Exception.Message
+    } finally {
+        Remove-Item $cheminHtml -Force -ErrorAction SilentlyContinue
+        Remove-Item $cheminPdf -Force -ErrorAction SilentlyContinue
     }
 }
 

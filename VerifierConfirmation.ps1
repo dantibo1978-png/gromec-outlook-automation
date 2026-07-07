@@ -181,7 +181,7 @@ function Set-FirebaseValue {
 }
 
 function Write-FirebaseHistorique {
-    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande, [string]$EntryID = "", [string]$StoreID = "", [string]$HistoriqueId = "")
+    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande, [string]$EntryID = "", [string]$StoreID = "", [string]$HistoriqueId = "", $Entete = $null)
 
     if ($Resultats.Count -eq 0) { return }
 
@@ -224,6 +224,7 @@ function Write-FirebaseHistorique {
         resolu       = $false
         syncedResolu = $false
     }
+    if ($null -ne $Entete) { $entree["entete"] = $Entete }
 
     try {
         if ($HistoriqueId -ne "") {
@@ -945,13 +946,13 @@ function Get-ItemsCommandeGromec {
             if ($age.TotalDays -lt 30) {
                 try {
                     $cached = Get-Content $fichierCache -Raw | ConvertFrom-Json
-                    $items = @($cached | ForEach-Object {
+                    $items = @($cached.Items | ForEach-Object {
                         [PSCustomObject]@{
                             LineNbr = [int]$_.LineNbr; Article = $_.Article; CodeManuf = $_.CodeManuf
                             Desc = $_.Desc; Qty = [int]$_.Qty; Price = [double]$_.Price; RawLine = $_.RawLine
                         }
                     })
-                    return @{ Items = $items; Erreur = $null }
+                    return @{ Items = $items; Entete = $cached.Entete; Erreur = $null }
                 } catch {}
             }
         }
@@ -962,23 +963,55 @@ function Get-ItemsCommandeGromec {
 
     $prompt = @"
 Tu lis un bon de commande Gromec Inc. envoye a un fournisseur.
-Extrais chaque ligne article.
+Extrais chaque ligne article, ainsi que les informations d'entete du document.
 
-Format STRICT -- une ligne par article:
+Format STRICT -- une ligne ENTETE (une seule fois, en premier), puis une ligne LIGNE par article:
+ENTETE|DateDocument|ConditionsPaiement|DateLivraison|NoCompteAchete|FournisseurNom|FournisseurAdresse1|FournisseurAdresse2|FournisseurPays|FournisseurTel|FournisseurAttention
 LIGNE|1|NumArticleSAP|CodeManuf|Description|Quantite|PrixUnitaire
+
+Pour ENTETE:
+- DateDocument: date du document (ex: 7/7/2026)
+- ConditionsPaiement: conditions de paiement (ex: 2% 20 DU MOIS SUIVANT)
+- DateLivraison: date de livraison demandee
+- NoCompteAchete: numero de compte "Acheté à" (souvent format F0xxxxx)
+- FournisseurNom: nom du fournisseur (ligne "Acheté à")
+- FournisseurAdresse1: premiere ligne d'adresse (rue)
+- FournisseurAdresse2: ville, province, code postal sur une ligne
+- FournisseurPays: pays
+- FournisseurTel: telephone du fournisseur
+- FournisseurAttention: "A l'attention de" si present, sinon vide
+
+Pour LIGNE:
 - NumArticleSAP: numero SAP 10 chiffres (ex: 0001234567)
 - CodeManuf: code fabricant si present, sinon laisser vide
 - PrixUnitaire: prix unitaire 4 decimales
-- Rien d'autre que les lignes LIGNE|
+- Rien d'autre que les lignes ENTETE| et LIGNE|
 "@
 
     $reponse = Invoke-ClaudeDocument $b64 $prompt
     if ($reponse -like "ERREUR:*") { return @{ Erreur = $reponse } }
 
     $items = @()
+    $entete = @{}
     foreach ($ligne in ($reponse -split "`r`n|`n")) {
         $l = $ligne.Trim()
-        if ($l.StartsWith("LIGNE|")) {
+        if ($l.StartsWith("ENTETE|")) {
+            $champs = $l -split '\|'
+            if ($champs.Count -ge 11) {
+                $entete = @{
+                    dateDocument         = $champs[1].Trim()
+                    conditionsPaiement   = $champs[2].Trim()
+                    dateLivraison        = $champs[3].Trim()
+                    noCompteAchete       = $champs[4].Trim()
+                    fournisseurNom       = $champs[5].Trim()
+                    fournisseurAdresse1  = $champs[6].Trim()
+                    fournisseurAdresse2  = $champs[7].Trim()
+                    fournisseurPays      = $champs[8].Trim()
+                    fournisseurTel       = $champs[9].Trim()
+                    fournisseurAttention = $champs[10].Trim()
+                }
+            }
+        } elseif ($l.StartsWith("LIGNE|")) {
             $champs = $l -split '\|'
             if ($champs.Count -ge 7) {
                 $items += [PSCustomObject]@{
@@ -995,11 +1028,11 @@ LIGNE|1|NumArticleSAP|CodeManuf|Description|Quantite|PrixUnitaire
     }
     if ($NumeroBC -ne "" -and $items.Count -gt 0) {
         try {
-            $items | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $DossierCachePO "$NumeroBC.json") -Encoding UTF8
+            @{ Items = $items; Entete = $entete } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $DossierCachePO "$NumeroBC.json") -Encoding UTF8
         } catch {}
     }
 
-    return @{ Items = $items; Erreur = $null }
+    return @{ Items = $items; Entete = $entete; Erreur = $null }
 }
 
 # =====================================================================
@@ -1658,6 +1691,7 @@ function Invoke-TraiterComparaison {
 
         $resSAP = Get-ItemsCommandeGromec $cheminCommande $numeroBC
         $itemsSAP = @($resSAP.Items)
+        $enteteSAP = $resSAP.Entete
         Remove-Item $cheminCommande -Force -ErrorAction SilentlyContinue
 
         if ($itemsSAP.Count -eq 0) {
@@ -1789,6 +1823,7 @@ function Invoke-TraiterComparaison {
 
         $resSAP = Get-ItemsCommandeGromec $cheminCommande $numeroBC
         $itemsSAP = @($resSAP.Items)
+        $enteteSAP = $resSAP.Entete
 
         Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
         Remove-Item $cheminCommande -Force -ErrorAction SilentlyContinue
@@ -1826,7 +1861,7 @@ function Invoke-TraiterComparaison {
     Set-CategorieConfirmation $MailConfirmation $estOK
     Write-JournalEntry $expediteur $(if ($estOK) { "OK" } else { "ECART" }) "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves"
     Write-RapportExcel $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC
-    Write-FirebaseHistorique $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId
+    Write-FirebaseHistorique $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP
 }
 
 # =====================================================================
