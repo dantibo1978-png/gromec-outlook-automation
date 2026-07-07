@@ -722,7 +722,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-07-07 14:30";
+const DERNIERE_MAJ_CODE = "2026-07-07 14:40";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -758,7 +758,14 @@ async function chargerDonnees(){
         donnees.push({ id: cle, ...json[cle] });
       }
     }
-    donnees.sort((a,b) => new Date(b.date) - new Date(a.date));
+    donnees.sort((a,b) => {
+      // Une date manquante/invalide donne NaN, ce qui casse le tri de TOUT
+      // le tableau (pas seulement de cette entree) -- on la traite comme
+      // la plus ancienne possible pour garder un ordre stable.
+      const ta = new Date(a.date).getTime();
+      const tb = new Date(b.date).getTime();
+      return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+    });
   }catch(e){
     console.error('Erreur de chargement Firebase', e);
   }
