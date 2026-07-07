@@ -722,7 +722,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-07-06 17:05";
+const DERNIERE_MAJ_CODE = "2026-07-06 17:20";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1104,6 +1104,16 @@ function rendreFiche(d){
 async function supprimerFiche(id){
   if (!confirm('Effacer cette entrée définitivement ?')) return;
   try {
+    const entree = donnees.find(d => d.id === id);
+    if (entree && entree.entryID) {
+      // Signale a VerifierConfirmation.ps1 de retirer la categorie Outlook
+      // (code de couleur) du courriel correspondant au prochain passage
+      await fetch(FIREBASE_URL + 'gromec_vba/categoriesAEffacer/' + id + '.json', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ entryID: entree.entryID, storeID: entree.storeID || '' })
+      });
+    }
     await fetch(FIREBASE_URL + 'gromec_vba/historique/' + id + '.json', { method: 'DELETE' });
     donnees = donnees.filter(d => d.id !== id);
     rendreTout();

@@ -294,6 +294,50 @@ function Sync-ResolusVersOutlook {
     }
 }
 
+function Clear-CategorieConfirmation {
+    param($MailItem)
+    $catOK = "Confirmation OK"
+    $catEcart = "Confirmation - Ecart"
+    $cats = $MailItem.Categories
+    if ([string]::IsNullOrEmpty($cats)) { return }
+    $cats = $cats -replace [regex]::Escape($catOK), "" -replace [regex]::Escape($catEcart), ""
+    $cats = ($cats -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }) -join ", "
+    $MailItem.Categories = $cats
+    $MailItem.Save()
+}
+
+function Sync-SuppressionsVersOutlook {
+    param($Namespace)
+
+    # Quand une fiche est effacee du dashboard, index.html pousse une entree
+    # dans gromec_vba/categoriesAEffacer avec l'entryID/storeID du courriel
+    # concerne -- on retire ici la categorie Outlook (Confirmation OK /
+    # Confirmation - Ecart) pour que le code de couleur disparaisse aussi.
+    try {
+        $suppressions = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/categoriesAEffacer.json" -Method Get -TimeoutSec 15
+    } catch {
+        return
+    }
+    if ($null -eq $suppressions -or $suppressions -eq "null") { return }
+
+    foreach ($cle in $suppressions.PSObject.Properties.Name) {
+        $item = $suppressions.$cle
+        $entryID = $item.entryID
+        $storeID = $item.storeID
+
+        if (-not [string]::IsNullOrEmpty($entryID)) {
+            try {
+                $mail = $Namespace.GetItemFromID($entryID, $storeID)
+                if ($null -ne $mail) { Clear-CategorieConfirmation $mail }
+            } catch {}
+        }
+
+        try {
+            Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/categoriesAEffacer/$cle.json" -Method Delete -TimeoutSec 10 | Out-Null
+        } catch {}
+    }
+}
+
 function Sync-ReessaisManuels {
     param($Namespace)
 
@@ -2163,6 +2207,10 @@ try {
     # dashboard web depuis le dernier passage du script -- piggyback sur
     # chaque execution, qu'il s'agisse d'un nouveau courriel ou d'un test manuel
     Sync-ResolusVersOutlook $namespace
+
+    # Retire la categorie Outlook (code de couleur) des courriels dont la
+    # fiche a ete effacee du dashboard
+    Sync-SuppressionsVersOutlook $namespace
 
     # Relance les comparaisons "non appariees" pour lesquelles un numero de BC
     # a ete fourni manuellement depuis le dashboard
