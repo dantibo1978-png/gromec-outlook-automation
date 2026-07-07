@@ -1095,7 +1095,7 @@ function Find-CourrielEnvoyeCorrespondant {
     param($Namespace, $MailConfirmation, [string]$NumeroBC)
 
     $limiteDate = (Get-Date).AddDays(-$JoursRecherche)
-    $adresseFournisseur = $MailConfirmation.SenderEmailAddress
+    $adresseFournisseur = (Get-AdresseSMTP $MailConfirmation)
 
     # Construire la liste de tous les dossiers Envoyes (tous comptes)
     $dossiersSent = @()
@@ -1464,7 +1464,7 @@ function Write-FirebaseEchec {
 
     $entree = @{
         date            = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
-        fournisseur     = if ($NomFournisseurDetecte -ne "") { $NomFournisseurDetecte } else { $MailConfirmation.SenderEmailAddress }
+        fournisseur     = if ($NomFournisseurDetecte -ne "") { $NomFournisseurDetecte } else { (Get-AdresseSMTP $MailConfirmation) }
         sujet           = $MailConfirmation.Subject
         statut          = "NON_APPARIE"
         raisonEchec     = $RaisonEchec
@@ -1503,7 +1503,7 @@ function Invoke-TraiterComparaison {
     param($Namespace, $MailConfirmation, [string]$NumeroBCOverride = "", [string]$HistoriqueId = "", [Nullable[bool]]$VerifierCorps = $null)
 
     $sujet = $MailConfirmation.Subject
-    $expediteur = $MailConfirmation.SenderEmailAddress
+    $expediteur = (Get-AdresseSMTP $MailConfirmation)
 
     # Si l'appelant n'a pas precise explicitement le mode (ex: re-tentative
     # manuelle depuis le dashboard via Sync-ReessaisManuels), on se fie au
@@ -1742,6 +1742,24 @@ function Invoke-TraiterComparaison {
 # FONCTION - Traitement d'un nouveau courriel (classification + apprentissage)
 # =====================================================================
 
+function Get-AdresseSMTP {
+    param($MailItem)
+    # Pour les courriels internes (meme organisation Exchange), Outlook
+    # retourne souvent SenderEmailAddress au format Exchange legacyDN
+    # (/O=EXCHANGELABS/OU=.../CN=RECIPIENTS/CN=xxxxx) plutot que l'adresse
+    # SMTP normale -- ce qui fait echouer la comparaison "*@gromec.com" et
+    # laisse passer des courriels internes dans l'analyse. On resout ici
+    # la vraie adresse SMTP via PropertyAccessor quand le type est "EX".
+    try {
+        if ($MailItem.SenderEmailType -eq "EX") {
+            $PR_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x39FE001E"
+            $smtp = $MailItem.Sender.PropertyAccessor.GetProperty($PR_SMTP_ADDRESS)
+            if (-not [string]::IsNullOrEmpty($smtp)) { return $smtp }
+        }
+    } catch {}
+    return $MailItem.SenderEmailAddress
+}
+
 function Test-DomaineExclu {
     param([string]$Adresse)
     # Toujours exclure les courriels internes Gromec
@@ -1771,7 +1789,7 @@ function Add-DomaineExclu {
 function Invoke-ClassifierCourriel {
     param($MailItem)
 
-    $adresseExp = $MailItem.SenderEmailAddress
+    $adresseExp = (Get-AdresseSMTP $MailItem)
 
     # Filtre rapide -- domaines exclus et @gromec.com
     if (Test-DomaineExclu $adresseExp) {
@@ -1882,7 +1900,7 @@ function Invoke-TraiterNouveauCourriel {
         }
     }
 
-    $adresseExp = $MailItem.SenderEmailAddress
+    $adresseExp = (Get-AdresseSMTP $MailItem)
     $seuilAuto  = 0.85
 
     # Filtre domaine exclu avant d'appeler Haiku
