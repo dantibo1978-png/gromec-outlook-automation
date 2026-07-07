@@ -493,6 +493,82 @@ function Invoke-ClaudeDocument {
     }
 }
 
+function Invoke-ClaudeMessageAvecImages {
+    <#
+    Comme Invoke-ClaudeMessage mais peut inclure des images (captures d'ecran
+    de prix collees dans le corps du courriel plutot que du texte, ex: OSB).
+    $Images est un tableau de @{ Base64 = "..."; MediaType = "image/png" }.
+    #>
+    param([string]$TextPrompt, [array]$Images)
+
+    $contenu = @()
+    foreach ($img in $Images) {
+        $contenu += @{
+            type   = "image"
+            source = @{ type = "base64"; media_type = $img.MediaType; data = $img.Base64 }
+        }
+    }
+    $contenu += @{ type = "text"; text = $TextPrompt }
+
+    $body = @{
+        model      = $ClaudeModel
+        max_tokens = 4096
+        messages   = @(@{ role = "user"; content = $contenu })
+    } | ConvertTo-Json -Depth 10
+
+    $headers = @{
+        "x-api-key"         = $ClaudeApiKey
+        "anthropic-version" = "2023-06-01"
+    }
+    $delai = 2
+    for ($tentative = 1; $tentative -le 3; $tentative++) {
+        try {
+            $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 120
+            return ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
+        } catch {
+            if ($tentative -eq 3) { return "ERREUR: $($_.Exception.Message)" }
+            Start-Sleep -Seconds $delai
+            $delai *= 2
+        }
+    }
+}
+
+function Get-ImagesCorpsCourriel {
+    <#
+    Recupere les images embarquees dans le corps d'un courriel (captures
+    d'ecran de prix, souvent collees directement plutot qu'ecrites en texte)
+    en excluant les logos/signatures (petits fichiers ou noms evocateurs).
+    Retourne max 3 images (les plus grosses) pour limiter le cout API.
+    #>
+    param($MailItem)
+
+    $candidates = @()
+    foreach ($piece in $MailItem.Attachments) {
+        $nom = $piece.FileName
+        if ($nom -notmatch '\.(png|jpg|jpeg|gif)$') { continue }
+        if ($nom -match '(?i)logo|signature|sig[-_]|icon') { continue }
+        if ($piece.Size -lt 5000) { continue }
+        $candidates += $piece
+    }
+
+    $candidates = $candidates | Sort-Object -Property Size -Descending | Select-Object -First 3
+
+    $images = @()
+    foreach ($piece in $candidates) {
+        try {
+            $chemin = Join-Path $env:TEMP "ps_img_$([guid]::NewGuid().ToString('N').Substring(0,8))_$($piece.FileName)"
+            $piece.SaveAsFile($chemin)
+            $b64 = ConvertTo-Base64File $chemin
+            Remove-Item $chemin -Force -ErrorAction SilentlyContinue
+            if ([string]::IsNullOrEmpty($b64)) { continue }
+            $ext = ([System.IO.Path]::GetExtension($piece.FileName)).TrimStart(".").ToLower()
+            $mediaType = if ($ext -eq "jpg") { "image/jpeg" } else { "image/$ext" }
+            $images += @{ Base64 = $b64; MediaType = $mediaType }
+        } catch {}
+    }
+    return $images
+}
+
 # =====================================================================
 # FONCTIONS - Apprentissage (CSV) -- meme format que la version VBA
 # =====================================================================
@@ -722,7 +798,7 @@ function Get-ItemsFournisseurDepuisCorps {
     # citation varie trop d'un client courriel a l'autre pour etre fiable,
     # et le dernier message est de toute facon celui qui contient la
     # reponse pertinente.
-    param([string]$CorpsMessage, [string]$Sujet)
+    param([string]$CorpsMessage, [string]$Sujet, [array]$Images = @())
 
     $dictInfo = Get-DictionnaireFournisseurs
 
@@ -793,7 +869,21 @@ Si le prix n'est pas mentionne pour une ligne, ecris 0 dans le champ PRIX.
 Si aucune contrainte de caisse/boite, ecris 0 dans le champ CAISSE.
 "@
 
-    $reponse = Invoke-ClaudeMessage "" $prompt
+    if ($Images.Count -gt 0) {
+        $prompt = @"
+ATTENTION -- IMAGE(S): certains fournisseurs collent une CAPTURE D'ECRAN des
+prix/quantites corriges directement dans le corps du courriel au lieu
+d'ecrire le texte (ex: OS&B). Regarde attentivement la ou les image(s)
+jointes ci-dessous -- c'est probablement la que se trouvent les vraies
+corrections, meme si le texte du message dit seulement "voir plus bas" ou
+"voir en piece jointe" sans autre detail.
+
+$prompt
+"@
+        $reponse = Invoke-ClaudeMessageAvecImages $prompt $Images
+    } else {
+        $reponse = Invoke-ClaudeMessage "" $prompt
+    }
     if ($reponse -like "ERREUR:*") { return @{ Erreur = $reponse } }
 
     $items = @()
@@ -1521,7 +1611,8 @@ function Invoke-TraiterComparaison {
         $corpsMessage = $MailConfirmation.Body
         if ($corpsMessage.Length -gt 4000) { $corpsMessage = $corpsMessage.Substring(0, 4000) }
 
-        $resFourn = Get-ItemsFournisseurDepuisCorps $corpsMessage $sujet
+        $imagesCorps = Get-ImagesCorpsCourriel $MailConfirmation
+        $resFourn = Get-ItemsFournisseurDepuisCorps $corpsMessage $sujet $imagesCorps
         if ($resFourn.Erreur) {
             Write-JournalEntry $expediteur "ERREUR_EXTRACTION_CORPS" $resFourn.Erreur
             Write-FirebaseEchec $MailConfirmation "ERREUR_EXTRACTION_CORPS" "" "" $HistoriqueId
