@@ -727,7 +727,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-07-07 15:00";
+const DERNIERE_MAJ_CODE = "2026-07-07 15:20";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1523,13 +1523,47 @@ setInterval(chargerLogs, 20000);
     });
   });
 
-  pasteZone.addEventListener('input', () => {
-    const texte = pasteZone.value;
-    fileContent = texte;
-    fileName = 'colle_dashboard_' + Date.now() + '.txt';
+  function transformerTableauSAPversDTW(texte){
+    // Detecte un tableau copie depuis SAP (colonnes "Numero d'article" /
+    // "Prix coutant") et le convertit vers le format DTW attendu par
+    // UpdatePriceList_PROD.xml (LineNum=1, PriceList=2 = prix direct).
     const lignes = texte.split(/\r?\n/).filter(l => l.trim() !== '');
+    if (lignes.length < 2) return null;
+    const entetes = lignes[0].split('\t').map(h => h.trim());
+    const idxArticle = entetes.findIndex(h => h === "Numéro d'article");
+    const idxPrix = entetes.findIndex(h => h === 'Prix coûtant');
+    if (idxArticle === -1 || idxPrix === -1) return null;
+
+    const sortie = [
+      'ParentKey\tLineNum\tPriceList\tPrice\tCurrency\tBasePriceList\tFactor\tManual\tAutoUpdate',
+      'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
+    ];
+    for (let i = 1; i < lignes.length; i++){
+      const champs = lignes[i].split('\t');
+      const article = (champs[idxArticle] || '').trim();
+      let prixTxt = (champs[idxPrix] || '').trim().replace(/[^0-9.,\-]/g, '').replace(',', '.');
+      if (!article || !prixTxt) continue;
+      const prix = parseFloat(prixTxt);
+      if (isNaN(prix)) continue;
+      sortie.push(`${article}\t1\t2\t${prix}\t\t\t\t\t`);
+    }
+    return sortie.length > 2 ? sortie.join('\r\n') : null;
+  }
+
+  pasteZone.addEventListener('input', () => {
+    const texteBrut = pasteZone.value;
+    const transforme = transformerTableauSAPversDTW(texteBrut);
+    fileContent = transforme || texteBrut;
+    fileName = 'colle_dashboard_' + Date.now() + '.txt';
+    const lignes = fileContent.split(/\r?\n/).filter(l => l.trim() !== '');
+    const nbArticles = Math.max(0, lignes.length - 2);
     btnSend.disabled = lignes.length < 3;
     btnSend.style.opacity = btnSend.disabled ? '0.5' : '1';
+    status.style.display = texteBrut.trim() ? 'block' : 'none';
+    status.style.color = 'var(--muted)';
+    status.textContent = transforme
+      ? ('Tableau SAP detecte -- ' + nbArticles + ' article(s) converti(s) vers le format DTW (Liste 02).')
+      : (texteBrut.trim() ? nbArticles + ' ligne(s) -- format non reconnu, envoye tel quel.' : '');
   });
 
   btnCancel.addEventListener('click', () => { modal.style.display = 'none'; });
