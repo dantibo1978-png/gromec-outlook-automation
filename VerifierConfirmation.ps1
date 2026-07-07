@@ -982,7 +982,11 @@ Pour ENTETE:
 - FournisseurAttention: "A l'attention de" si present, sinon vide
 
 Pour LIGNE:
-- NumArticleSAP: numero SAP 10 chiffres (ex: 0001234567)
+- NumArticleSAP: numero d'article exactement comme imprime sur le document
+  (colonne "# Produit" ou "Item no."), SANS ajouter de zeros au debut --
+  copie exactement les caracteres imprimes, qu'il soit numerique ou
+  alphanumerique (ex: "PT6171190" reste "PT6171190", "203050" reste
+  "203050", ne jamais le transformer en "0000203050")
 - CodeManuf: code fabricant si present, sinon laisser vide
 - PrixUnitaire: prix unitaire 4 decimales
 - Rien d'autre que les lignes ENTETE| et LIGNE|

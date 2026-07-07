@@ -551,7 +551,8 @@ function New-HtmlBonCommandeRevise {
         $modifie = ([math]::Abs($prixConfirme - $prixSap) -gt 0.001) -or ($qteConfirmee -ne $qteSap)
         $classe = if ($modifie) { "alt modifie" } elseif ($i % 2 -eq 0) { "alt" } else { "" }
 
-        $lignesHtml += "<tr class=`"$classe`"><td>$i</td><td>$($a.sapArticle)</td><td>$($a.sapCode)</td><td>$($a.sapDesc)</td><td class=`"num`">$("{0:N2}" -f $qteConfirmee)</td><td class=`"num`">$("{0:N2}" -f $prixConfirme) `$</td><td class=`"num`">$("{0:N2}" -f $total) `$</td></tr>`n"
+        $articleAffiche = $a.sapArticle -replace '^0+(?=.)', ''
+        $lignesHtml += "<tr class=`"$classe`"><td>$i</td><td>$articleAffiche</td><td>$($a.sapCode)</td><td>$($a.sapDesc)</td><td class=`"num`">$("{0:N2}" -f $qteConfirmee)</td><td class=`"num`">$("{0:N2}" -f $prixConfirme)&nbsp;`$</td><td class=`"num`">$("{0:N2}" -f $total)&nbsp;`$</td></tr>`n"
     }
 
     $tps = [math]::Round($sousTotal * 0.05, 2)
@@ -580,7 +581,7 @@ function New-HtmlBonCommandeRevise {
   table.items th { text-align: left; border-bottom: 1px solid #333; padding: 6px 4px; font-size: 10.5px; }
   table.items th.num { text-align: right; }
   table.items td { padding: 8px 4px; vertical-align: top; }
-  table.items td.num { text-align: right; }
+  table.items td.num { text-align: right; white-space: nowrap; }
   table.items tr.alt { background: #f0f0f0; }
   .modifie { background: #fff3b0 !important; font-weight: bold; }
   .totaux { margin-top: 26px; display:flex; justify-content: flex-end; }
