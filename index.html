@@ -404,6 +404,32 @@
     accent-color:var(--ok);
     cursor:pointer;
   }
+  .totaux-verif{
+    background:var(--panel-2);
+    border:1px solid var(--rule);
+    border-radius:7px;
+    padding:10px 14px;
+    margin-bottom:14px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+  }
+  .totaux-verif > div{
+    display:flex;
+    justify-content:space-between;
+    padding:3px 0;
+    color:var(--muted);
+  }
+  .totaux-verif > div:last-child{
+    border-top:1px solid var(--rule);
+    margin-top:4px;
+    padding-top:6px;
+    color:var(--text);
+    font-weight:600;
+  }
+  .totaux-verif .ecart-rouge,
+  .totaux-verif > div.ecart-rouge{
+    color:var(--ecart);
+  }
   .resolu-inline{
     margin-bottom:0;
     padding:5px 10px;
@@ -727,7 +753,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-07-07 17:00";
+const DERNIERE_MAJ_CODE = "2026-07-08 11:55";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1060,6 +1086,24 @@ function rendreFiche(d){
 
   const articlesJson = JSON.stringify(articles).replace(/"/g,'&quot;');
 
+  // ── Comparaison Total SAP vs Total Fournisseur (verification rapide) ────
+  let totalSap = 0, totalFourn = 0;
+  articles.forEach(a => {
+    const qSap = a.sapQty ?? 0;
+    const qFourn = (a.pdfQty && a.pdfQty > 0) ? a.pdfQty : qSap;
+    const pSap = a.sapPrix ?? 0;
+    const pFourn = (a.pdfPrix && a.pdfPrix > 0) ? a.pdfPrix : pSap;
+    totalSap += qSap * pSap;
+    totalFourn += qFourn * pFourn;
+  });
+  const ecartTotal = totalFourn - totalSap;
+  const totauxHtml = `
+    <div class="totaux-verif">
+      <div><span>Total SAP (original)</span><span>${fmtPrix(totalSap, d.devise)}</span></div>
+      <div><span>Total Fournisseur (confirmé)</span><span>${fmtPrix(totalFourn, d.devise)}</span></div>
+      <div class="${Math.abs(ecartTotal) > 0.005 ? 'ecart-rouge' : ''}"><span>Écart</span><span>${fmtPrix(ecartTotal, d.devise)}</span></div>
+    </div>`;
+
   return `
   <div class="fiche" data-id="${d.id}">
     <div class="fiche-head" onclick="toggleFiche('${d.id}')">
@@ -1081,6 +1125,7 @@ function rendreFiche(d){
     <div class="fiche-detail">
       <div class="detail-inner">
         ${resoluHtml}
+        ${totauxHtml}
         <div class="dtw-row">
           <button class="${classeBtnDtw(true,false)}" onclick="declencherDTW('${d.id}', true, false, this)">
             ${labelBtnDtw('Copier les prix vers SAP', true, false)}
