@@ -538,7 +538,6 @@ function New-HtmlBonCommandeRevise {
     $lignesHtml = ""
     $i = 0
     $sousTotal = 0.0
-    $sousTotalSap = 0.0
     $articlesTries = @($Entree.articles | Sort-Object { [int]$_.sapLigne })
     foreach ($a in $articlesTries) {
         $i++
@@ -547,9 +546,7 @@ function New-HtmlBonCommandeRevise {
         $qteSap = [int]$a.sapQty
         $qteConfirmee = if ($a.pdfQty -and [int]$a.pdfQty -gt 0) { [int]$a.pdfQty } else { $qteSap }
         $total = [math]::Round($prixConfirme * $qteConfirmee, 2)
-        $totalSap = [math]::Round($prixSap * $qteSap, 2)
         $sousTotal += $total
-        $sousTotalSap += $totalSap
 
         $modifie = ([math]::Abs($prixConfirme - $prixSap) -gt 0.001) -or ($qteConfirmee -ne $qteSap)
         $classe = if ($modifie) { "alt modifie" } elseif ($i % 2 -eq 0) { "alt" } else { "" }
@@ -561,8 +558,6 @@ function New-HtmlBonCommandeRevise {
     $tps = [math]::Round($sousTotal * 0.05, 2)
     $tvq = [math]::Round($sousTotal * 0.09975, 2)
     $totalFinal = [math]::Round($sousTotal + $tps + $tvq, 2)
-    $ecartTotal = [math]::Round($sousTotal - $sousTotalSap, 2)
-    $classeEcart = if ([math]::Abs($ecartTotal) -gt 0.005) { "ecart-non-zero" } else { "" }
     $attention = if ($entete.fournisseurAttention) { "À L'ATTENTION DE: $($entete.fournisseurAttention)" } else { "" }
 
     $html = @"
@@ -593,12 +588,6 @@ function New-HtmlBonCommandeRevise {
   .totaux table { border-collapse: collapse; font-size: 11px; }
   .totaux td { padding: 2px 6px; text-align: right; }
   .totaux tr.total td { font-weight: bold; border-top: 1px solid #333; padding-top: 4px; }
-  .verif-box { margin-top: 22px; background:#f4f6f8; border:1px solid #ccc; border-radius:6px; padding:8px 14px; }
-  .verif-table { width:100%; border-collapse: collapse; font-size: 10.5px; }
-  .verif-table td { padding: 3px 6px; }
-  .verif-table td:last-child { text-align: right; font-family: 'Courier New', monospace; }
-  .verif-table tr:first-child td, .verif-table tr:nth-child(2) td { color: #555; }
-  .ecart-non-zero td { color:#b23b3b; font-weight:bold; }
   .bandeau-revise { background:#fdecea; border:1px solid #e57373; color:#b23b3b; font-weight:bold; padding:8px 12px; margin-bottom:16px; font-size:12px; text-align:center; border-radius:4px; }
   .note { margin-top: 40px; display:flex; gap: 16px; border-top: 1px solid #999; padding-top: 8px; }
   .signature { font-size: 10px; text-align:center; width: 140px; }
@@ -648,13 +637,6 @@ function New-HtmlBonCommandeRevise {
       $lignesHtml
     </tbody>
   </table>
-  <div class="verif-box">
-    <table class="verif-table">
-      <tr><td>Sous-Total SAP (original)</td><td>$("{0:N2}" -f $sousTotalSap)&nbsp;`$</td></tr>
-      <tr><td>Sous-Total Fournisseur (confirmé)</td><td>$("{0:N2}" -f $sousTotal)&nbsp;`$</td></tr>
-      <tr class="$classeEcart"><td>Écart</td><td>$("{0:N2}" -f $ecartTotal)&nbsp;`$</td></tr>
-    </table>
-  </div>
   <div class="totaux">
     <table>
       <tr><td>Sous-Total</td><td>$("{0:N2}" -f $sousTotal) `$</td></tr>
