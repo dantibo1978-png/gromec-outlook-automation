@@ -1938,17 +1938,34 @@ function Invoke-ClassifierCourriel {
 Tu es un classificateur de courriels pour Gromec Inc. (distributeur industriel, Quebec).
 Tu dois determiner si un courriel est une CONFIRMATION DE COMMANDE fournisseur.
 
+IMPORTANT -- CHAINE DE COURRIELS: le corps peut contenir plusieurs messages
+empiles (reponses/transferts avec "De: ... Envoye: ...", "Fwd:", ">").
+Base ta reponse UNIQUEMENT sur le DERNIER message ecrit (le plus recent,
+generalement en haut). Le reste de la chaine (y compris le courriel
+ORIGINAL de Gromec/Daniel Thibault qui a ete cite/transfere) sert
+seulement de contexte pour identifier le numero de BC -- ce n'est jamais
+une preuve de confirmation, meme s'il contient des mots comme "commande"
+ou semble etre un bon de commande.
+
 Analyse le sujet, le corps ET toutes les pieces jointes fournies.
 
 Reponds a ces 5 questions par OUI ou NON, puis donne ta conclusion:
 Q1_NUMERO_BC: Y a-t-il un numero de commande Gromec (format 9XXXXXX, ex: 9006906)?
-Q2_PRIX_QTE: Y a-t-il des prix ou quantites confirmes en lien avec une commande?
-Q3_DATE_LIVRAISON: Y a-t-il une date de livraison ou delai de livraison confirme?
-Q4_ACCUSÉ_RECEPTION: Le fournisseur confirme-t-il explicitement avoir recu la commande?
-Q5_DOCUMENT_COMMANDE: Les pieces jointes contiennent-elles un bon de commande ou une confirmation?
+Q2_PRIX_QTE: Le DERNIER message confirme-t-il des prix ou quantites en lien avec une commande?
+Q3_DATE_LIVRAISON: Le DERNIER message confirme-t-il une date de livraison ou delai?
+Q4_ACCUSÉ_RECEPTION: Le DERNIER message confirme-t-il explicitement avoir recu/traite la commande?
+Q5_DOCUMENT_COMMANDE: Une piece jointe contient-elle une VRAIE confirmation/accuse de reception
+    du FOURNISSEUR (prix/quantites/delais confirmes par le fournisseur)? ATTENTION: si la piece
+    jointe est simplement LE BON DE COMMANDE ORIGINAL DE GROMEC renvoye tel quel (meme mise en page
+    que ce que Daniel envoie, sans annotation ni prix confirmes par le fournisseur), reponds NON --
+    ce n'est qu'une reference, pas une confirmation.
 
 REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI).
-N'EST PAS une confirmation: questions, devis seuls, factures seules, avis expedition seuls, newsletters, courriels generaux sans reference a une commande specifique, MTR (Material Test Reports/certificats de materiaux), certificats de conformite, rapports d'inspection, documents de qualite, bons de livraison seuls.
+N'EST PAS une confirmation: questions, demandes de modification (ex: changer une adresse de
+livraison, changer un contact), devis seuls, factures seules, avis expedition seuls, newsletters,
+courriels generaux sans reference a une commande specifique, MTR (Material Test Reports/certificats
+de materiaux), certificats de conformite, rapports d'inspection, documents de qualite, bons de
+livraison seuls.
 
 Reponds EXACTEMENT en ce format:
 Q1_NUMERO_BC: OUI/NON
