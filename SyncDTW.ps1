@@ -66,6 +66,8 @@ $DTW_ScenarioPrixL2    = "$DTW_Dossier\UpdatePriceList2_PROD.xml"
 $DTW_ScenarioConfirmPO = "$DTW_Dossier\ConfirmPO_PROD.xml"
 $DTW_FichierPrix       = "$DTW_Dossier\import_prix.txt"
 $DTW_ScenarioPrix      = "$DTW_Dossier\UpdatePriceList_PROD.xml"
+$DTW_FichierLeadTime   = "$DTW_Dossier\import_leadtime.txt"
+$DTW_ScenarioLeadTime  = "$DTW_Dossier\UpdateLeadTime_PROD.xml"
 $IntervalleSecondes = 15
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
@@ -990,6 +992,72 @@ while ($true) {
         }
     } catch {
         Write-Log "WARN  Erreur lecture noeud imports_prix : $($_.Exception.Message)"
+    }
+
+    # ── Import LeadTime depuis l'outil delais-produits ──────────────────────────
+    try {
+        $importsLT = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw.json" -Method Get -TimeoutSec 10
+        if ($null -ne $importsLT -and $importsLT -ne "null") {
+            foreach ($cleLT in $importsLT.PSObject.Properties.Name) {
+                $impLT = $importsLT.$cleLT
+                if ($impLT.statut -ne 'en_attente') { continue }
+
+                $nbProduits = $impLT.nbProduits
+                Write-Log "INFO  Import LeadTime : $nbProduits produit(s) (cle: $cleLT)"
+
+                try {
+                    # Marquer en cours
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
+
+                    # Generer le fichier DTW tab-separated (UTF-16 LE comme les autres)
+                    $Tab = "`t"
+                    $Header = "ItemCode${Tab}LeadTime"
+                    $LignesLT = @($Header, $Header)
+                    foreach ($item in $impLT.items) {
+                        $LignesLT += "$($item.ItemCode)${Tab}$($item.LeadTime)"
+                    }
+                    $ContenuLT = ($LignesLT -join "`r`n") + "`r`n"
+
+                    for ($iRetry = 1; $iRetry -le 8; $iRetry++) {
+                        try {
+                            [System.IO.File]::WriteAllText($DTW_FichierLeadTime, $ContenuLT, [System.Text.Encoding]::Unicode)
+                            break
+                        } catch {
+                            if ($iRetry -eq 8) { throw }
+                            Start-Sleep -Seconds 3
+                        }
+                    }
+
+                    $resLT = Invoke-DTW -ScenarioXml $DTW_ScenarioLeadTime
+                    $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+
+                    if ($resLT.Succes) {
+                        Write-Log "INFO  Import LeadTime : $nbProduits produit(s) OK."
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
+                            -Method Patch `
+                            -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    } else {
+                        Write-Log "WARN  Import LeadTime : echec : $($resLT.Erreur)"
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
+                            -Method Patch `
+                            -Body (@{ statut = 'erreur'; erreur = $resLT.Erreur; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    }
+                } catch {
+                    Write-Log "ERREUR Import LeadTime '$cleLT' : $($_.Exception.Message)"
+                    try {
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
+                            -Method Patch `
+                            -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    } catch {}
+                }
+            }
+        }
+    } catch {
+        Write-Log "WARN  Erreur lecture noeud leadtime_dtw : $($_.Exception.Message)"
     }
 
     Start-Sleep -Seconds $IntervalleSecondes

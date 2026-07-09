@@ -1,0 +1,58 @@
+<Transfer>
+  <Logon>
+    <UserName>ke6kVANmjWVR+EZ3d7eTfw==.B7BrHLZdT9skhUE2wyfAQ+u94vRfkzGIY1HlshCgqF0=.RsFjyMeJhg3rGcfMwcJXfg==</UserName>
+    <Password>exU0ijJRi6PiZo+BklGMiA==.yZcFEdFJrlO3YvLYi8hdgIGQqpazLORQhBdzcq+McfU=.8sURJ3UKBXz/huqzJwg1Jg==</Password>
+    <Company>SAP_GROMEC_PROD</Company>
+    <CompanyID />
+    <Server>NDB@hana:30013</Server>
+    <ServerID />
+    <UserAuthentication>False</UserAuthentication>
+    <Language>ln_English</Language>
+    <LicenseServer />
+    <ChooseDB>False</ChooseDB>
+    <DBType>9</DBType>
+    <DBUser>
+    </DBUser>
+    <SybasePort />
+    <DBPassword>HsMBlqqY8sXSHMLM3c/4bQ==.kxhgK+mwGhH2EJ2J7NvOTdQiecXy2ZLD7HyRbW81ac0=.2YdwEaS8e2y8gMDCeNGnWQ==</DBPassword>
+  </Logon>
+  <ObjectCode>oItems</ObjectCode>
+  <FileExtractor>
+    <Extorlogin>
+      <ExID />
+      <ExPW />
+      <ExDSN />
+    </Extorlogin>
+    <FilesTypes>2</FilesTypes>
+    <Files>
+      <Items>U:\GromecOutlook\DTW\import_leadtime.txt</Items>
+    </Files>
+  </FileExtractor>
+  <Map>
+    <Fields>
+      <Items>
+        <SourceFields>
+          <ItemCode />
+          <LeadTime />
+        </SourceFields>
+        <TargetFields>
+          <ItemCode>ItemCode</ItemCode>
+          <LeadTime>LeadTime</LeadTime>
+        </TargetFields>
+      </Items>
+    </Fields>
+  </Map>
+  <Run>
+    <Import>0</Import>
+    <Rollback>False</Rollback>
+    <NoRollback>0</NoRollback>
+    <MaxError>10</MaxError>
+    <Update>1</Update>
+    <TestRun>0</TestRun>
+    <AddAllItems>Checked</AddAllItems>
+    <LineData>0</LineData>
+    <DataType>1</DataType>
+    <MultiThread>False</MultiThread>
+    <ThreadNum>4</ThreadNum>
+  </Run>
+</Transfer>
