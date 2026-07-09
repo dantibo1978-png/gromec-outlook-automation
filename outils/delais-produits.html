@@ -120,6 +120,16 @@
   .mode-tab:hover{color:var(--text)}
   .mode-tab.active{border-color:var(--accent);background:var(--accent);color:#fff}
 
+  .dtw-statut{
+    font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--muted);
+    margin-bottom:14px;padding:8px 12px;background:var(--panel-2);border-radius:6px;
+    border-left:3px solid var(--rule);display:none;
+  }
+  .dtw-statut.visible{display:block}
+  .dtw-statut.warn{border-left-color:var(--warn);color:var(--warn)}
+  .dtw-statut.ok{border-left-color:var(--ok);color:var(--ok)}
+  .dtw-statut.erreur{border-left-color:var(--ecart);color:var(--ecart)}
+
   #resultats{display:none}
   .empty{text-align:center;padding:40px 20px;color:var(--muted)}
 </style>
@@ -161,9 +171,11 @@
       <h2>2. Résultats — Délai moyen par produit</h2>
       <div class="toolbar">
         <input type="text" class="search-box" id="searchBox" placeholder="Filtrer par code produit…">
-        <button class="btn green" id="btnDownload" disabled>Télécharger DTW (.txt)</button>
+        <button class="btn green" id="btnDtw" disabled>📥 Envoyer à DTW (LeadTime)</button>
+        <button class="btn" id="btnDownload" disabled>⬇ Télécharger .txt</button>
         <button class="btn" id="btnReset">Réinitialiser</button>
       </div>
+      <div class="dtw-statut" id="dtwStatut"></div>
       <div class="table-scroll" id="tableWrap">
         <table>
           <thead><tr>
@@ -192,7 +204,11 @@ const statsRow = document.getElementById('statsRow');
 const tbody = document.getElementById('tbody');
 const searchBox = document.getElementById('searchBox');
 const btnDownload = document.getElementById('btnDownload');
+const btnDtw = document.getElementById('btnDtw');
 const btnReset = document.getElementById('btnReset');
+const dtwStatut = document.getElementById('dtwStatut');
+
+const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 let allRows = [];
 
@@ -283,6 +299,7 @@ function processData(data) {
   `;
 
   btnDownload.disabled = allRows.length === 0;
+  btnDtw.disabled = allRows.length === 0;
   resultats.style.display = 'block';
   renderTable();
 }
@@ -328,6 +345,71 @@ btnDownload.addEventListener('click', () => {
   URL.revokeObjectURL(a.href);
 });
 
+// DTW via Firebase
+btnDtw.addEventListener('click', async () => {
+  if (allRows.length === 0) return;
+  if (!confirm('Envoyer ' + allRows.length + ' produits à DTW pour mise à jour du LeadTime ?')) return;
+
+  btnDtw.disabled = true;
+  btnDtw.textContent = '⏳ Envoi en cours…';
+  dtwStatut.className = 'dtw-statut visible warn';
+  dtwStatut.textContent = '⏳ Demande envoyée — en attente de traitement par le script local…';
+
+  const items = allRows.map(r => ({ ItemCode: r.code, LeadTime: r.avg }));
+  const id = 'leadtime_' + Date.now();
+
+  const payload = {
+    items,
+    statut: 'en_attente',
+    demandeLe: new Date().toISOString(),
+    nbProduits: allRows.length
+  };
+
+  try {
+    await fetch(FIREBASE_URL + 'gromec_vba/leadtime_dtw/' + id + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch(e) {
+    btnDtw.textContent = '✗ Erreur réseau';
+    dtwStatut.className = 'dtw-statut visible erreur';
+    dtwStatut.textContent = '✗ Impossible d\'écrire dans Firebase : ' + e.message;
+    btnDtw.disabled = false;
+    return;
+  }
+
+  let tentatives = 0;
+  const interval = setInterval(async () => {
+    tentatives++;
+    try {
+      const rep = await fetch(FIREBASE_URL + 'gromec_vba/leadtime_dtw/' + id + '/statut.json');
+      const statut = await rep.json();
+
+      if (statut === 'ok') {
+        clearInterval(interval);
+        btnDtw.textContent = '✓ Import DTW complété';
+        dtwStatut.className = 'dtw-statut visible ok';
+        dtwStatut.textContent = '✓ LeadTime mis à jour avec succès pour ' + allRows.length + ' produits.';
+      } else if (statut === 'erreur') {
+        clearInterval(interval);
+        const repErr = await fetch(FIREBASE_URL + 'gromec_vba/leadtime_dtw/' + id + '/erreur.json');
+        const msgErr = await repErr.json();
+        btnDtw.textContent = '✗ Erreur DTW';
+        dtwStatut.className = 'dtw-statut visible erreur';
+        dtwStatut.textContent = '✗ ' + (msgErr || 'Erreur DTW inconnue');
+        btnDtw.disabled = false;
+      } else if (tentatives >= 60) {
+        clearInterval(interval);
+        btnDtw.textContent = '📥 Envoyer à DTW (LeadTime)';
+        dtwStatut.className = 'dtw-statut visible warn';
+        dtwStatut.textContent = '⏳ Toujours en attente — vérifiez que SyncDTW.ps1 tourne sur le poste.';
+        btnDtw.disabled = false;
+      }
+    } catch(e) { /* erreur réseau temporaire, on continue */ }
+  }, 2000);
+});
+
 btnReset.addEventListener('click', () => {
   allRows = [];
   resultats.style.display = 'none';
@@ -338,6 +420,10 @@ btnReset.addEventListener('click', () => {
   dropZone.querySelector('p').textContent = 'Glissez le fichier .xlsx ici ou cliquez pour parcourir';
   pasteZone.querySelector('p').textContent = 'Collez les données ici (Ctrl+V)';
   btnDownload.disabled = true;
+  btnDtw.disabled = true;
+  btnDtw.textContent = '📥 Envoyer à DTW (LeadTime)';
+  dtwStatut.className = 'dtw-statut';
+  dtwStatut.textContent = '';
 });
 </script>
 </body>
