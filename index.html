@@ -784,7 +784,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-07-08 15:50";
+const DERNIERE_MAJ_CODE = "2026-07-08 16:05";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1844,7 +1844,8 @@ setInterval(chargerLogs, 20000);
       if (!upc){ nbSansUpc++; continue; }
       if (prixParUpc.has(upc) && gromec){
         const prix = prixParUpc.get(upc);
-        sortie.push(`${gromec}\t1\t1\t${prix}\t\t\t\t\t`);
+        // LineNum = PriceList - 1 (0-based). Pour PriceList 1 -> LineNum 0.
+        sortie.push(`${gromec}\t0\t1\t${prix}\t\t\t\t\t`);
         listingRows.push({ gromec, upc, desc, prix });
         nbMatch++;
       }
