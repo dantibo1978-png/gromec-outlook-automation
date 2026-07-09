@@ -272,8 +272,10 @@ function buildMailtoLink(vendor, email, rows) {
 }
 
 function buildPurchasedArticleSet(parsed) {
-  const idx = parsed.header.findIndex(h => h.trim().toLowerCase() === 'numéro article');
-  const col = idx !== -1 ? idx : 2;
+  const idx = parsed.header.findIndex(h =>
+    stripAccents(h.trim()).toLowerCase() === 'numero article'
+  );
+  const col = idx !== -1 ? idx : 1;
   const set = new Set();
   parsed.rows.forEach(cells => {
     const article = normalizeArticle(cells[col]);
