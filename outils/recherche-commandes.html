@@ -13,7 +13,7 @@
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:var(--paper);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:1000px;margin:0 auto;padding:28px 20px 80px}
+  .wrap{max-width:1600px;margin:0 auto;padding:28px 32px 80px}
   header h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:-.01em}
   header p{margin:0;color:var(--ink-soft);font-size:.92rem}
   .step{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-top:20px}
@@ -27,6 +27,8 @@
   .loaded{display:none;margin-top:12px;padding:12px 14px;border-radius:8px;background:var(--found-bg);color:var(--found);font-size:.9rem;font-weight:500}
   label.fld{display:block;font-size:.82rem;color:var(--ink-soft);font-weight:600;margin-bottom:6px}
   textarea{width:100%;min-height:150px;resize:vertical;border:1px solid var(--line);border-radius:8px;padding:12px;font-family:"Cascadia Mono",Consolas,monospace;font-size:.9rem;color:var(--ink)}
+  /* La zone SAP : lignes non repliées, colonnes restent alignées */
+  #orders{min-height:240px;white-space:pre;overflow-x:auto;line-height:1.6}
   textarea:focus{outline:2px solid var(--steel);border-color:var(--steel)}
   .btn{display:inline-flex;align-items:center;gap:8px;background:var(--steel);color:#fff;border:none;border-radius:8px;padding:11px 20px;font-size:.95rem;font-weight:600;cursor:pointer;transition:.15s}
   .btn:hover{background:var(--steel-dk)}
@@ -100,11 +102,11 @@
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px">
       <div style="flex:1;min-width:240px">
         <label class="fld" for="exclude">Exclure des créateurs (un nom par ligne)</label>
-        <textarea id="exclude" style="min-height:80px" placeholder="Gagnon Marie-Christine"></textarea>
+        <textarea id="exclude" style="min-height:130px" placeholder="Gagnon Marie-Christine"></textarea>
       </div>
       <div style="flex:1;min-width:240px">
         <label class="fld" for="exclude-fourn">Exclure des fournisseurs (un par ligne)</label>
-        <textarea id="exclude-fourn" style="min-height:80px" placeholder="Ex.&#10;MAAX BATH INC&#10;KALIA INC"></textarea>
+        <textarea id="exclude-fourn" style="min-height:130px" placeholder="Ex.&#10;MAAX BATH INC&#10;KALIA INC"></textarea>
       </div>
     </div>
 
@@ -132,12 +134,12 @@
     </div>
     <table>
       <thead><tr>
-        <th style="width:60px;text-align:center">Envoyé</th>
-        <th style="width:15%">N° commande</th>
-        <th style="width:12%">Statut</th>
-        <th style="width:15%">Date d'envoi</th>
-        <th style="width:18%">Destinataire</th>
-        <th style="width:20%">Fournisseur</th>
+        <th style="width:70px;text-align:center">Envoyé</th>
+        <th style="width:130px">N° commande</th>
+        <th style="width:140px">Statut</th>
+        <th style="width:170px">Date d'envoi</th>
+        <th style="width:30%">Destinataire</th>
+        <th>Fournisseur</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
