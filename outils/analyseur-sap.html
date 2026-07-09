@@ -55,6 +55,32 @@
   .grand-total-row td{font-weight:700;font-size:14px;border-top:2px solid #e5e7eb;padding-top:12px;color:#1a1a2e}
   .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#6b7280;margin-bottom:12px;align-items:center}
   .legend span{display:flex;align-items:center;gap:5px}
+  /* ==== Thème sombre Gromec ==== */
+  body{background:#11161D;color:#E7ECF2}
+  h1{color:#E7ECF2}
+  .subtitle{color:#8C9BAE}
+  .card,.metric{background:#1B232E;border-color:#2C394A}
+  .metric{background:#212B38}
+  .metric-value{color:#E7ECF2}
+  textarea{background:#212B38;color:#E7ECF2;border-color:#2C394A}
+  textarea:focus{background:#212B38;border-color:#5EA8FF}
+  .priority-note{background:#212B38;color:#8C9BAE;border-left-color:#5EA8FF}
+  button.primary{background:#5EA8FF;border-color:#5EA8FF;color:#0e1520}
+  button.primary:hover{background:#4A90E8}
+  button.secondary{background:#1B232E;color:#E7ECF2;border-color:#2C394A}
+  button.secondary:hover{background:#212B38}
+  thead th{color:#8C9BAE;border-color:#2C394A}
+  tbody tr.main-row{border-color:#243140}
+  tbody tr.main-row:hover{background:#212B38}
+  .code-cell{color:#8C9BAE}
+  .nom-cell,.total-cell{color:#E7ECF2}
+  .expand-btn{background:#212B38;border-color:#2C394A;color:#E7ECF2}
+  .expand-btn:hover{background:#2C394A}
+  .detail-inner thead th{background:#212B38}
+  .detail-inner tbody td{border-color:#243140}
+  .grand-total-row td{border-color:#2C394A;color:#E7ECF2}
+  .tag-da{background:#243247;color:#a9c7ff}
+  .alert.warn{background:#2a2418;color:#E0A93E;border-color:#5c4a1a}
 </style>
 </head>
 <body>
@@ -78,6 +104,8 @@
 </div>
 
 <script>
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
+
 function extractPrixInfo(infoStr) {
   if (!infoStr || !infoStr.trim()) return null;
   var s = infoStr.trim();
@@ -272,11 +300,11 @@ function analyser() {
   }
 
   fList.forEach(function(f, idx) {
-    var dasHtml = Array.from(f.das).map(function(d) { return '<span class="tag-da">' + d + '</span>'; }).join('');
+    var dasHtml = Array.from(f.das).map(function(d) { return '<span class="tag-da">' + esc(d) + '</span>'; }).join('');
     var note = !f.hasAllPrix ? '<span class="partiel">*partiel</span>' : '';
     html += '<tr class="main-row">'
-      + '<td class="code-cell">' + f.code + '</td>'
-      + '<td class="nom-cell">' + f.nom + '</td>'
+      + '<td class="code-cell">' + esc(f.code) + '</td>'
+      + '<td class="nom-cell">' + esc(f.nom) + '</td>'
       + '<td class="num">' + f.items.length + '</td>'
       + '<td>' + (dasHtml || '\u2014') + '</td>'
       + '<td class="num total-cell">' + fmt2(f.totalPrix > 0 ? f.totalPrix : null) + note + '</td>'
@@ -286,15 +314,15 @@ function analyser() {
       + '<table><thead><tr><th>Article</th><th>Description</th><th class="num">Qt\u00e9</th><th class="num">Prix unit.</th><th>Source</th><th class="num">Sous-total</th><th>D.A.</th><th>Demandeur</th><th>Info acheteur</th></tr></thead><tbody>'
       + f.items.map(function(it) {
           return '<tr>'
-            + '<td style="font-family:monospace;white-space:nowrap">' + it.article + '</td>'
-            + '<td style="max-width:220px">' + it.desc + '</td>'
+            + '<td style="font-family:monospace;white-space:nowrap">' + esc(it.article) + '</td>'
+            + '<td style="max-width:220px">' + esc(it.desc) + '</td>'
             + '<td class="num">' + it.qte.toLocaleString('fr-CA') + '</td>'
             + '<td class="num">' + (it.prixUnit != null ? fmt2(it.prixUnit) : '<span class="no-price">N/D</span>') + '</td>'
             + '<td>' + srcBadge(it.prixSrc) + '</td>'
             + '<td class="num">' + (it.sousTotal != null ? fmt2(it.sousTotal) : '<span class="no-price">N/D</span>') + '</td>'
-            + '<td style="white-space:nowrap">' + (it.da || '\u2014') + '</td>'
-            + '<td style="white-space:nowrap">' + (it.demandeur || '\u2014') + '</td>'
-            + '<td style="font-size:11px;color:#9ca3af;max-width:180px">' + (it.info || '\u2014') + '</td>'
+            + '<td style="white-space:nowrap">' + esc(it.da || '\u2014') + '</td>'
+            + '<td style="white-space:nowrap">' + esc(it.demandeur || '\u2014') + '</td>'
+            + '<td style="font-size:11px;color:#9ca3af;max-width:180px">' + esc(it.info || '\u2014') + '</td>'
             + '</tr>';
         }).join('')
       + '</tbody></table></div></td></tr>';

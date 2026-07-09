@@ -126,10 +126,26 @@
   .error { color: var(--warn); font-weight: 600; margin-top: 8px; }
   .ok { color: var(--ok); }
   details summary { cursor: pointer; font-weight: 600; margin-top: 10px; }
+  /* ==== Thème sombre Gromec ==== */
+  :root{ --primary:#5EA8FF; --primary-dark:#4A90E8; --bg:#11161D; --border:#2C394A; --ok:#3FB67F; --warn:#E2553F; }
+  body{ color:#E7ECF2; }
+  header{ background:#1B232E; border-bottom:1px solid #2C394A; }
+  .card,#summary{ background:#1B232E; color:#E7ECF2; }
+  .card h2 .subtitle,.card p.hint{ color:#8C9BAE; }
+  textarea{ background:#212B38; color:#E7ECF2; border-color:#2C394A; }
+  .stat{ background:#212B38; }
+  table.results th{ background:#212B38; }
+  table.results th,table.results td{ border-color:#2C394A; }
+  button.secondary{ background:#1B232E; color:#5EA8FF; }
+  button.secondary:hover{ background:#212B38; }
+  button.primary,button{ color:#0e1520; }
+  button.secondary{ color:#5EA8FF; }
 </style>
 </head>
 <body>
 <div style="background:#0f1826;padding:8px 16px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;border-bottom:1px solid #24344a;"><a href="/" style="color:#5ea8ff;text-decoration:none;font-weight:600;">← Retour au dashboard Gromec</a></div>
+<div id="cdnWarn" style="display:none;background:#2a1a1a;color:#E2553F;padding:10px 16px;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;border-bottom:1px solid #5c1a1a;">⚠ Les librairies externes (Excel/Zip) n'ont pas pu être chargées — vérifie ta connexion Internet. Le téléchargement des fichiers Excel ne fonctionnera pas.</div>
+<script>window.addEventListener('load',function(){if(typeof XLSX==='undefined'||typeof JSZip==='undefined'){document.getElementById('cdnWarn').style.display='block';}});</script>
 <header>
   <h1>Gromec Vérification PT</h1>
   <p>Compare un export SAP avec une liste d'achats et génère un fichier Excel par vendeur avec les items restants.</p>
@@ -199,6 +215,8 @@ function parsePastedTable(raw) {
 function normalizeArticle(s) {
   return (s || '').toString().trim().toUpperCase();
 }
+
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];});}
 
 function buildTable1Rows(parsed) {
   return parsed.rows.map(cells => {
@@ -316,7 +334,7 @@ document.getElementById('processBtn').addEventListener('click', () => {
     const email = generateVendorEmail(firstRow['Nom'], firstRow['Prénom']);
     const tr = document.createElement('tr');
     tr.className = 'vendor-row';
-    tr.innerHTML = `<td>${vendor}</td><td>${email}</td><td>${rows.length}</td><td></td>`;
+    tr.innerHTML = `<td>${esc(vendor)}</td><td>${esc(email)}</td><td>${rows.length}</td><td></td>`;
     const btn = document.createElement('button');
     btn.textContent = 'Ouvrir dans Outlook';
     btn.addEventListener('click', () => {
@@ -332,7 +350,7 @@ document.getElementById('processBtn').addEventListener('click', () => {
   removedBody.innerHTML = '';
   removed.forEach(row => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${row.__vendor}</td><td>${row["Numéro d'article"]}</td><td>${row['Description article/service']}</td>`;
+    tr.innerHTML = `<td>${esc(row.__vendor)}</td><td>${esc(row["Numéro d'article"])}</td><td>${esc(row['Description article/service'])}</td>`;
     removedBody.appendChild(tr);
   });
 

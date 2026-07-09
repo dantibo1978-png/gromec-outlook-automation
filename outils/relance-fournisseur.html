@@ -74,10 +74,32 @@
   .foot{font-size:.78rem;color:var(--ink-soft);text-align:center;margin-top:24px}
   .pill-count{background:#eef2f6;border-radius:20px;padding:2px 9px;font-size:.78rem;color:var(--ink-soft);font-weight:600}
   .search{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;margin:8px 0}
+  /* ==== Thème sombre Gromec ==== */
+  :root{
+    --ink:#E7ECF2; --ink-soft:#8C9BAE; --panel:#1B232E; --bg:#11161D;
+    --line:#2C394A; --accent:#5EA8FF; --accent-d:#4A90E8;
+    --ok:#3FB67F; --ok-bg:rgba(63,182,127,0.14);
+    --warn:#E0A93E; --warn-bg:rgba(224,169,62,0.14);
+    --miss:#E2553F; --miss-bg:rgba(226,85,63,0.14);
+  }
+  input.box,textarea.box,.search{ background:#212B38; color:#E7ECF2; border-color:#2C394A; }
+  input.cell{ color:#E7ECF2; }
+  input.cell:focus{ background:#212B38; }
+  .drop{ background:#212B38; }
+  .drop:hover,.drop.over{ background:#243247; }
+  th{ background:#212B38; }
+  .k{ background:#2C394A; color:#E7ECF2; }
+  .btn.sec{ background:#2C394A; color:#E7ECF2; }
+  .btn.sec:hover{ background:#35465b; }
+  .card.unknown{ background:#2a2418; border-color:#5c4a1a; }
+  .card.done{ background:#18271f; border-color:#1f5c3a; }
+  .pill-count{ background:#2C394A; color:#8C9BAE; }
 </style>
 </head>
 <body>
 <div style="background:#0f1826;padding:8px 16px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;border-bottom:1px solid #24344a;"><a href="/" style="color:#5ea8ff;text-decoration:none;font-weight:600;">← Retour au dashboard Gromec</a></div>
+<div id="cdnWarn" style="display:none;background:#2a1a1a;color:#E2553F;padding:10px 16px;font-family:-apple-system,Segoe UI,sans-serif;font-size:13px;border-bottom:1px solid #5c1a1a;">⚠ Les librairies externes (PDF/Excel/Zip) n'ont pas pu être chargées — vérifie ta connexion Internet. Le découpage des PDF ne fonctionnera pas.</div>
+<script>window.addEventListener('load',function(){if(typeof pdfjsLib==='undefined'||typeof PDFLib==='undefined'||typeof JSZip==='undefined'||typeof XLSX==='undefined'){document.getElementById('cdnWarn').style.display='block';}});</script>
 <div class="wrap">
   <header>
     <h1>Relance fournisseur</h1>
