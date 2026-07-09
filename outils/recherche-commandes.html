@@ -97,7 +97,7 @@
   <section class="step">
     <div class="step-head"><div class="num">2</div><h2>Coller les numéros depuis SAP</h2></div>
     <label class="fld" for="orders">Collez ici le tableau SAP complet (avec #, Date, Fournisseur, etc.). Les numéros et les fournisseurs seront extraits automatiquement.</label>
-    <textarea id="orders" placeholder="#   Date    Fournisseur   Total   Remarques   status   envoyé fournisseur   commande confirmé   createur&#10;9007150   08/07/2026   A.O.SMITH ENTERPRISES LTD   40,172.27       En attente   Non   Non   Thibault Daniel&#10;9006848   17/06/2026   ASC ENGINEERED SOLUTION CANADA   3,335.53   ..."></textarea>
+        <textarea id="orders" autocomplete="off" placeholder="#	Date	Fournisseur	Total	Remarques	status	envoyé fournisseur	commande confirmé	createur&#10;9007150	08/07/2026	A.O.SMITH ENTERPRISES LTD	40,172.27		En attente	Non	Non	Thibault Daniel&#10;9006848	17/06/2026	ASC ENGINEERED SOLUTION CANADA	3,335.53	..."></textarea>
 
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px">
       <div style="flex:1;min-width:240px">
@@ -417,7 +417,17 @@ function persistExcl(id, key, def){
 }
 persistExcl("exclude", "excl_createurs", "Gagnon Marie-Christine\nSt-Laurent Charles");
 persistExcl("exclude-fourn", "excl_fournisseurs", "");
-persistExcl("orders", "orders_sap", "");
+
+// Le collage SAP n'est PAS mémorisé : il repart vide à chaque ouverture.
+// On purge aussi toute valeur laissée par une version précédente de l'outil.
+try { localStorage.removeItem("orders_sap"); } catch(e){}
+$("orders").value = "";
+
+// Sécurité : on vide le champ et le stockage à la fermeture / au rechargement
+window.addEventListener("pagehide", () => {
+  try { localStorage.removeItem("orders_sap"); } catch(e){}
+  $("orders").value = "";
+});
 </script>
 </body>
 </html>
