@@ -220,16 +220,12 @@ const F_RE=/\bF\d{5,6}\b/;
 function parsePage(lines, text){
   const fm=text.match(F_RE);
   const fcode=fm?fm[0]:null;
-  // nom = texte avant le code sur la ligne qui contient le code
   let name=null;
   if(fcode){
-    for(const ln of lines){
-      const idx=ln.indexOf(fcode);
-      if(idx>-1){
-        let n=ln.slice(0,idx);
-        n=n.replace(/No\.?\s*fournisseur\s*:?/ig,"").replace(/Vendor\s*Number\s*:?/ig,"").replace(/:+/g," ").trim();
-        n=n.replace(/\s{2,}/g," ").trim();
-        if(n.length>=2 && !/^Vendor\s*Number$/i.test(n)) name=n;
+    for(let li=0;li<lines.length;li++){
+      if(lines[li].includes(fcode)){
+        if(li>0){ let prev=lines[li-1].trim(); if(prev.length>=2 && !/^(Date|DELIVERY|CECI|THIS)/i.test(prev)) name=prev; }
+        if(!name){ let n=lines[li].slice(0,lines[li].indexOf(fcode)).replace(/No\.?\s*fournisseur\s*:?/ig,"").replace(/Vendor\s*Number\s*:?/ig,"").replace(/:+/g," ").trim(); if(n.length>=2) name=n; }
         break;
       }
     }
