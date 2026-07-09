@@ -227,9 +227,9 @@ function parsePage(lines, text){
       const idx=ln.indexOf(fcode);
       if(idx>-1){
         let n=ln.slice(0,idx);
-        n=n.replace(/No\.?\s*fournisseur\s*:?/ig,"").replace(/:+/g," ").trim();
+        n=n.replace(/No\.?\s*fournisseur\s*:?/ig,"").replace(/Vendor\s*Number\s*:?/ig,"").replace(/:+/g," ").trim();
         n=n.replace(/\s{2,}/g," ").trim();
-        if(n.length>=2) name=n;
+        if(n.length>=2 && !/^Vendor\s*Number$/i.test(n)) name=n;
         break;
       }
     }
@@ -360,10 +360,13 @@ function buildGroups(pages){
   if(cur)groups.push(cur);
   groups.forEach(g=>g.email=emailForGroup(g));
   groups.forEach(g=>{
-    if(g.fcode && g.supplier===g.fcode){
-      if(FCODE_NAMES[g.fcode]){ g.supplier=FCODE_NAMES[g.fcode]; return; }
-      const byEmail=g.email&&carnet.find(c=>c.email&&c.email.toLowerCase()===g.email.toLowerCase());
-      if(byEmail) g.supplier=byEmail.name;
+    if(g.fcode){
+      const nameUseless=!g.supplier || g.supplier===g.fcode || /^Vendor\s*Number$/i.test(g.supplier);
+      if(nameUseless){
+        if(FCODE_NAMES[g.fcode]){ g.supplier=FCODE_NAMES[g.fcode]; return; }
+        const byEmail=g.email&&carnet.find(c=>c.email&&c.email.toLowerCase()===g.email.toLowerCase());
+        if(byEmail) g.supplier=byEmail.name;
+      }
     }
   });
   renderResults(); updateDoneCount(); saveSession();
