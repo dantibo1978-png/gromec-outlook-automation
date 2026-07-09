@@ -276,6 +276,7 @@ function processData(data) {
     const code = String(row[2] || '').trim();
     const delai = parseFloat(row[9]);
     if (!code || isNaN(delai)) { skipped++; continue; }
+    if (/^(PR|PT|TA|TB|TC|TD)/i.test(code)) { skipped++; continue; }
     totalRows++;
     if (!map[code]) map[code] = { sum: 0, count: 0, min: Infinity, max: -Infinity };
     map[code].sum += delai;
