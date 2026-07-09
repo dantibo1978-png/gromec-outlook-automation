@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Délais produits (LeadTime) — Gromec</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#11161D;
+    --panel:#1B232E;
+    --panel-2:#212B38;
+    --grid-line:#243140;
+    --rule:#2C394A;
+    --accent:#5EA8FF;
+    --ok:#3FB67F;
+    --ok-bg:rgba(63,182,127,0.12);
+    --ecart:#E2553F;
+    --ecart-bg:rgba(226,85,63,0.12);
+    --warn:#E0A93E;
+    --warn-bg:rgba(224,169,62,0.12);
+    --text:#E7ECF2;
+    --muted:#8C9BAE;
+    --muted-2:#5C6B7E;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:
+      linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0/40px 40px,
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0/40px 40px,
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    font-size:15px;
+    min-height:100vh;
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 24px 80px}
+  a.back{
+    font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--accent);
+    text-decoration:none;display:inline-block;margin-bottom:18px;
+  }
+  a.back:hover{text-decoration:underline}
+  header h1{font-family:'Space Grotesk',sans-serif;font-size:1.5rem;margin:0 0 4px;font-weight:700}
+  header p{color:var(--muted);margin:0 0 20px;font-size:14px}
+
+  .step{
+    background:var(--panel);border:1px solid var(--rule);border-radius:10px;
+    padding:18px 20px 20px;margin-bottom:16px;
+  }
+  .step h2{font-family:'Space Grotesk',sans-serif;font-size:1.05rem;margin:0 0 8px;font-weight:600}
+  .hint{font-size:.84rem;color:var(--muted);margin:2px 0 12px}
+
+  .drop{
+    border:2px dashed var(--rule);border-radius:10px;padding:40px 20px;text-align:center;
+    cursor:pointer;transition:.15s;background:var(--panel-2);
+  }
+  .drop:hover,.drop.over{border-color:var(--accent);background:rgba(94,168,255,0.06)}
+  .drop p{margin:4px 0;color:var(--muted);font-size:14px}
+  .drop input{display:none}
+
+  .stats{
+    display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;
+  }
+  .stat-pill{
+    font-family:'IBM Plex Mono',monospace;font-size:14px;
+    padding:7px 14px;border-radius:6px;border:1px solid var(--rule);
+    background:var(--panel);display:flex;align-items:center;gap:8px;
+  }
+  .stat-pill .dot{width:7px;height:7px;border-radius:50%}
+  .dot-total{background:var(--accent)}
+  .dot-ok{background:var(--ok)}
+  .dot-warn{background:var(--warn)}
+
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+  .search-box{
+    flex:1;min-width:180px;background:var(--panel);border:1px solid var(--rule);
+    border-radius:7px;padding:9px 13px;color:var(--text);font-family:'Inter',sans-serif;
+    font-size:14px;outline:none;
+  }
+  .search-box::placeholder{color:var(--muted-2)}
+  .search-box:focus{border-color:var(--accent)}
+
+  .btn{
+    font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500;
+    padding:9px 16px;border-radius:7px;border:1px solid var(--accent);
+    background:rgba(94,168,255,0.08);color:var(--accent);cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+  }
+  .btn:hover{background:rgba(94,168,255,0.16)}
+  .btn:disabled{opacity:0.4;cursor:default}
+  .btn.green{border-color:var(--ok);color:var(--ok);background:var(--ok-bg)}
+  .btn.green:hover{background:rgba(63,182,127,0.2)}
+
+  .table-scroll{
+    overflow-x:auto;overflow-y:auto;max-height:60vh;
+    border-radius:7px;border:1px solid var(--rule);
+    scrollbar-width:thin;scrollbar-color:var(--rule) transparent;
+  }
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{
+    position:sticky;top:0;background:var(--panel);z-index:2;text-align:left;
+    font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:13px;
+    letter-spacing:.05em;text-transform:uppercase;color:var(--muted-2);
+    padding:8px 10px;border-bottom:1px solid var(--rule);white-space:nowrap;
+  }
+  td{
+    padding:9px 10px;border-bottom:1px solid #1E2733;
+    font-family:'IBM Plex Mono',monospace;white-space:nowrap;
+  }
+  td.num{text-align:right}
+  tr:hover td{background:rgba(255,255,255,0.02)}
+
+  #resultats{display:none}
+  .empty{text-align:center;padding:40px 20px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← Retour au dashboard Gromec</a>
+  <header>
+    <h1>Délais produits — LeadTime DTW</h1>
+    <p>Importez un fichier Excel contenant les délais historiques. L'outil calcule la moyenne par produit et génère un fichier DTW pour mettre à jour le LeadTime dans SAP (oItems).</p>
+  </header>
+
+  <div class="step">
+    <h2>1. Importer le fichier Excel</h2>
+    <p class="hint">Colonne C = code produit, Colonne J = délai en jours. Le même code produit peut apparaître plusieurs fois — la moyenne sera calculée.</p>
+    <div class="drop" id="dropZone">
+      <p>Glissez le fichier .xlsx ici ou cliquez pour parcourir</p>
+      <p style="font-size:12px;color:var(--muted-2)">Fichier Excel (.xlsx / .xls)</p>
+      <input type="file" id="fileInput" accept=".xlsx,.xls">
+    </div>
+  </div>
+
+  <div id="resultats">
+    <div class="stats" id="statsRow"></div>
+
+    <div class="step">
+      <h2>2. Résultats — Délai moyen par produit</h2>
+      <div class="toolbar">
+        <input type="text" class="search-box" id="searchBox" placeholder="Filtrer par code produit…">
+        <button class="btn green" id="btnDownload" disabled>Télécharger DTW (.txt)</button>
+        <button class="btn" id="btnReset">Réinitialiser</button>
+      </div>
+      <div class="table-scroll" id="tableWrap">
+        <table>
+          <thead><tr>
+            <th>#</th>
+            <th>ItemCode</th>
+            <th>Nb occurrences</th>
+            <th>Délai moyen (jours)</th>
+            <th>Min</th>
+            <th>Max</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const resultats = document.getElementById('resultats');
+const statsRow = document.getElementById('statsRow');
+const tbody = document.getElementById('tbody');
+const searchBox = document.getElementById('searchBox');
+const btnDownload = document.getElementById('btnDownload');
+const btnReset = document.getElementById('btnReset');
+
+let allRows = [];
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+function handleFile(file) {
+  dropZone.querySelector('p').textContent = 'Lecture en cours…';
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      processData(data);
+      dropZone.querySelector('p').textContent = '✓ ' + file.name;
+    } catch(err) {
+      dropZone.querySelector('p').textContent = 'Erreur : ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function processData(data) {
+  const map = {};
+  let totalRows = 0;
+  let skipped = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (!row || row.length < 10) { skipped++; continue; }
+    const code = String(row[2] || '').trim();
+    const delai = parseFloat(row[9]);
+    if (!code || isNaN(delai)) { skipped++; continue; }
+    totalRows++;
+    if (!map[code]) map[code] = { sum: 0, count: 0, min: Infinity, max: -Infinity };
+    map[code].sum += delai;
+    map[code].count++;
+    if (delai < map[code].min) map[code].min = delai;
+    if (delai > map[code].max) map[code].max = delai;
+  }
+
+  allRows = Object.keys(map).sort().map(code => ({
+    code,
+    count: map[code].count,
+    avg: Math.round(map[code].sum / map[code].count),
+    min: Math.round(map[code].min),
+    max: Math.round(map[code].max),
+  }));
+
+  statsRow.innerHTML = `
+    <div class="stat-pill"><span class="dot dot-total"></span>${totalRows.toLocaleString()} lignes lues</div>
+    <div class="stat-pill"><span class="dot dot-ok"></span>${allRows.length.toLocaleString()} produits uniques</div>
+    <div class="stat-pill"><span class="dot dot-warn"></span>${skipped.toLocaleString()} lignes ignorées</div>
+  `;
+
+  btnDownload.disabled = allRows.length === 0;
+  resultats.style.display = 'block';
+  renderTable();
+}
+
+function renderTable() {
+  const q = searchBox.value.trim().toLowerCase();
+  const filtered = q ? allRows.filter(r => r.code.toLowerCase().includes(q)) : allRows;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun résultat</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((r, i) =>
+    `<tr>
+      <td class="num">${i + 1}</td>
+      <td>${esc(r.code)}</td>
+      <td class="num">${r.count}</td>
+      <td class="num">${r.avg}</td>
+      <td class="num">${r.min}</td>
+      <td class="num">${r.max}</td>
+    </tr>`
+  ).join('');
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+searchBox.addEventListener('input', renderTable);
+
+btnDownload.addEventListener('click', () => {
+  if (allRows.length === 0) return;
+  const lines = ['ItemCode\tLeadTime'];
+  allRows.forEach(r => lines.push(r.code + '\t' + r.avg));
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'import_leadtime.txt';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+btnReset.addEventListener('click', () => {
+  allRows = [];
+  resultats.style.display = 'none';
+  tbody.innerHTML = '';
+  statsRow.innerHTML = '';
+  fileInput.value = '';
+  searchBox.value = '';
+  dropZone.querySelector('p').textContent = 'Glissez le fichier .xlsx ici ou cliquez pour parcourir';
+  btnDownload.disabled = true;
+});
+</script>
+</body>
+</html>
