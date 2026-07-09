@@ -56,6 +56,7 @@
   .tag.no{background:var(--miss-bg);color:var(--miss)}
   .sub{font-size:.82rem;color:var(--ink-soft)}
   .empty{padding:40px;text-align:center;color:var(--ink-soft)}
+  .fournisseur-cell{font-weight:500;color:var(--steel)}
   /* ==== Thème sombre Gromec ==== */
   :root{
     --ink:#E7ECF2; --ink-soft:#8C9BAE; --paper:#11161D; --panel:#1B232E;
@@ -93,8 +94,8 @@
 
   <section class="step">
     <div class="step-head"><div class="num">2</div><h2>Coller les numéros depuis SAP</h2></div>
-    <label class="fld" for="orders">Un numéro par ligne. Le HTML extrait automatiquement les chiffres, donc un collage multi-colonnes fonctionne aussi.</label>
-    <textarea id="orders" placeholder="9007063&#10;9007044&#10;9007088&#10;..."></textarea>
+    <label class="fld" for="orders">Collez ici le tableau SAP complet (avec #, Date, Fournisseur, etc.). Les numéros et les fournisseurs seront extraits automatiquement.</label>
+    <textarea id="orders" placeholder="#   Date    Fournisseur   Total   Remarques   status   envoyé fournisseur   commande confirmé   createur&#10;9007150   08/07/2026   A.O.SMITH ENTERPRISES LTD   40,172.27       En attente   Non   Non   Thibault Daniel&#10;9006848   17/06/2026   ASC ENGINEERED SOLUTION CANADA   3,335.53   ..."></textarea>
 
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px">
       <div style="flex:1;min-width:240px">
@@ -131,11 +132,12 @@
     </div>
     <table>
       <thead><tr>
-        <th style="width:70px;text-align:center">Envoyé</th>
-        <th style="width:22%">N° commande</th>
-        <th style="width:15%">Statut</th>
-        <th style="width:18%">Date d'envoi</th>
-        <th>Destinataire</th>
+        <th style="width:60px;text-align:center">Envoyé</th>
+        <th style="width:15%">N° commande</th>
+        <th style="width:12%">Statut</th>
+        <th style="width:15%">Date d'envoi</th>
+        <th style="width:18%">Destinataire</th>
+        <th style="width:20%">Fournisseur</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -194,35 +196,138 @@ function loadFile(file){
   reader.readAsText(file, "utf-8");
 }
 
+// Extraire les fournisseurs depuis les données SAP collées dans le textarea
+function extractSuppliersFromSAP(sapText) {
+  const supplierMap = new Map();
+  const lines = sapText.split(/\r?\n/).filter(line => line.trim());
+  
+  if (lines.length === 0) return supplierMap;
+  
+  // Détecter l'en-tête : chercher une ligne qui contient # et Fournisseur
+  let headerIndex = -1;
+  let headerLine = "";
+  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+    const line = lines[i];
+    if (line.includes('#') && (line.includes('Fournisseur') || line.includes('fournisseur'))) {
+      headerIndex = i;
+      headerLine = line;
+      break;
+    }
+  }
+  
+  if (headerIndex === -1) {
+    // Pas d'en-tête détecté
+    return supplierMap;
+  }
+
+  // Détecter LE séparateur une seule fois, et l'utiliser partout (en-tête + lignes).
+  // Tabulation si le fichier en contient, sinon espaces multiples.
+  const sep = headerLine.includes("\t") ? /\t/ : /\s{2,}/;
+  const headerParts = headerLine.split(sep);
+
+  let colNum = -1, colFourn = -1;
+
+  // 1er passage : correspondance EXACTE (évite d'attraper « envoyé fournisseur »)
+  headerParts.forEach((col, idx) => {
+    const clean = col.trim().toLowerCase();
+    if (colNum === -1 && ['#','n°','no','num','commande'].includes(clean)) colNum = idx;
+    if (colFourn === -1 && ['fournisseur','supplier','fourn'].includes(clean)) colFourn = idx;
+  });
+
+  // 2e passage : correspondance partielle, seulement si rien trouvé, et on garde la PREMIÈRE
+  if (colFourn === -1) {
+    for (let idx = 0; idx < headerParts.length; idx++) {
+      const clean = headerParts[idx].trim().toLowerCase();
+      if (clean.includes('fournisseur') || clean.includes('supplier')) { colFourn = idx; break; }
+    }
+  }
+
+  // Repli par position (Fournisseur est habituellement la 3e colonne)
+  if (colNum === -1) colNum = 0;
+  if (colFourn === -1) colFourn = 2;
+
+  // Colonne créateur (dernière colonne nommée « createur »/« créateur »)
+  let colCreat = -1;
+  headerParts.forEach((col, idx) => {
+    const clean = col.trim().toLowerCase();
+    if (clean === 'createur' || clean === 'créateur' || clean === 'creator') colCreat = idx;
+  });
+  
+  // Parcourir les lignes de données, avec le MÊME séparateur que l'en-tête
+  for (let i = headerIndex + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+
+    const parts = line.split(sep);
+    if (parts.length <= Math.max(colNum, colFourn)) continue;
+
+    const num = digits(parts[colNum]?.trim() || '');
+    if (!num) continue;   // ligne de continuation (remarque qui déborde) : on saute
+
+    let fournisseur = (parts[colFourn] || '').trim();
+    // Rejeter ce qui n'est visiblement pas un nom : vide, nombre seul, date, montant
+    if (fournisseur.length < 3) fournisseur = '';
+    else if (/^[\d\s.,$-]+$/.test(fournisseur)) fournisseur = '';
+    else if (/^\d{2}\/\d{2}\/\d{4}$/.test(fournisseur)) fournisseur = '';
+
+    const createur = colCreat !== -1 ? (parts[colCreat] || '').trim() : '';
+
+    supplierMap.set(num, { supplier: fournisseur, creator: createur });
+  }
+
+  return supplierMap;
+}
+
 $("run").addEventListener("click", () => {
   const seen = new Set();
   const orders = [];
-  // termes d'exclusion : créateurs + fournisseurs ; on exclut si TOUS les mots d'un terme sont présents
-  const exclTerms = ($("exclude").value + "\n" + $("exclude-fourn").value)
-    .split(/\r?\n/)
+  const toTerms = txt => txt.split(/\r?\n/)
     .map(s => s.trim().toLowerCase()).filter(Boolean)
     .map(l => l.split(/\s+/));
+  const exclCreat = toTerms($("exclude").value);
+  const exclFourn = toTerms($("exclude-fourn").value);
+  const matchAny = (terms, value) => {
+    if (!value) return false;
+    const v = value.toLowerCase();
+    return terms.some(tokens => tokens.every(t => v.includes(t)));
+  };
   let excluded = 0;
-  $("orders").value.split(/\r?\n/).forEach(line => {
+
+  const sapData = $("orders").value;
+  const infoMap = extractSuppliersFromSAP(sapData);
+
+  sapData.split(/\r?\n/).forEach(line => {
     const raw = line.trim(); if (!raw) return;
     const low = raw.toLowerCase();
-    if (exclTerms.some(tokens => tokens.every(t => low.includes(t)))) { excluded++; return; }
+
+    if (low.includes('#') && low.includes('fournisseur')) return;
+    if (low.includes('date') && low.includes('total')) return;
+
     const d = digits(raw);
-    if (!d) return;                       // ignore l'en-tête et les lignes sans numéro
-    if (seen.has(d)) return; seen.add(d);
-    orders.push({ raw, d });
+    if (!d) return;                    // ligne de continuation / sans numéro
+    if (seen.has(d)) return;
+    seen.add(d);
+
+    const info = infoMap.get(d) || { supplier:'', creator:'' };
+
+    // Exclusion ciblée : chaque liste teste SA colonne
+    // (repli sur la ligne entière si la colonne n'a pas pu être lue)
+    const creatVal = info.creator || raw;
+    const fournVal = info.supplier || raw;
+    if (matchAny(exclCreat, creatVal) || matchAny(exclFourn, fournVal)) { excluded++; return; }
+
+    orders.push({ raw, d, supplier: info.supplier, creator: info.creator });
   });
   lastExcluded = excluded;
   if (!orders.length){ alert("Aucun numéro trouvé après filtrage."); return; }
 
-  // limite aux N commandes les plus récentes (la liste SAP est triée du plus récent au plus ancien)
   const limit = parseInt($("limit").value, 10);
   const ordersLim = (limit > 0 && orders.length > limit) ? orders.slice(0, limit) : orders;
 
   results = ordersLim.map(o => {
     const hits = o.d && index.has(o.d) ? index.get(o.d) : [];
     const sorted = [...hits].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-    return { order:o.raw, num:o.d, hits:sorted };
+    return { order:o.raw, num:o.d, hits:sorted, supplier:o.supplier };
   });
   render();
   $("results").scrollIntoView({behavior:"smooth", block:"start"});
@@ -245,21 +350,23 @@ function render(){
 
   const list = curFilter==="found"?found:curFilter==="miss"?miss:state;
   const tb = $("tbody");
-  if (!list.length){ tb.innerHTML = `<tr><td colspan="5" class="empty">Aucun résultat dans ce filtre.</td></tr>`; return; }
+  if (!list.length){ tb.innerHTML = `<tr><td colspan="6" class="empty">Aucun résultat dans ce filtre.</td></tr>`; return; }
   tb.innerHTML = list.map(r=>{
     const h0 = r.hits[0];
-    const statut = r.isEmail ? `<span class="tag ok">● Courriel</span>`
+    const statut = r.isEmail ? `<span class="tag ok">● Envoyé</span>`
                  : r.isManual ? `<span class="tag ok">● Coché</span>`
                  : `<span class="tag no">○ Non envoyé</span>`;
     const dateCell = r.isEmail ? esc(h0.date) + (r.hits.length>1?` <span class="sub">(+${r.hits.length-1})</span>`:"")
                    : (r.isManual ? `<span class="sub">marqué à la main</span>` : "—");
     const destCell = r.isEmail ? esc(h0.dest) : "—";
+    const supplierCell = r.supplier ? `<span class="fournisseur-cell">${esc(r.supplier)}</span>` : "—";
     return `<tr>
       <td style="text-align:center"><input type="checkbox" class="mark" data-num="${esc(r.num)}" ${r.isManual?"checked":""} title="Marquer comme envoyé"></td>
       <td class="cmd">${esc(r.num || r.order)}</td>
       <td>${statut}</td>
       <td>${dateCell}</td>
       <td class="sub">${destCell}</td>
+      <td>${supplierCell}</td>
     </tr>`;
   }).join("");
   tb.querySelectorAll(".mark").forEach(cb => cb.addEventListener("change", () => {
@@ -288,18 +395,17 @@ $("reset-marks").addEventListener("click", ()=>{
 });
 $("csv").addEventListener("click", ()=>{
   if (!results.length) return;
-  const rows = [["N_commande","Statut","Date_envoi","Destinataire"]];
+  const rows = [["N_commande","Statut","Date_envoi","Destinataire","Fournisseur"]];
   results.forEach(r=>{
     const h0 = r.hits[0];
     const statut = r.hits.length ? "Envoyé (courriel)" : (manualSent.has(r.num) ? "Envoyé (coché)" : "Non envoyé");
-    rows.push([r.num || r.order, statut, h0?h0.date:"", h0?h0.dest:""]);
+    rows.push([r.num || r.order, statut, h0?h0.date:"", h0?h0.dest:"", r.supplier || ""]);
   });
   const csv = "\uFEFF"+rows.map(row=>row.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(";")).join("\r\n");
   const url = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
   const a=document.createElement("a"); a.href=url; a.download="resultats_commandes.csv"; a.click();
   URL.revokeObjectURL(url);
 });
-// Mémorise les listes d'exclusion entre les sessions
 function persistExcl(id, key, def){
   try {
     const v = localStorage.getItem(key);
@@ -307,8 +413,9 @@ function persistExcl(id, key, def){
   } catch(e){ $(id).value = def; }
   $(id).addEventListener("input", () => { try { localStorage.setItem(key, $(id).value); } catch(e){} });
 }
-persistExcl("exclude", "excl_createurs", "Gagnon Marie-Christine");
+persistExcl("exclude", "excl_createurs", "Gagnon Marie-Christine\nSt-Laurent Charles");
 persistExcl("exclude-fourn", "excl_fournisseurs", "");
+persistExcl("orders", "orders_sap", "");
 </script>
 </body>
 </html>
