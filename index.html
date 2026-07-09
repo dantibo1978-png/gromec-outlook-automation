@@ -715,6 +715,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
     Import prix DTW
   </button>
+  <button class="filter-chip" id="btnMatchListe1" style="border-color:var(--accent);color:var(--accent);">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+    Import prix Liste 1 (matching)
+  </button>
 </div>
 
 <!-- Modal import prix -->
@@ -740,6 +744,32 @@
   </div>
 </div>
 
+<!-- Modal import prix Liste 1 avec matching SAP <-> txt fournisseur -->
+<div id="modalMatch" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:28px;max-width:640px;width:92%;max-height:90vh;overflow-y:auto;">
+    <h3 style="font-family:'Space Grotesk',sans-serif;margin:0 0 6px;font-size:20px;">Import prix Liste 1 — Matching</h3>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 18px;">Colle le tableau SAP (avec les colonnes « Numéro d'article » et « Allpriser UPC ») et dépose le fichier .txt fournisseur. Le lien se fait sur le code UPC, et le prix est importé dans la <b>Liste 1</b>.</p>
+
+    <label style="font-size:12px;color:var(--muted);font-weight:600;">1. Tableau SAP (Ctrl+V)</label>
+    <textarea id="matchSapZone" style="width:100%;height:120px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:10px;resize:vertical;margin:6px 0 16px;" placeholder="Colle ici le tableau SAP complet…"></textarea>
+
+    <label style="font-size:12px;color:var(--muted);font-weight:600;">2. Fichier .txt fournisseur</label>
+    <div id="matchDropZone" style="border:2px dashed var(--rule);border-radius:8px;padding:24px 20px;text-align:center;cursor:pointer;margin:6px 0 16px;transition:border-color 0.2s;">
+      <p style="margin:0;color:var(--muted);font-size:13px;" id="matchDropLabel">Glisse le .txt ici ou clique pour parcourir</p>
+      <input type="file" id="matchFileInput" accept=".txt" style="display:none;">
+    </div>
+
+    <button id="btnMatchLancer" disabled style="width:100%;padding:10px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:14px;font-weight:600;opacity:0.5;">Analyser et lier</button>
+
+    <div id="matchStatus" style="margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:13px;display:none;"></div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
+      <button id="btnMatchCancel" style="padding:8px 18px;border-radius:6px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:14px;">Annuler</button>
+      <button id="btnMatchSend" disabled style="padding:8px 18px;border-radius:6px;border:none;background:var(--ok);color:#fff;cursor:pointer;font-size:14px;font-weight:600;opacity:0.5;">Envoyer à DTW (Liste 1)</button>
+    </div>
+  </div>
+</div>
+
 <main id="mainList">
   <div class="empty-state">
     <div class="icon">⏳</div>
@@ -753,7 +783,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-07-08 14:15";
+const DERNIERE_MAJ_CODE = "2026-07-08 15:30";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1700,6 +1730,147 @@ setInterval(chargerLogs, 20000);
       status.style.color = 'var(--ecart)';
       status.textContent = 'Erreur: ' + e.message;
       btnSend.disabled = false; btnSend.textContent = 'Reessayer';
+    }
+  });
+})();
+</script>
+
+<script>
+// ── Import prix Liste 1 : matching tableau SAP <-> .txt fournisseur ──────────
+(function(){
+  const modal = document.getElementById('modalMatch');
+  const sapZone = document.getElementById('matchSapZone');
+  const dropZone = document.getElementById('matchDropZone');
+  const dropLabel = document.getElementById('matchDropLabel');
+  const fileInput = document.getElementById('matchFileInput');
+  const btnLancer = document.getElementById('btnMatchLancer');
+  const btnSend = document.getElementById('btnMatchSend');
+  const btnCancel = document.getElementById('btnMatchCancel');
+  const status = document.getElementById('matchStatus');
+
+  let txtContent = null;   // contenu brut du .txt fournisseur
+  let dtwGenere = null;    // contenu DTW final apres matching
+
+  document.getElementById('btnMatchListe1').addEventListener('click', () => {
+    modal.style.display = 'flex';
+    reset();
+  });
+  btnCancel.addEventListener('click', () => modal.style.display = 'none');
+  modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--accent)'; });
+  dropZone.addEventListener('dragleave', () => dropZone.style.borderColor = 'var(--rule)');
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.style.borderColor = 'var(--rule)';
+    if (e.dataTransfer.files.length > 0) lireTxt(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files.length > 0) lireTxt(fileInput.files[0]); });
+  sapZone.addEventListener('input', majBtnLancer);
+
+  function reset(){
+    txtContent = null; dtwGenere = null;
+    sapZone.value = '';
+    dropLabel.textContent = 'Glisse le .txt ici ou clique pour parcourir';
+    dropLabel.style.color = 'var(--muted)';
+    status.style.display = 'none'; status.textContent = '';
+    btnLancer.disabled = true; btnLancer.style.opacity = '0.5';
+    btnSend.disabled = true; btnSend.style.opacity = '0.5'; btnSend.textContent = 'Envoyer à DTW (Liste 1)';
+    fileInput.value = '';
+  }
+
+  function majBtnLancer(){
+    const pret = txtContent && sapZone.value.trim().length > 0;
+    btnLancer.disabled = !pret;
+    btnLancer.style.opacity = pret ? '1' : '0.5';
+  }
+
+  function lireTxt(file){
+    if (!file.name.endsWith('.txt')) { dropLabel.textContent = 'Fichier .txt seulement'; dropLabel.style.color = 'var(--ecart)'; return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const buf = new Uint8Array(e.target.result);
+      txtContent = (buf[0] === 0xFF && buf[1] === 0xFE) ? new TextDecoder('utf-16le').decode(buf) : new TextDecoder('utf-8').decode(buf);
+      const nb = txtContent.split(/\r?\n/).filter(l => l.trim() !== '').length;
+      dropLabel.innerHTML = '<span style="color:var(--ok);">' + file.name + '</span> — ' + nb + ' ligne(s)';
+      majBtnLancer();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  btnLancer.addEventListener('click', () => {
+    status.style.display = 'block'; status.style.color = 'var(--muted)';
+    status.textContent = 'Analyse en cours…';
+
+    // 1. Construire l'index UPC -> prix depuis le .txt (col 0 = code, col 4 = prix)
+    const prixParUpc = new Map();
+    for (const ligne of txtContent.split(/\r?\n/)){
+      if (!ligne.trim()) continue;
+      const champs = ligne.split(',');
+      const code = (champs[0] || '').trim().toUpperCase();
+      const prix = parseFloat((champs[4] || '').trim());
+      if (code && !isNaN(prix)) prixParUpc.set(code, prix);
+    }
+
+    // 2. Parser le tableau SAP (tab-separated), reperer les colonnes par nom
+    const lignesSap = sapZone.value.split(/\r?\n/).filter(l => l.trim() !== '');
+    if (lignesSap.length < 2){ status.style.color = 'var(--ecart)'; status.textContent = 'Tableau SAP vide ou invalide.'; return; }
+    const entetes = lignesSap[0].split('\t').map(h => h.trim());
+    const idxArticle = entetes.findIndex(h => /num.*article/i.test(h));
+    const idxUpc = entetes.findIndex(h => /allpriser/i.test(h));
+    if (idxArticle === -1 || idxUpc === -1){
+      status.style.color = 'var(--ecart)';
+      status.textContent = 'Colonnes « Numéro d\'article » et/ou « Allpriser UPC » introuvables dans l\'en-tête collé.';
+      return;
+    }
+
+    // 3. Pour chaque ligne SAP, si son UPC est dans le .txt -> ligne DTW (Liste 1)
+    const sortie = [
+      'ParentKey\tLineNum\tPriceList\tPrice\tCurrency\tBasePriceList\tFactor\tManual\tAutoUpdate',
+      'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
+    ];
+    let nbMatch = 0, nbSansUpc = 0;
+    for (let i = 1; i < lignesSap.length; i++){
+      const c = lignesSap[i].split('\t');
+      const gromec = (c[idxArticle] || '').trim();
+      const upc = (c[idxUpc] || '').trim().toUpperCase();
+      if (!upc){ nbSansUpc++; continue; }
+      if (prixParUpc.has(upc) && gromec){
+        sortie.push(`${gromec}\t1\t1\t${prixParUpc.get(upc)}\t\t\t\t\t`);
+        nbMatch++;
+      }
+    }
+
+    if (nbMatch === 0){
+      dtwGenere = null;
+      status.style.color = 'var(--ecart)';
+      status.textContent = 'Aucune correspondance trouvée entre les UPC du tableau SAP et le fichier .txt.';
+      btnSend.disabled = true; btnSend.style.opacity = '0.5';
+      return;
+    }
+    dtwGenere = sortie.join('\r\n');
+    status.style.color = 'var(--ok)';
+    status.innerHTML = '✓ ' + nbMatch + ' article(s) lié(s) et prêt(s) pour la Liste 1.'
+      + (nbSansUpc > 0 ? '<br><span style="color:var(--muted);">(' + nbSansUpc + ' ligne(s) SAP sans UPC ignorée(s))</span>' : '');
+    btnSend.disabled = false; btnSend.style.opacity = '1';
+  });
+
+  btnSend.addEventListener('click', async () => {
+    if (!dtwGenere) return;
+    btnSend.disabled = true; btnSend.textContent = 'Envoi…';
+    try {
+      const rep = await fetch(FIREBASE_URL + 'gromec_vba/imports_prix.json', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'import_prix', fichier: 'liste1_matching_' + Date.now() + '.txt', contenu: dtwGenere, date: new Date().toISOString(), statut: 'en_attente' })
+      });
+      if (!rep.ok) throw new Error('HTTP ' + rep.status);
+      status.style.color = 'var(--ok)';
+      status.textContent = 'Envoyé! SyncDTW va importer les prix dans la Liste 1 sous peu.';
+      btnSend.textContent = 'Envoyé';
+    } catch(e){
+      status.style.color = 'var(--ecart)';
+      status.textContent = 'Erreur: ' + e.message;
+      btnSend.disabled = false; btnSend.textContent = 'Réessayer';
     }
   });
 })();
