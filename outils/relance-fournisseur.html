@@ -356,6 +356,14 @@ function buildGroups(pages){
   });
   if(cur)groups.push(cur);
   groups.forEach(g=>g.email=emailForGroup(g));
+  groups.forEach(g=>{
+    if(g.fcode && g.supplier===g.fcode){
+      const byEmail=g.email&&carnet.find(c=>c.email&&c.email.toLowerCase()===g.email.toLowerCase());
+      if(byEmail){ g.supplier=byEmail.name; return; }
+      const byName=carnet.find(c=>norm(c.name).includes(norm(g.fcode)));
+      if(byName) g.supplier=byName.name;
+    }
+  });
   renderResults(); updateDoneCount(); saveSession();
   const known=groups.filter(g=>g.known).length;
   setStatus("pdfStatus",`${groups.length} fournisseur(s) détecté(s) — ${known} par code SAP.`,"ok");
