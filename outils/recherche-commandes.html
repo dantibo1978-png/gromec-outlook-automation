@@ -151,6 +151,7 @@ let index = new Map();   // numero(digits) -> [ {date,dest,sujet,numero} ]
 let results = [];
 let curFilter = "all";
 let lastExcluded = 0;
+let lastClosed = 0;
 const $ = id => document.getElementById(id);
 const drop = $("drop"), fileInput = $("file");
 const digits = s => { const m = String(s).match(/\d{4,}/); return m ? m[0] : ""; };
@@ -249,10 +250,11 @@ function extractSuppliersFromSAP(sapText) {
   if (colFourn === -1) colFourn = 2;
 
   // Colonne créateur (dernière colonne nommée « createur »/« créateur »)
-  let colCreat = -1;
+  let colCreat = -1, colStatus = -1;
   headerParts.forEach((col, idx) => {
     const clean = col.trim().toLowerCase();
     if (clean === 'createur' || clean === 'créateur' || clean === 'creator') colCreat = idx;
+    if (clean === 'status' || clean === 'statut' || clean === 'état' || clean === 'etat') colStatus = idx;
   });
   
   // Parcourir les lignes de données, avec le MÊME séparateur que l'en-tête
@@ -273,8 +275,13 @@ function extractSuppliersFromSAP(sapText) {
     else if (/^\d{2}\/\d{2}\/\d{4}$/.test(fournisseur)) fournisseur = '';
 
     const createur = colCreat !== -1 ? (parts[colCreat] || '').trim() : '';
+    const status = colStatus !== -1 ? (parts[colStatus] || '').trim() : '';
 
-    supplierMap.set(num, { supplier: fournisseur, creator: createur });
+    // « Clôturé » / « Cloturé » / « Clôturée » / « Closed » — insensible aux accents et à la casse
+    const statusNorm = status.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const closed = statusNorm.startsWith("clotur") || statusNorm.startsWith("closed");
+
+    supplierMap.set(num, { supplier: fournisseur, creator: createur, status, closed });
   }
 
   return supplierMap;
@@ -294,6 +301,7 @@ $("run").addEventListener("click", () => {
     return terms.some(tokens => tokens.every(t => v.includes(t)));
   };
   let excluded = 0;
+  let closedCount = 0;
 
   const sapData = $("orders").value;
   const infoMap = extractSuppliersFromSAP(sapData);
@@ -310,7 +318,10 @@ $("run").addEventListener("click", () => {
     if (seen.has(d)) return;
     seen.add(d);
 
-    const info = infoMap.get(d) || { supplier:'', creator:'' };
+    const info = infoMap.get(d) || { supplier:'', creator:'', status:'', closed:false };
+
+    // Une commande clôturée est terminée : on ne la suit plus du tout.
+    if (info.closed) { closedCount++; return; }
 
     // Exclusion ciblée : chaque liste teste SA colonne
     // (repli sur la ligne entière si la colonne n'a pas pu être lue)
@@ -321,6 +332,7 @@ $("run").addEventListener("click", () => {
     orders.push({ raw, d, supplier: info.supplier, creator: info.creator });
   });
   lastExcluded = excluded;
+  lastClosed = closedCount;
   if (!orders.length){ alert("Aucun numéro trouvé après filtrage."); return; }
 
   const limit = parseInt($("limit").value, 10);
@@ -348,7 +360,8 @@ function render(){
     <div class="card"><div class="k">${state.length}</div><div class="l">Numéros vérifiés</div></div>
     <div class="card ok"><div class="k">${found.length}</div><div class="l">Envoyés (courriel ou coché)</div></div>
     <div class="card no"><div class="k">${miss.length}</div><div class="l">Aucun envoi trouvé</div></div>
-    ${lastExcluded ? `<div class="card"><div class="k">${lastExcluded}</div><div class="l">Ligne(s) exclue(s)</div></div>` : ""}`;
+    ${lastExcluded ? `<div class="card"><div class="k">${lastExcluded}</div><div class="l">Ligne(s) exclue(s)</div></div>` : ""}
+    ${lastClosed ? `<div class="card"><div class="k">${lastClosed}</div><div class="l">Clôturée(s) — ignorée(s)</div></div>` : ""}`;
 
   const list = curFilter==="found"?found:curFilter==="miss"?miss:state;
   const tb = $("tbody");
