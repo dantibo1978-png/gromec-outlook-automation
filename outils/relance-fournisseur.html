@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relance fournisseur — Gromec</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#1f2a37; --ink-soft:#64748b; --panel:#ffffff; --bg:#f4f6f8;
+    --line:#e3e8ee; --radius:12px; --accent:#2b6cb0; --accent-d:#245a95;
+    --ok:#1a7f4b; --ok-bg:#e6f4ec; --warn:#a15c00; --warn-bg:#fdf1df;
+    --miss:#b42318; --miss-bg:#fdeceb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding:24px 16px 80px}
+  header h1{font-size:1.5rem;margin:0 0 4px}
+  header p{color:var(--ink-soft);margin:0 0 20px;max-width:660px}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 18px 20px;margin-bottom:16px}
+  .step-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .step-head .num{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;flex:0 0 auto}
+  .step-head h2{font-size:1.02rem;margin:0}
+  .hint{font-size:.84rem;color:var(--ink-soft);margin:2px 0 12px}
+  .drop{border:2px dashed var(--line);border-radius:var(--radius);padding:26px;text-align:center;
+    cursor:pointer;transition:.15s;background:#fafbfc}
+  .drop:hover,.drop.over{border-color:var(--accent);background:#f0f6fc}
+  .drop p{margin:4px 0}
+  .k{font-family:Consolas,"Cascadia Mono",monospace;background:#eef2f6;padding:1px 6px;border-radius:6px;font-size:.85rem}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);
+    padding:8px 10px;border-bottom:1px solid var(--line);background:#fafbfc}
+  td{padding:7px 10px;border-bottom:1px solid var(--line);font-size:.9rem;vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  input.cell{width:100%;border:1px solid transparent;background:transparent;font:inherit;color:inherit;padding:5px 7px;border-radius:6px}
+  input.cell:focus{border-color:var(--accent);background:#fff;outline:none}
+  input.box{width:100%;border:1px solid var(--line);border-radius:8px;font:inherit;padding:8px 10px;color:inherit;background:#fff}
+  textarea.box{width:100%;border:1px solid var(--line);border-radius:8px;font:inherit;padding:8px 10px;color:inherit;background:#fff;resize:vertical;min-height:96px;line-height:1.4}
+  button{font:inherit;cursor:pointer;border:none;border-radius:8px;padding:8px 14px;font-weight:600}
+  .btn{background:var(--accent);color:#fff}
+  .btn:hover{background:var(--accent-d)}
+  .btn.sec{background:#eef2f6;color:var(--ink)}
+  .btn.sec:hover{background:#e2e8ef}
+  .btn.sm{padding:5px 10px;font-size:.82rem}
+  .btn.ghost{background:transparent;color:var(--miss);padding:4px 8px}
+  .row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+  .tag{display:inline-flex;align-items:center;gap:5px;font-size:.76rem;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap}
+  .tag.ok{background:var(--ok-bg);color:var(--ok)}
+  .tag.warn{background:var(--warn-bg);color:var(--warn)}
+  .tag.miss{background:var(--miss-bg);color:var(--miss)}
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px;background:#fff}
+  .card.unknown{border-color:#f0c9a8;background:#fffaf4}
+  .card.done{border-color:#bfe3cd;background:#f2fbf6}
+  .btn.doneb{background:var(--ok)}
+  .btn.doneb:hover{background:#166a3e}
+  .card h3{margin:0 0 2px;font-size:1rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card .meta{font-size:.82rem;color:var(--ink-soft);margin-bottom:10px}
+  .field{margin:8px 0}
+  .field label{display:block;font-size:.74rem;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-soft);margin-bottom:3px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+  .empty{padding:28px;text-align:center;color:var(--ink-soft);font-size:.9rem}
+  .status{font-size:.85rem;color:var(--ink-soft);margin-top:10px;min-height:1.2em}
+  details.tmpl summary{cursor:pointer;font-weight:600;font-size:.92rem;color:var(--accent);padding:4px 0}
+  details.carnet summary{cursor:pointer;font-weight:600;font-size:.92rem;color:var(--accent);padding:4px 0}
+  .foot{font-size:.78rem;color:var(--ink-soft);text-align:center;margin-top:24px}
+  .pill-count{background:#eef2f6;border-radius:20px;padding:2px 9px;font-size:.78rem;color:var(--ink-soft);font-weight:600}
+  .search{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;margin:8px 0}
+</style>
+</head>
+<body>
+<div style="background:#0f1826;padding:8px 16px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;border-bottom:1px solid #24344a;"><a href="/" style="color:#5ea8ff;text-decoration:none;font-weight:600;">← Retour au dashboard Gromec</a></div>
+<div class="wrap">
+  <header>
+    <h1>Relance fournisseur</h1>
+    <p>Glisse un PDF de commandes : l'outil le découpe en un PDF par fournisseur et prépare un courriel de relance (ouverture dans Outlook) avec l'adresse à qui tu écris le plus souvent pour chaque fournisseur.</p>
+  </header>
+
+  <!-- ÉTAPE 1 : Carnet -->
+  <section class="step">
+    <div class="step-head"><div class="num">1</div><h2>Carnet fournisseurs <span class="pill-count" id="carnetCount">0</span></h2></div>
+    <p class="hint">Déjà rempli avec tes fournisseurs et le courriel de commande le plus fréquent (bâti à partir de tes envois Outlook). Le nom sert à reconnaître le fournisseur dans le PDF, le courriel sert au bouton Outlook.</p>
+    <details class="carnet">
+      <summary>Voir / modifier le carnet</summary>
+      <input class="search" id="carnetSearch" placeholder="Filtrer par nom…">
+      <table id="carnetTable">
+        <thead><tr><th style="width:50%">Nom fournisseur</th><th>Courriel</th><th style="width:44px"></th></tr></thead>
+        <tbody id="carnetBody"></tbody>
+      </table>
+      <div class="toolbar">
+        <button class="btn sm" id="addRow">+ Ajouter</button>
+        <button class="btn sec sm" id="importXlsx">Importer un Excel</button>
+        <button class="btn sec sm" id="importCarnet">Importer (coller)</button>
+        <button class="btn sec sm" id="exportCarnet">Exporter CSV</button>
+        <button class="btn ghost sm" id="resetCarnet">Réinitialiser au carnet d'origine</button>
+      </div>
+      <input type="file" id="fileXlsx" accept=".xlsx,.xls" style="display:none">
+    </details>
+    <div class="hint" style="margin-top:14px">Optionnel — recharger un export Outlook plus récent pour compléter les courriels manquants via le numéro de commande :</div>
+    <div class="drop" id="dropJson" style="padding:16px">
+      <p><strong>Clique</strong> ou glisse <span class="k">elements_envoyes.json</span></p>
+    </div>
+    <input type="file" id="fileJson" accept=".json,application/json" style="display:none">
+    <div class="status" id="jsonStatus"></div>
+  </section>
+
+  <!-- ÉTAPE 2 : PDF -->
+  <section class="step">
+    <div class="step-head"><div class="num">2</div><h2>Glisser le PDF de commandes</h2></div>
+    <div class="drop" id="dropPdf">
+      <p><strong>Clique pour choisir</strong> ou glisse ton PDF ici</p>
+      <p style="font-size:.82rem;color:var(--ink-soft);margin-top:6px">Les pages consécutives d'un même fournisseur sont regroupées automatiquement.</p>
+    </div>
+    <input type="file" id="filePdf" accept=".pdf,application/pdf" style="display:none">
+    <div class="status" id="pdfStatus"></div>
+  </section>
+
+  <!-- ÉTAPE 3 : Résultats -->
+  <section class="step">
+    <div class="step-head"><div class="num">3</div><h2>Fournisseurs détectés</h2></div>
+    <details class="tmpl" style="margin-bottom:12px">
+      <summary>Modèle de courriel de relance</summary>
+      <div class="field" style="margin-top:10px"><label>Objet</label><input class="box" id="tmplSubject"></div>
+      <div class="field"><label>Corps du message</label><textarea class="box" id="tmplBody"></textarea></div>
+      <p class="hint">Variables : <span class="k">{fournisseur}</span> · <span class="k">{commandes}</span> · <span class="k">{date}</span></p>
+    </details>
+    <div class="toolbar" id="globalActions" style="display:none">
+      <button class="btn sm" id="downloadAll">Télécharger tous les PDF (zip)</button>
+      <span class="pill-count" id="doneCount"></span>
+      <label style="font-size:.84rem;color:var(--ink-soft);display:inline-flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="showDone"> Afficher les traités</label>
+      <span style="flex:1"></span>
+      <button class="btn ghost sm" id="resetSession" title="Effacer la session en cours">RESET — tout effacer</button>
+    </div>
+    <div id="results"><div class="empty">Charge un PDF à l'étape 2 pour voir les fournisseurs ici.</div></div>
+  </section>
+
+  <div class="foot">Outil interne Gromec · tout se passe dans ton navigateur, aucun fichier n'est envoyé sur Internet.</div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const { PDFDocument } = PDFLib;
+
+/* Carnet d'origine intégré (fournisseur -> courriel le plus fréquent) */
+const DEFAULT_CARNET = [{"name": "3M HEALTCARE CANADA COMPANY  LIMITED", "email": "support.ca@solventum.com"}, {"name": "A.O.SMITH ENTERPRISES LTD", "email": "contactmontreal@aosmith.com"}, {"name": "AFP ACCESS FLOW PRODUCTS", "email": "jstark@accessflowproducts.com"}, {"name": "AIM METAUX & ALLIAGES S.E.C.", "email": "sroberge@aimsolder.com"}, {"name": "ALLIAGE UNIFIES", "email": "i.dan@alliagesunifies.com"}, {"name": "ALLIED GROUP ALLIED FITTING CANADA", "email": "jenh@alliedcan.ca"}, {"name": "AMIFLEX INC", "email": "mpellegrino@amiflex.com"}, {"name": "APPLIED INDUSTRIAL TECH. SOLUTIONS INDUSTRIELLES", "email": "mboulet@applied.com"}, {"name": "AQUATECK", "email": "quebec@aquateck.com"}, {"name": "ARMSTRONG FLUID TECHNOLOGY", "email": "pwarren@armstrongfluidtechnology.com"}, {"name": "ASC ENGINEERED SOLUTION CANADA T46245", "email": "canadacs@asc-es.com"}, {"name": "AVR VALVE INDUSTRIES INC.", "email": "ralph@avrvalve.com"}, {"name": "BMI CANADA INC", "email": "service.qc@bmicanada.com"}, {"name": "BOSHART INDUSTRIES INC.", "email": "sandra.fournier@nimatec.com"}, {"name": "BOW GROUPE PLOMBERIE INC.", "email": "customer.service@wavin.orbia.com"}, {"name": "BROOKS JOHN CIE LTEE", "email": "sroeun@johnbrooks.ca"}, {"name": "CALEFACTIO SOLUTIONS INC", "email": "lwilson@calefactio.com"}, {"name": "CANPLAS INDUSTRIES LTD", "email": "zqasimi@canplas.com"}, {"name": "CAPTEURS GR INC.", "email": "srivest@capteurs-gr.com"}, {"name": "CB SUPPLIES LTD", "email": "stephanie.chinien@cbsupplies.ca"}, {"name": "CCTF CORPORATION", "email": "mfazio@cctf.com"}, {"name": "CENTOCO PLASTICS LTD", "email": "cassandra.drummond@centoco.com"}, {"name": "CHEMLINE PLASTICS LTD", "email": "wsee@chemline.com"}, {"name": "CINTUBE LTEE", "email": "ken.carrier@cintube.ca"}, {"name": "COMPONENT HARDWARE CANADA INC", "email": "canada.sales@componenthardware.com"}, {"name": "CONBRACO INDUSTRIES INC (T56533C)", "email": "canadaorders@aalberts-ips.com"}, {"name": "CONNECTALL LTEE", "email": "atinker@connectallltd.com"}, {"name": "CONTRO VALVE INC.", "email": "ggraham@controvalve.com"}, {"name": "CONTROLE R.D.M. INC.", "email": "commande@controlesrdm.ca"}, {"name": "CONVAL QUEBEC INC.", "email": "achats@convalquebec.com"}, {"name": "CRANE PUMPS & SYSTEMS", "email": "ddanilov@cranepumps.com"}, {"name": "CRANE VALVE GROUP", "email": "ajowett@cranecpe.com"}, {"name": "D.M. VALVES ET CONTROLES", "email": "ocastillo@dmvalve.com"}, {"name": "DAEMAR INC.", "email": "pcampeau@daemarinc.com"}, {"name": "DAHL VALVE LIMITED", "email": "orderdesk@dahlvalve.com"}, {"name": "DESCHESNES & FILS LTEE (Q", "email": "que.cptplomb@deschenes.qc.ca"}, {"name": "DIRCOM", "email": "ventes@dircom.ca"}, {"name": "DISTECH INC", "email": "sguerin@distech.ca"}, {"name": "DISTRIBUTION D.D.M. INC.", "email": "gtremblay@distributionddm.ca"}, {"name": "DISTRIBUTION ELITE MP INC", "email": "commandes@distributionelitemp.com"}, {"name": "DIXON GROUP CANADA", "email": "montreal@dixonvalve.ca"}, {"name": "DOBBIN SALES", "email": "infoquebec@dobbinsales.com"}, {"name": "DOUCET R.L. INC.", "email": "info@rldoucet.qc.ca"}, {"name": "DRYCAN INC", "email": "sales@buysilica.ca"}, {"name": "E.H. PRICE SOLUTIONS", "email": "distribution@ehpricesolutions.ca"}, {"name": "EMPIRE CANADA", "email": "abourbeau@empirecanada.ca"}, {"name": "EP SAGUENAY", "email": "jroy@groupeep.com"}, {"name": "EQUIPEMENTS BERNARD LTEE", "email": "info@equipementsbernard.com"}, {"name": "EQUPEMENT DE RESTAURANT LAVAL INC", "email": "raymond.d@erl.qc.ca"}, {"name": "EVEREST AUTOMATION INC.", "email": "jeff.levesque@everest-automation.com"}, {"name": "FAIRVIEW LTD", "email": "sales@montreal.fairviewfittings.com"}, {"name": "FERNCO CONNECTORS LTD.", "email": "debbie.waddell@fernco.com"}, {"name": "FIBRO-DRAIN INC", "email": "info@fibro-drain.com"}, {"name": "FIDELITY PAC METALS LTD", "email": "courtneym@fidelitypac.ca"}, {"name": "FLEX-PRESSION LTEE/LTD", "email": "mlatour@flexpression.net"}, {"name": "FLOCOR INC.", "email": "obolduc@flocor.ca"}, {"name": "FLUOROSEAL SPECIALITY VALVES", "email": "sales@fluorosealvalves.com"}, {"name": "FORESTUBE INC.", "email": "anik@forestube.com"}, {"name": "GOODMAN COMPONENTS CORPORATION", "email": "mail@goodmancomponents.com"}, {"name": "GREAT LAKES COPPER INC", "email": "abegail.gata@glcopper.com"}, {"name": "GROUPE SWAGELOK QUEBEC VANNE RACCORD LAURENTIAN", "email": "info@quebec.swagelok.com"}, {"name": "HAYWARD POOL PRODUCTS CANADA INC", "email": "riccardo@avrvalve.com"}, {"name": "HEBDRAULIQUE INC.", "email": "chicoutimi@hebdraulique.ca"}, {"name": "HYDROMEC", "email": "mperron@hydromec.ca"}, {"name": "ICC CIE CHEMINEES INDUSTRIELLES INC.", "email": "commandes@icc-rsf.com"}, {"name": "IFC ISLIP FLOW CONTROLS INC", "email": "karly.kingsmore@islipflowcontrols.com"}, {"name": "IPEX INC.", "email": "orders50edi@ipexna.com"}, {"name": "JOHN CRANE CANADA INC. ENGINEERED SEALINGS SYS.", "email": "pkacha@johncrane.com"}, {"name": "JOINTS ETANCHES R.B. INC", "email": "rbqc@sealsonline.com"}, {"name": "KALIA INC", "email": "orderdesk@kaliastyle.com"}, {"name": "LAURENTIDE CONTROLES LTEE", "email": "valves_instruments@laurentide.com"}, {"name": "LIBERTY PUMPS", "email": "linda@agencedesjardins.com"}, {"name": "LYNCAR INC.", "email": "sales@lyncar.com"}, {"name": "MAAX BATH INC.", "email": "saccanada@maax.com"}, {"name": "MACROMOTION HYDRAULICS INC.", "email": "sales@macromotion.ca"}, {"name": "MAINLINE BACKFLOW  PRODUCTS INC.", "email": "sales@backwatervalve.com"}, {"name": "MARK DAVID CANADA", "email": "adam@markdavidcanada.com"}, {"name": "MARTIN ROUSSEL  DISTRIBUTION INC.", "email": "quebec@mroussel.com"}, {"name": "MASCO CANADA", "email": "orders@mascocanada.com"}, {"name": "MATHESON VALVES & FITTINGS LTEE", "email": "yverret@mvfltd.com"}, {"name": "METAL-ART SOUDURE INC", "email": "o.corneau@metalartsoudure.com"}, {"name": "MIDWEST VALVE PARTS SUPPLY CO. INC", "email": "miranda.temple@iss-na.com"}, {"name": "MOTION INDUSTRIES CANADA", "email": "sebastien.girard@motioncanada.com"}, {"name": "NATIONAL SOCKET SCREW MFG. LTD", "email": "aimee@nationalsocketscrew.com"}, {"name": "NORGAS", "email": "gordm@norgascontrols.com"}, {"name": "OAKVILLE STAMPING & BENDING LTD", "email": "customerservice@osb.ca"}, {"name": "OATEY CANADA SUPPLY CHAIN SERVICES CO.", "email": "roxane.stonely@nimatec.com"}, {"name": "OLYMPIA TUBES LTEE", "email": "ricardo@olympiatubes.com"}, {"name": "ONE WORLD SUPPLY", "email": "flabelle@oneworldsupply.ca"}, {"name": "ONTOR LIMITEE C/0 JD SMITH", "email": "orderdesk@ontor.com"}, {"name": "PHC DISTRIBUTION INC.", "email": "mdituri@phcdist.com"}, {"name": "PITANCO PRECISION", "email": "sales@pitanco.ca"}, {"name": "PNEUMATIQUE RG & FILS", "email": "jimmy.gagne@pneumatiquerg.com"}, {"name": "PNEUTECH ROUSSEAU INC.", "email": "jcanuel@pneutech-rousseau.com"}, {"name": "PREMIER INDUSTRIAL HOSE MANUFACTURING LTD", "email": "sales@premierhose.com"}, {"name": "PREPER INC", "email": "lptaillon@gmail.com"}, {"name": "PRESTON PHIPPS INC.", "email": "reginaldcambiapascual@prestonphipps.com"}, {"name": "PRODUITS BCM LTEE", "email": "bruno-tremblay@produitsbcm.com"}, {"name": "PRODUITS CHIMIQUES SIMCO INC", "email": "ventes@simcoqc.com"}, {"name": "PROTECTION INCENDIE  VIKING INC.", "email": "jonquiere@vikingfire.ca"}, {"name": "PROVAN (LES CONTROLES  ASS.) INC.", "email": "info@provan.ca"}, {"name": "QIP EQUIPEMENT LTEE DIV DE WOLSELEY IND CAN", "email": "qipmtl@wolseley.com"}, {"name": "RAFALES AGENCIES INC", "email": "rafales@rafales.com"}, {"name": "RELIANCE WORLDWIDE CANADA INC", "email": "canadaorders@rwc.com"}, {"name": "ROUTLECO INC", "email": "info@routleco.com"}, {"name": "SANI FONTAINES", "email": "vicky.theoret@sanifontaines.ca"}, {"name": "SCHULTZ JOHN L. LTD", "email": "orders@johnlschultz.com"}, {"name": "SHAFTER BROS. INC.", "email": "dale@steamexperts.com"}, {"name": "SINOPE TECHNOLOGIE", "email": "commandes@sinopetech.com"}, {"name": "SIOUX CHIEF MANUFACTURING", "email": "customer.service@siouxchief.com"}, {"name": "STEWART M.A. & SONS LTD", "email": "danl@mastewart.com"}, {"name": "SYMMONS INDUSTRIES INC. C/O 912150", "email": "info@prospect-agent.com"}, {"name": "TAYLOR L.E. ASSOCIATES  LTD.", "email": "orders@taylorwalraven.ca"}, {"name": "THERMO 2000 INC", "email": "info@thermo2000.com"}, {"name": "TJ SOLUTIONS HYDRONIQUE", "email": "comptabilite@tjsolutionshydronique.com"}, {"name": "TRIAD SOLUTIONS", "email": "commandes@triadturfsolutions.cm"}, {"name": "TRIANGLE FLUID CONTROLS LTD", "email": "justin@trianglefluid.com"}, {"name": "TRUELINE VALVE CORPORATION", "email": "jf@trueline.ca"}, {"name": "TUYAUX FLEXIBLES DU  QUEBEC INC", "email": "ventes@tuyauxflex.com"}, {"name": "VAPTEC INC.", "email": "info@vaptec.ca"}, {"name": "VENTES MECTRA INC.", "email": "lsevigny@mectra.com"}, {"name": "VISTAQUA INC.", "email": "specs@vistaqua.com"}, {"name": "WAINBEE", "email": "aboivin@wainbee.com"}, {"name": "WATTS WATER TECHNOLOGIES CANADA INC.", "email": "sac@lajoie.co"}, {"name": "WESTECH INDUSTRIAL LTD", "email": "sales-east@westech-ind.com"}, {"name": "WESTLAKE CANADA INC", "email": "cslaval@westlake.com"}, {"name": "WIKA INSTRUMENTS LTD", "email": "quebecsales@wika.ca"}, {"name": "WOLSELEY CANADA INC GROUPE PLOMBERIE", "email": "pascale.hudon@wolseleyinc.ca"}, {"name": "XOMOX CANADA-MONTREAL", "email": "cmacpherson@cranecpe.com"}, {"name": "ZURN INDUSTRIES LIMITED", "email": "commande.laval@can-aqua.ca"}];
+
+const LS_CARNET="relance_carnet_v2", LS_TMPL="relance_tmpl_v2", LS_SESSION="relance_session_v2", LS_LOG="relance_log_v2";
+let relanceLog=load(LS_LOG,{}); // { "NOM NORMALISÉ": "2026-07-02T..." }
+function logKey(g){ if(typeof g==="string")return norm(g); return (g&&g.fcode)?g.fcode:norm(g&&g.supplier||""); }
+function markRelance(g){ relanceLog[logKey(g)]=new Date().toISOString(); save(LS_LOG,relanceLog); }
+function lastRelance(g){ return relanceLog[logKey(g)]||null; }
+function fmtDate(iso){ if(!iso)return null; try{const d=new Date(iso);return d.toLocaleDateString("fr-CA",{year:"numeric",month:"short",day:"numeric"});}catch(e){return null;} }
+let showDone=false;
+const DEFAULT_TMPL={subject:"Relance – Commande {commandes}",
+body:`Bonjour,
+
+Je fais un suivi concernant la ou les commandes suivantes : {commandes}.
+
+Pourriez-vous me confirmer le statut et la date de livraison prévue?
+
+Le bon de commande est joint à ce courriel.
+
+Merci,`};
+
+function load(k,def){try{const v=JSON.parse(localStorage.getItem(k));return (v===null||v===undefined)?def:v;}catch(e){return def;}}
+function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+
+let carnet=load(LS_CARNET,null);
+if(!Array.isArray(carnet)||!carnet.length){ carnet=DEFAULT_CARNET.map(c=>({name:c.name,email:c.email})); }
+let tmpl=load(LS_TMPL,DEFAULT_TMPL);
+let orderEmailMap={}, jsonNames=[], pdfBytes=null, groups=[];
+
+/* ---- normalisation / détection par CODE FOURNISSEUR ---- */
+function norm(s){return (s||"").toString().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Z0-9 ]/g," ").replace(/\s+/g," ").trim();}
+const NOISE=new Set(["INC","LTEE","LTD","LLC","CORP","CORPORATION","LIMITED","LIMITEE","ENR","CIE","CO","COMPANY","USD","US","SEC","SENCRL","INDUSTRIES","GROUP","GROUPE","CANADA","LES","THE","DE","DU","ET","AND"]);
+function coreKey(name){
+  let base=(name||"").replace(/\(.*?\)/g," ").replace(/C\/O.*$/i," ").replace(/\$+US\$+/ig," ");
+  let toks=norm(base).split(" ").filter(t=>t && !/^T\d+C?$/.test(t) && !NOISE.has(t));
+  let core=toks.slice(0,3).join(" ");
+  return core.length>=4?core:norm(base);
+}
+function buildKeys(){ carnet.forEach(c=>{ c._full=norm(c.name); c._core=coreKey(c.name); }); }
+const emailRe=/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g;
+const F_RE=/\bF\d{5,6}\b/;
+// Analyse une page à partir de ses lignes reconstruites : code, nom, courriel, no PO
+function parsePage(lines, text){
+  const fm=text.match(F_RE);
+  const fcode=fm?fm[0]:null;
+  // nom = texte avant le code sur la ligne qui contient le code
+  let name=null;
+  if(fcode){
+    for(const ln of lines){
+      const idx=ln.indexOf(fcode);
+      if(idx>-1){
+        let n=ln.slice(0,idx);
+        n=n.replace(/No\.?\s*fournisseur\s*:?/ig,"").replace(/:+/g," ").trim();
+        n=n.replace(/\s{2,}/g," ").trim();
+        if(n.length>=2) name=n;
+        break;
+      }
+    }
+  }
+  // courriel = premier courriel qui n'est PAS gromec (le nôtre est dans la signature)
+  const emails=(text.match(emailRe)||[]).filter(e=>!/gromec/i.test(e));
+  const email=emails.length?emails[0].toLowerCase():"";
+  const orders=[...new Set((text.match(/\b9\d{6}\b/g))||[])];
+  // repli si pas de code : détection par nom via le carnet
+  let byName=null;
+  if(!fcode){ const nt=norm(text); let bl=0;
+    for(const c of carnet){ let hit=null;
+      if(c._full.length>=4&&nt.includes(c._full))hit=c._full; else if(c._core.length>=5&&nt.includes(c._core))hit=c._core;
+      if(hit&&hit.length>bl){byName=c.name;bl=hit.length;} } }
+  return {fcode, name:name||byName||null, email, orders};
+}
+function emailForGroup(g){
+  if(g.pageEmail) return g.pageEmail;
+  // carnet par nom
+  const c=carnet.find(x=>g.supplier&&norm(x.name)===norm(g.supplier));
+  if(c&&c.email) return c.email;
+  for(const o of (g.orders||[])){ if(orderEmailMap[o]) return orderEmailMap[o]; }
+  return "";
+}
+
+/* ---- Carnet UI ---- */
+const carnetBody=document.getElementById("carnetBody");
+let carnetFilter="";
+function renderCarnet(){
+  buildKeys();
+  document.getElementById("carnetCount").textContent=carnet.length;
+  const rows=carnet.map((c,i)=>({c,i})).filter(o=>!carnetFilter||norm(o.c.name).includes(norm(carnetFilter)));
+  carnetBody.innerHTML="";
+  if(!rows.length){ carnetBody.innerHTML=`<tr><td colspan="3" class="empty" style="padding:16px">Aucun fournisseur.</td></tr>`; return; }
+  rows.forEach(({c,i})=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input class="cell" data-i="${i}" data-f="name" value="${esc(c.name)}"></td>`+
+      `<td><input class="cell" data-i="${i}" data-f="email" value="${esc(c.email||"")}" placeholder="courriel@fournisseur.com"></td>`+
+      `<td><button class="btn ghost" data-del="${i}" title="Supprimer">✕</button></td>`;
+    carnetBody.appendChild(tr);
+  });
+}
+document.getElementById("carnetSearch").addEventListener("input",e=>{carnetFilter=e.target.value;renderCarnet();});
+carnetBody.addEventListener("input",e=>{const t=e.target;if(!t.dataset.f)return;carnet[+t.dataset.i][t.dataset.f]=t.value;save(LS_CARNET,carnet);buildKeys();});
+carnetBody.addEventListener("click",e=>{const d=e.target.dataset.del;if(d===undefined)return;carnet.splice(+d,1);save(LS_CARNET,carnet);renderCarnet();if(groups.length)rebuild();});
+document.getElementById("addRow").onclick=()=>{carnet.unshift({name:"",email:""});save(LS_CARNET,carnet);renderCarnet();};
+document.getElementById("resetCarnet").onclick=()=>{if(confirm("Rétablir le carnet d'origine (tes 130 fournisseurs) ? Tes modifications seront perdues.")){carnet=DEFAULT_CARNET.map(c=>({name:c.name,email:c.email}));save(LS_CARNET,carnet);renderCarnet();if(groups.length)rebuild();}};
+document.getElementById("exportCarnet").onclick=()=>{const csv="Nom;Courriel\n"+carnet.map(c=>`"${(c.name||"").replace(/"/g,'""')}";"${(c.email||"").replace(/"/g,'""')}"`).join("\n");dl(new Blob([csv],{type:"text/csv;charset=utf-8"}),"carnet_fournisseurs.csv");};
+document.getElementById("importCarnet").onclick=()=>{
+  const raw=prompt("Colle des lignes (Nom;Courriel ou Nom,Courriel — une par ligne). Les noms déjà présents seront mis à jour.");
+  if(!raw)return; mergeCarnet(raw.split(/\r?\n/).map(l=>l.split(/[;,\t]/).map(x=>x.trim().replace(/^"|"$/g,""))));
+};
+document.getElementById("importXlsx").onclick=()=>document.getElementById("fileXlsx").click();
+document.getElementById("fileXlsx").onchange=e=>{const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{ const wb=XLSX.read(ev.target.result,{type:"array"});
+    const sh=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(sh,{header:1,defval:""});
+    mergeCarnet(rows);
+  };
+  r.readAsArrayBuffer(f);
+};
+function mergeCarnet(rows){
+  let added=0,upd=0;
+  rows.forEach(parts=>{
+    if(!parts||!parts.length) return;
+    let name=(parts[0]||"").toString().trim(), email=(parts[1]||"").toString().trim();
+    if(!name) return;
+    if(/^nom/i.test(name)&&/courriel|email/i.test(email)) return; // en-tête
+    const ex=carnet.find(c=>norm(c.name)===norm(name));
+    if(ex){ if(email){ex.email=email;upd++;} }
+    else { carnet.push({name,email}); added++; }
+  });
+  carnet.sort((a,b)=>a.name.localeCompare(b.name));
+  save(LS_CARNET,carnet); renderCarnet(); if(groups.length) rebuild();
+  alert(`Carnet mis à jour : ${added} ajouté(s), ${upd} courriel(s) mis à jour.`);
+}
+
+/* ---- JSON export Outlook ---- */
+function ingestJson(text){
+  let data; try{data=JSON.parse(text.replace(/^\uFEFF/,""));}catch(e){setStatus("jsonStatus","JSON illisible.","miss");return;}
+  const arr=Array.isArray(data)?data:(data.items||data.commandes||[]);
+  orderEmailMap={};jsonNames=[];
+  const eRe=/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/i;
+  arr.forEach(row=>{ if(!row||typeof row!=="object")return;
+    const blob=Object.values(row).filter(x=>typeof x==="string").join(" ");
+    const m=blob.match(eRe); const email=m?m[0]:"";
+    const orders=(blob.match(/\b9\d{6}\b/g))||[];
+    if(email) orders.forEach(o=>{if(!orderEmailMap[o])orderEmailMap[o]=email;});
+  });
+  setStatus("jsonStatus",`Chargé : ${Object.keys(orderEmailMap).length} commande(s) reliées à un courriel.`,"ok");
+  if(groups.length) rebuild();
+}
+
+/* ---- Lecture PDF ---- */
+async function readPdf(bytes){
+  pdfBytes=bytes; setStatus("pdfStatus","Lecture du PDF…","");
+  const pdf=await pdfjsLib.getDocument({data:bytes.slice(0)}).promise;
+  const pages=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i); const tc=await page.getTextContent();
+    const buckets={};
+    tc.items.forEach(it=>{ if(!it.str||!it.str.trim())return; const y=Math.round(it.transform[5]/2); (buckets[y]=buckets[y]||[]).push({x:it.transform[4],s:it.str}); });
+    const lines=Object.keys(buckets).map(Number).sort((a,b)=>b-a)
+      .map(y=>buckets[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(" ").replace(/\s+/g," ").trim());
+    const text=lines.join("\n");
+    const info=parsePage(lines,text);
+    pages.push({index:i-1, ...info});
+    setStatus("pdfStatus",`Lecture… page ${i}/${pdf.numPages}`,"");
+  }
+  buildGroups(pages);
+}
+function buildGroups(pages){
+  groups=[];let cur=null;
+  pages.forEach(p=>{
+    // clé de regroupement : le code fournisseur (fiable), sinon le nom
+    const key=p.fcode||(p.name?("NOM:"+norm(p.name)):null);
+    if(key){
+      if(cur && cur.key===key){ cur.pages.push(p.index); }
+      else{ if(cur)groups.push(cur); cur={key, fcode:p.fcode||null, supplier:p.name||p.fcode||"(fournisseur)", pages:[p.index], orders:[], pageEmail:p.email||"", known:true}; }
+    }else{
+      if(cur){ cur.pages.push(p.index); }
+      else cur={key:null, fcode:null, supplier:"(fournisseur non reconnu)", pages:[p.index], orders:[], pageEmail:"", known:false};
+    }
+    (p.orders||[]).forEach(o=>{if(!cur.orders.includes(o))cur.orders.push(o);});
+    if(!cur.pageEmail && p.email) cur.pageEmail=p.email;
+  });
+  if(cur)groups.push(cur);
+  groups.forEach(g=>g.email=emailForGroup(g));
+  renderResults(); updateDoneCount(); saveSession();
+  const known=groups.filter(g=>g.known).length;
+  setStatus("pdfStatus",`${groups.length} fournisseur(s) détecté(s) — ${known} par code SAP.`,"ok");
+}
+function rebuild(){if(pdfBytes)readPdf(pdfBytes.slice(0));}
+function saveSession(){ save(LS_SESSION, groups.map(g=>({key:g.key,fcode:g.fcode,supplier:g.supplier,pages:g.pages,orders:g.orders,known:g.known,pageEmail:g.pageEmail,email:g.email,done:!!g.done}))); }
+function restoreSession(){
+  const s=load(LS_SESSION,null);
+  if(Array.isArray(s)&&s.length){ groups=s.map(g=>({...g})); renderResults(); updateDoneCount();
+    setStatus("pdfStatus","Session précédente restaurée. Reglisse le PDF si tu veux re-télécharger un découpage.","ok"); }
+}
+function updateDoneCount(){
+  const el=document.getElementById("doneCount"); if(!el)return;
+  const d=groups.filter(g=>g.done).length;
+  el.textContent = groups.length? `${d}/${groups.length} traités` : "";
+}
+
+/* ---- Résultats UI ---- */
+const results=document.getElementById("results");
+function renderResults(){
+  if(!groups.length){results.innerHTML=`<div class="empty">Aucun résultat.</div>`;document.getElementById("globalActions").style.display="none";return;}
+  document.getElementById("globalActions").style.display="flex"; results.innerHTML="";
+  const visibles=groups.map((g,gi)=>({g,gi})).filter(o=>showDone||!o.g.done);
+  if(!visibles.length){ results.innerHTML=`<div class="empty">Tous les fournisseurs sont traités. ✓<br><span style="font-size:.85rem">Coche « Afficher les traités » pour les revoir.</span></div>`; return; }
+  visibles.forEach(({g,gi})=>{
+    const card=document.createElement("div"); card.className="card"+(g.known?"":" unknown")+(g.done?" done":"");
+    const tag=g.done?`<span class="tag ok">✓ traité</span>`:(g.known?(g.email?`<span class="tag ok">courriel prêt</span>`:`<span class="tag warn">courriel manquant</span>`):`<span class="tag miss">nom à assigner</span>`);
+    const last=fmtDate(lastRelance(g));
+    const lastHtml=last?`<span class="tag warn" title="Dernière relance envoyée">⏱ Dernière relance : ${last}</span>`:"";
+    card.innerHTML=`<h3>${esc(g.supplier)} ${tag} ${lastHtml}</h3>
+      <div class="meta">Page(s) ${g.pages.map(p=>p+1).join(", ")} · ${g.orders.length?("Commande(s) : "+g.orders.join(", ")):"aucun n° détecté"}</div>
+      <div class="grid2">
+        <div class="field"><label>Nom fournisseur</label><input class="box" data-gi="${gi}" data-f="supplier" value="${esc(g.supplier)}"></div>
+        <div class="field"><label>Courriel destinataire</label><input class="box" data-gi="${gi}" data-f="email" value="${esc(g.email||"")}" placeholder="courriel@fournisseur.com"></div>
+      </div>
+      <div class="row-actions" style="margin-top:6px">
+        <button class="btn ${g.done?'doneb':''} sm" data-open="${gi}">${g.done?'✓ Refaire — PDF + Outlook':'✉️ Télécharger PDF + ouvrir Outlook'}</button>
+        <button class="btn sec sm" data-pdf="${gi}">PDF seulement</button>
+        <button class="btn sec sm" data-toggle="${gi}">${g.done?'Marquer à faire':'Marquer traité'}</button>
+        ${g.known&&!inCarnet(g.supplier)?`<button class="btn sec sm" data-save="${gi}">Ajouter au carnet</button>`:""}
+      </div>`;
+    results.appendChild(card);
+  });
+}
+function inCarnet(n){return carnet.some(c=>norm(c.name)===norm(n));}
+results.addEventListener("input",e=>{const t=e.target,gi=t.dataset.gi;if(gi===undefined||!t.dataset.f)return;groups[+gi][t.dataset.f]=t.value;saveSession();});
+results.addEventListener("click",async e=>{const t=e.target;
+  if(t.dataset.pdf!==undefined)await downloadGroupPdf(+t.dataset.pdf);
+  else if(t.dataset.open!==undefined){const gi=+t.dataset.open;await downloadGroupPdf(gi);openMail(gi);groups[gi].done=true;markRelance(groups[gi]);saveSession();renderResults();updateDoneCount();}
+  else if(t.dataset.toggle!==undefined){const gi=+t.dataset.toggle;groups[gi].done=!groups[gi].done;saveSession();renderResults();updateDoneCount();}
+  else if(t.dataset.save!==undefined){const g=groups[+t.dataset.save];if(!inCarnet(g.supplier)){carnet.push({name:g.supplier,email:g.email||""});carnet.sort((a,b)=>a.name.localeCompare(b.name));save(LS_CARNET,carnet);renderCarnet();renderResults();}}
+});
+document.getElementById("resetSession").onclick=()=>{
+  if(confirm("RESET — effacer la session de relance en cours (fournisseurs détectés et progression) ? Le carnet n'est pas touché.")){
+    groups=[]; pdfBytes=null; localStorage.removeItem(LS_SESSION);
+    renderResults(); updateDoneCount();
+    setStatus("pdfStatus","Session effacée. Glisse un nouveau PDF.","");
+  }
+};
+
+/* ---- Découpe PDF ---- */
+async function downloadGroupPdf(gi){
+  const g=groups[gi]; const src=await PDFDocument.load(pdfBytes.slice(0)); const out=await PDFDocument.create();
+  (await out.copyPages(src,g.pages)).forEach(p=>out.addPage(p));
+  dl(new Blob([await out.save()],{type:"application/pdf"}),fileName(g));
+}
+function fileName(g){const b=(g.supplier||"fournisseur").replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"_").slice(0,50)||"fournisseur";return "Relance_"+b+".pdf";}
+document.getElementById("downloadAll").onclick=async()=>{
+  const zip=new JSZip();
+  for(const g of groups){const src=await PDFDocument.load(pdfBytes.slice(0));const out=await PDFDocument.create();(await out.copyPages(src,g.pages)).forEach(p=>out.addPage(p));zip.file(fileName(g),await out.save());}
+  dl(await zip.generateAsync({type:"blob"}),"Relances_fournisseurs.zip");
+};
+
+/* ---- Courriel ---- */
+function openMail(gi){const g=groups[gi];const date=new Date().toLocaleDateString("fr-CA");
+  const cmds=g.orders.length?g.orders.join(", "):"(voir pièce jointe)";
+  const subj=fill(tmpl.subject,g,cmds,date), body=fill(tmpl.body,g,cmds,date);
+  window.location.href=`mailto:${encodeURIComponent(g.email||"")}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;}
+function fill(s,g,cmds,date){return (s||"").replace(/{fournisseur}/g,g.supplier||"").replace(/{commandes}/g,cmds).replace(/{date}/g,date);}
+
+/* ---- Modèle UI ---- */
+const tSub=document.getElementById("tmplSubject"),tBody=document.getElementById("tmplBody");
+tSub.value=tmpl.subject;tBody.value=tmpl.body;
+tSub.oninput=()=>{tmpl.subject=tSub.value;save(LS_TMPL,tmpl);};
+tBody.oninput=()=>{tmpl.body=tBody.value;save(LS_TMPL,tmpl);};
+
+/* ---- Zones de dépôt ---- */
+wireDrop("dropPdf","filePdf",f=>f.arrayBuffer().then(b=>readPdf(new Uint8Array(b))));
+wireDrop("dropJson","fileJson",f=>f.text().then(ingestJson));
+function wireDrop(dropId,inputId,handler){
+  const d=document.getElementById(dropId),inp=document.getElementById(inputId);
+  d.onclick=()=>inp.click(); inp.onchange=()=>{if(inp.files[0])handler(inp.files[0]);};
+  ["dragenter","dragover"].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.add("over");}));
+  ["dragleave","drop"].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.remove("over");}));
+  d.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)handler(f);});
+}
+
+/* ---- Utils ---- */
+function esc(s){return (s||"").toString().replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function dl(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),4000);}
+function setStatus(id,msg,kind){const el=document.getElementById(id);el.textContent=msg;el.style.color=kind==="ok"?"var(--ok)":kind==="warn"?"var(--warn)":kind==="miss"?"var(--miss)":"var(--ink-soft)";}
+
+buildKeys(); renderCarnet(); restoreSession();
+document.getElementById("showDone").addEventListener("change",e=>{showDone=e.target.checked;renderResults();});
+</script>
+</body>
+</html>

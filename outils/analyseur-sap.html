@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyseur de commandes SAP</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#f4f5f7;color:#1a1a2e;min-height:100vh;padding:2rem 1rem}
+  .container{max-width:1100px;margin:0 auto}
+  h1{font-size:22px;font-weight:600;color:#1a1a2e;margin-bottom:4px}
+  .subtitle{font-size:13px;color:#6b7280;margin-bottom:1.5rem}
+  .card{background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:1.5rem;margin-bottom:1.5rem}
+  .priority-note{font-size:12px;color:#6b7280;margin-top:8px;padding:8px 12px;background:#f9fafb;border-radius:6px;border-left:3px solid #6366f1}
+  textarea{width:100%;min-height:160px;font-size:12px;font-family:'Courier New',monospace;resize:vertical;padding:10px;border:1px solid #d1d5db;border-radius:8px;background:#fafafa;color:#1a1a2e;outline:none;transition:border-color 0.2s}
+  textarea:focus{border-color:#6366f1;background:#fff}
+  .btn-row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  button{padding:9px 20px;font-size:14px;font-weight:500;border-radius:8px;cursor:pointer;transition:all 0.15s;border:1px solid}
+  button.primary{background:#6366f1;color:#fff;border-color:#6366f1}
+  button.primary:hover{background:#4f46e5}
+  button.secondary{background:#fff;color:#374151;border-color:#d1d5db}
+  button.secondary:hover{background:#f9fafb}
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:1.5rem}
+  .metric{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px}
+  .metric-label{font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px}
+  .metric-value{font-size:22px;font-weight:600;color:#1a1a2e}
+  .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;display:flex;align-items:flex-start;gap:8px}
+  .alert.warn{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:left;padding:9px 12px;font-weight:500;font-size:11px;color:#9ca3af;border-bottom:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap}
+  thead th.num{text-align:right}
+  tbody tr.main-row{border-bottom:1px solid #f3f4f6;transition:background 0.1s}
+  tbody tr.main-row:hover{background:#f9fafb}
+  tbody td{padding:10px 12px;vertical-align:middle}
+  tbody td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+  .code-cell{font-family:'Courier New',monospace;font-size:11px;color:#9ca3af}
+  .nom-cell{font-weight:600;color:#1a1a2e}
+  .tag-da{display:inline-block;font-size:10px;background:#ede9fe;color:#5b21b6;border-radius:4px;padding:2px 7px;margin:2px;font-weight:500}
+  .total-cell{color:#1a1a2e;font-size:14px}
+  .partiel{font-size:10px;color:#9ca3af;font-weight:400;margin-left:4px}
+  .expand-btn{font-size:11px;padding:5px 10px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;color:#374151;white-space:nowrap}
+  .expand-btn:hover{background:#e9eaec}
+  .detail-row{display:none}
+  .detail-row.open{display:table-row}
+  .detail-inner{padding:0 0 12px 12px}
+  .detail-inner table{font-size:12px}
+  .detail-inner thead th{font-size:10px;background:#f9fafb;padding:6px 10px}
+  .detail-inner tbody td{padding:7px 10px;border-bottom:1px solid #f3f4f6;vertical-align:top}
+  .detail-inner tbody tr:last-child td{border-bottom:none}
+  .no-price{color:#d1d5db;font-style:italic}
+  .src-badge{font-size:10px;padding:2px 7px;border-radius:4px;font-weight:500;white-space:nowrap}
+  .src-info{background:#dbeafe;color:#1e40af}
+  .src-fourn{background:#dcfce7;color:#166534}
+  .src-cible{background:#fef3c7;color:#92400e}
+  .grand-total-row td{font-weight:700;font-size:14px;border-top:2px solid #e5e7eb;padding-top:12px;color:#1a1a2e}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#6b7280;margin-bottom:12px;align-items:center}
+  .legend span{display:flex;align-items:center;gap:5px}
+</style>
+</head>
+<body>
+<div style="background:#0f1826;padding:8px 16px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;border-bottom:1px solid #24344a;"><a href="/" style="color:#5ea8ff;text-decoration:none;font-weight:600;">← Retour au dashboard Gromec</a></div>
+<div class="container">
+  <h1>&#128230; Analyseur de commandes SAP</h1>
+  <p class="subtitle">Total par fournisseur &mdash; supporte les deux formats d&rsquo;export SAP</p>
+
+  <div class="card">
+    <textarea id="rawData" placeholder="Colle ici les donn&#233;es copi&#233;es de SAP (avec les en-t&#234;tes de colonnes)..."></textarea>
+    <div class="priority-note">
+      <strong>Priorit&#233; pour le prix :</strong> Info acheteur (montant extrait) &rarr; Prix fournisseur &rarr; Prix cible
+    </div>
+    <div class="btn-row">
+      <button class="primary" onclick="analyser()">&#9654; Analyser</button>
+      <button class="secondary" onclick="effacer()">&#10005; Effacer</button>
+    </div>
+  </div>
+
+  <div id="output"></div>
+</div>
+
+<script>
+function extractPrixInfo(infoStr) {
+  if (!infoStr || !infoStr.trim()) return null;
+  var s = infoStr.trim();
+  var hasDollar = s.includes('$');
+
+  if (hasDollar) {
+    var idx = s.indexOf('$');
+    // number BEFORE the $ sign: 935.71$, 38.32$, 21.98$, 2184.05$, 11.69$
+    var before = s.substring(0, idx).trim();
+    var mb = before.match(/([\d][\d,.]*)$/);
+    if (mb) {
+      var v = parseFloat(mb[1].replace(/,(?=\d{3})/g, '').replace(',', '.'));
+      if (!isNaN(v) && v > 0) return v;
+    }
+    // number AFTER the $ sign: $938.00, US$14862.65
+    var after = s.substring(idx + 1).trim();
+    var ma = after.match(/^([\d][\d,.]*)/);
+    if (ma) {
+      var v2 = parseFloat(ma[1].replace(/,/g, ''));
+      if (!isNaN(v2) && v2 > 0) return v2;
+    }
+  }
+
+  // (NN) tag followed by decimal number: (15) 43.15, (12) 43.15
+  var tagged = s.match(/\(\d+\)\s+([\d.]+)/);
+  if (tagged) {
+    var v3 = parseFloat(tagged[1]);
+    if (!isNaN(v3) && v3 > 0) return v3;
+  }
+
+  // Supplier name (ALL CAPS) + integer at end: LAURENTIDE 453
+  // Excludes: WATTS 68.28 (has decimal), TLV-9690 (has dash)
+  var supplierInt = s.match(/^[A-Z][A-Z\s]{3,}\s+(\d{2,6})\s*$/);
+  if (supplierInt) {
+    var v4 = parseInt(supplierInt[1]);
+    if (!isNaN(v4) && v4 >= 10) return v4;
+  }
+
+  return null;
+}
+
+function parsePrice(s) {
+  if (!s || !s.trim()) return null;
+  var t = s.replace(/[$\s]/g, '').trim();
+  // Detect format: 1,234.56 (EN) vs 1234,56 (FR)
+  var hasCommaAndDot = t.includes(',') && t.includes('.');
+  var commaIdx = t.lastIndexOf(',');
+  var dotIdx = t.lastIndexOf('.');
+  var v;
+  if (hasCommaAndDot) {
+    if (dotIdx > commaIdx) {
+      // EN format: 2,130.90 => remove commas, keep dot
+      v = parseFloat(t.replace(/,/g, ''));
+    } else {
+      // FR format: 2.130,90 => remove dots, replace comma with dot
+      v = parseFloat(t.replace(/\./g, '').replace(',', '.'));
+    }
+  } else if (t.includes(',')) {
+    // Could be FR decimal (1234,56) or EN thousands (1,234)
+    var parts = t.split(',');
+    if (parts[1] && parts[1].length <= 2) {
+      // FR decimal: 1234,56
+      v = parseFloat(t.replace(',', '.'));
+    } else {
+      // EN thousands: 1,234 => remove comma
+      v = parseFloat(t.replace(/,/g, ''));
+    }
+  } else {
+    v = parseFloat(t);
+  }
+  return isNaN(v) || v === 0 ? null : v;
+}
+
+function detectFormat(headers) {
+  var h = headers.map(function(x) { return x.trim().toLowerCase(); });
+  var idxF = h.findIndex(function(x) { return x.includes('code fournisseur'); });
+  var idxA = h.findIndex(function(x) { return x.includes('num\u00e9ro article') || x.includes('numero article'); });
+  return (idxF >= 0 && idxA >= 0 && idxF < idxA) ? 'format1' : 'format2';
+}
+
+function analyser() {
+  var raw = document.getElementById('rawData').value.trim();
+  if (!raw) { alert('Colle des donn\u00e9es SAP d\'abord.'); return; }
+
+  var lines = raw.split('\n').map(function(l) { return l.trimEnd(); }).filter(function(l) { return l.trim(); });
+  var headers = lines[0].split('\t');
+  var fmt = detectFormat(headers);
+  var h = headers.map(function(x) { return x.trim().toLowerCase(); });
+
+  var c = {};
+  if (fmt === 'format1') {
+    c = {
+      codeF: h.findIndex(function(x) { return x.includes('code fournisseur'); }),
+      article: h.findIndex(function(x) { return x.includes('num\u00e9ro article') || x.includes('numero article'); }),
+      desc: h.findIndex(function(x) { return x.includes('description'); }),
+      nom: h.findIndex(function(x) { return x.includes('nom du fournisseur'); }),
+      qte: h.findIndex(function(x) { return x.includes('quantit\u00e9') || x.includes('quantite'); }),
+      prixF: h.findIndex(function(x) { return x.trim() === 'prix fournisseur'; }),
+      prixC: h.findIndex(function(x) { return x.trim() === 'prix cible'; }),
+      da: h.findIndex(function(x) { return x.includes('d.a') || (x.includes('da') && x.includes('n\u00b0')); }),
+      demandeur: h.findIndex(function(x) { return x.includes('demandeur'); }),
+      info: h.findIndex(function(x) { return x.includes('info'); })
+    };
+  } else {
+    c = {
+      article: h.findIndex(function(x) { return x.includes('num\u00e9ro article') || x.includes('numero article'); }),
+      codeF: h.findIndex(function(x) { return x.includes('code fournisseur'); }),
+      nom: h.findIndex(function(x) { return x.includes('nom du fournisseur'); }),
+      desc: h.findIndex(function(x) { return x.includes('description'); }),
+      qte: h.findIndex(function(x) { return x.includes('quantit\u00e9') || x.includes('quantite'); }),
+      prixF: h.findIndex(function(x) { return x.trim() === 'prix fournisseur'; }),
+      prixC: h.findIndex(function(x) { return x.trim() === 'prix cible'; }),
+      da: h.findIndex(function(x) { return x.includes('d.a') || (x.includes('da') && x.includes('n\u00b0')); }),
+      demandeur: h.findIndex(function(x) { return x.includes('demandeur'); }),
+      info: h.findIndex(function(x) { return x.includes('info'); })
+    };
+  }
+
+  var fournisseurs = {};
+  var totalItems = 0, noPrix = 0;
+
+  for (var i = 1; i < lines.length; i++) {
+    var row = lines[i].split('\t');
+    if (row.length < 3) continue;
+    var article = (c.article >= 0 ? row[c.article] || '' : '').trim();
+    var code = (c.codeF >= 0 ? row[c.codeF] || '' : '').trim();
+    if (!article || !code) continue;
+
+    var nom = (c.nom >= 0 ? row[c.nom] || '' : '').trim() || code;
+    var desc = (c.desc >= 0 ? row[c.desc] || '' : '').trim();
+    var qteRaw = (c.qte >= 0 ? row[c.qte] || '' : '').trim();
+    var qte = parseFloat(qteRaw.replace(',', '.')) || 0;
+    var infoRaw = (c.info >= 0 ? row[c.info] || '' : '').trim();
+    var prixFRaw = (c.prixF >= 0 ? row[c.prixF] || '' : '').trim();
+    var prixCRaw = (c.prixC >= 0 ? row[c.prixC] || '' : '').trim();
+
+    var prixInfo = extractPrixInfo(infoRaw);
+    var prixF = parsePrice(prixFRaw);
+    var prixC = parsePrice(prixCRaw);
+
+    var prixUnit = null, prixSrc = '';
+    if (prixInfo != null) { prixUnit = prixInfo; prixSrc = 'info'; }
+    else if (prixF != null) { prixUnit = prixF; prixSrc = 'fournisseur'; }
+    else if (prixC != null) { prixUnit = prixC; prixSrc = 'cible'; }
+
+    var daRaw = (c.da >= 0 ? row[c.da] || '' : '').trim();
+    var demandeur = (c.demandeur >= 0 ? row[c.demandeur] || '' : '').trim();
+
+    if (!fournisseurs[code]) {
+      fournisseurs[code] = { code: code, nom: nom, items: [], totalPrix: 0, hasAllPrix: true, das: new Set() };
+    }
+    var f = fournisseurs[code];
+    var sousTotal = prixUnit != null ? prixUnit * qte : null;
+    if (sousTotal != null) f.totalPrix += sousTotal;
+    else { f.hasAllPrix = false; noPrix++; }
+    if (daRaw) f.das.add(daRaw);
+    f.items.push({ article: article, desc: desc, qte: qte, prixUnit: prixUnit, prixSrc: prixSrc, sousTotal: sousTotal, da: daRaw, demandeur: demandeur, info: infoRaw });
+    totalItems++;
+  }
+
+  var fList = Object.values(fournisseurs).sort(function(a, b) { return b.totalPrix - a.totalPrix; });
+  var grandTotal = fList.reduce(function(s, f) { return s + f.totalPrix; }, 0);
+
+  function fmt2(n) {
+    return n != null ? n.toLocaleString('fr-CA', { style: 'currency', currency: 'CAD', minimumFractionDigits: 2 }) : '\u2014';
+  }
+
+  var html = '<div class="card">';
+  html += '<div class="summary-grid">'
+    + '<div class="metric"><div class="metric-label">Fournisseurs</div><div class="metric-value">' + fList.length + '</div></div>'
+    + '<div class="metric"><div class="metric-label">Articles</div><div class="metric-value">' + totalItems + '</div></div>'
+    + '<div class="metric"><div class="metric-label">Total estim\u00e9</div><div class="metric-value" style="font-size:18px">' + fmt2(grandTotal) + '</div></div>'
+    + '</div>';
+
+  if (noPrix > 0) {
+    html += '<div class="alert warn">&#9888; ' + noPrix + ' article(s) sans prix dans aucune colonne &mdash; le total est partiel pour certains fournisseurs.</div>';
+  }
+
+  html += '<div class="legend"><span>Source du prix :</span>'
+    + '<span><span class="src-badge src-info">Info acheteur</span></span>'
+    + '<span><span class="src-badge src-fourn">Prix fournisseur</span></span>'
+    + '<span><span class="src-badge src-cible">Prix cible</span></span>'
+    + '</div>';
+
+  html += '<table><thead><tr><th>Code</th><th>Fournisseur</th><th class="num">Articles</th><th>D.A.</th><th class="num">Total</th><th></th></tr></thead><tbody>';
+
+  function srcBadge(src) {
+    if (src === 'info') return '<span class="src-badge src-info">Info acheteur</span>';
+    if (src === 'fournisseur') return '<span class="src-badge src-fourn">Prix fourn.</span>';
+    if (src === 'cible') return '<span class="src-badge src-cible">Prix cible</span>';
+    return '<span class="no-price">N/D</span>';
+  }
+
+  fList.forEach(function(f, idx) {
+    var dasHtml = Array.from(f.das).map(function(d) { return '<span class="tag-da">' + d + '</span>'; }).join('');
+    var note = !f.hasAllPrix ? '<span class="partiel">*partiel</span>' : '';
+    html += '<tr class="main-row">'
+      + '<td class="code-cell">' + f.code + '</td>'
+      + '<td class="nom-cell">' + f.nom + '</td>'
+      + '<td class="num">' + f.items.length + '</td>'
+      + '<td>' + (dasHtml || '\u2014') + '</td>'
+      + '<td class="num total-cell">' + fmt2(f.totalPrix > 0 ? f.totalPrix : null) + note + '</td>'
+      + '<td><button class="expand-btn" onclick="toggle(' + idx + ')">&#9660; D\u00e9tail</button></td>'
+      + '</tr>'
+      + '<tr class="detail-row" id="det-' + idx + '"><td colspan="6"><div class="detail-inner">'
+      + '<table><thead><tr><th>Article</th><th>Description</th><th class="num">Qt\u00e9</th><th class="num">Prix unit.</th><th>Source</th><th class="num">Sous-total</th><th>D.A.</th><th>Demandeur</th><th>Info acheteur</th></tr></thead><tbody>'
+      + f.items.map(function(it) {
+          return '<tr>'
+            + '<td style="font-family:monospace;white-space:nowrap">' + it.article + '</td>'
+            + '<td style="max-width:220px">' + it.desc + '</td>'
+            + '<td class="num">' + it.qte.toLocaleString('fr-CA') + '</td>'
+            + '<td class="num">' + (it.prixUnit != null ? fmt2(it.prixUnit) : '<span class="no-price">N/D</span>') + '</td>'
+            + '<td>' + srcBadge(it.prixSrc) + '</td>'
+            + '<td class="num">' + (it.sousTotal != null ? fmt2(it.sousTotal) : '<span class="no-price">N/D</span>') + '</td>'
+            + '<td style="white-space:nowrap">' + (it.da || '\u2014') + '</td>'
+            + '<td style="white-space:nowrap">' + (it.demandeur || '\u2014') + '</td>'
+            + '<td style="font-size:11px;color:#9ca3af;max-width:180px">' + (it.info || '\u2014') + '</td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table></div></td></tr>';
+  });
+
+  html += '<tr class="grand-total-row"><td colspan="4" style="font-size:13px;color:#6b7280">Grand total (articles avec prix)</td><td class="num">' + fmt2(grandTotal) + '</td><td></td></tr>';
+  html += '</tbody></table></div>';
+
+  document.getElementById('output').innerHTML = html;
+}
+
+function toggle(idx) {
+  var row = document.getElementById('det-' + idx);
+  row.classList.toggle('open');
+  var btn = row.previousElementSibling.querySelector('.expand-btn');
+  btn.innerHTML = row.classList.contains('open') ? '&#9650; Fermer' : '&#9660; D\u00e9tail';
+}
+
+function effacer() {
+  document.getElementById('rawData').value = '';
+  document.getElementById('output').innerHTML = '';
+}
+</script>
+</body>
+</html>

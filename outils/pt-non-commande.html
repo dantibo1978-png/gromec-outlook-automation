@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gromec Vérification PT</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --primary: #1d4ed8;
+    --primary-dark: #1e3a8a;
+    --bg: #f3f4f6;
+    --border: #d1d5db;
+    --ok: #16a34a;
+    --warn: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    margin: 0;
+    background: var(--bg);
+    color: #111827;
+  }
+  header {
+    background: var(--primary-dark);
+    color: white;
+    padding: 18px 24px;
+  }
+  header h1 { margin: 0; font-size: 1.4rem; }
+  header p { margin: 4px 0 0; font-size: 0.9rem; opacity: 0.85; }
+  main {
+    max-width: 1200px;
+    margin: 24px auto;
+    padding: 0 16px 60px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+  .card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card h2 { margin-top: 0; font-size: 1.05rem; }
+  .card h2 .subtitle { font-size: 0.8rem; font-weight: 400; color: #6b7280; margin-left: 8px; }
+  .card p.hint { color: #6b7280; font-size: 0.85rem; margin-top: -6px; }
+  textarea {
+    width: 100%;
+    height: 260px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    resize: vertical;
+  }
+  .actions {
+    margin: 20px 0;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  button {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button:hover { background: var(--primary-dark); }
+  button:disabled { background: #9ca3af; cursor: not-allowed; }
+  button.secondary {
+    background: white;
+    color: var(--primary);
+    border: 1px solid var(--primary);
+  }
+  button.secondary:hover { background: #eff6ff; }
+  #summary {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 4px;
+    display: none;
+  }
+  #summary.show { display: block; }
+  .stat-row {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .stat {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 0.9rem;
+  }
+  .stat b { display: block; font-size: 1.2rem; }
+  table.results {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin-top: 8px;
+  }
+  table.results th, table.results td {
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    text-align: left;
+  }
+  table.results th { background: #f9fafb; }
+  .vendor-row td:nth-child(3) { text-align: right; }
+  .vendor-row button { padding: 5px 10px; font-size: 0.8rem; }
+  .vendor-row button.sent { background: var(--ok); }
+  .vendor-row button.sent:hover { background: #15803d; }
+  .error { color: var(--warn); font-weight: 600; margin-top: 8px; }
+  .ok { color: var(--ok); }
+  details summary { cursor: pointer; font-weight: 600; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div style="background:#0f1826;padding:8px 16px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;border-bottom:1px solid #24344a;"><a href="/" style="color:#5ea8ff;text-decoration:none;font-weight:600;">← Retour au dashboard Gromec</a></div>
+<header>
+  <h1>Gromec Vérification PT</h1>
+  <p>Compare un export SAP avec une liste d'achats et génère un fichier Excel par vendeur avec les items restants.</p>
+</header>
+<main>
+  <div class="grid">
+    <div class="card">
+      <h2>1. Tableau SAP <span class="subtitle">Requete P05/liste des ventes PT</span></h2>
+      <p class="hint">Colle ici les données copiées d'Excel (avec l'en-tête : Nom, Prénom, Numéro de document, Date d'enregistrement, Numéro d'article, Description article/service, B/O, En magasin, Total réservé, En P/O, Disponible).</p>
+      <textarea id="table1" placeholder="Colle le tableau SAP ici..."></textarea>
+    </div>
+    <div class="card">
+      <h2>2. Tableau Achats (à retirer)</h2>
+      <p class="hint">Colle ici les données copiées d'Excel (avec l'en-tête : Sélectionné, Code fournisseur, Numéro article, Description article, Nom du fournisseur, Quantité cible, Prix fournisseur, Prix cible, N° D.A, Nom demandeur, Info Acheteur).</p>
+      <textarea id="table2" placeholder="Colle le tableau Achats ici..."></textarea>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="processBtn">Traiter et comparer</button>
+    <button id="downloadBtn" class="secondary" disabled>Télécharger les fichiers Excel (.zip)</button>
+    <span id="status"></span>
+  </div>
+
+  <div id="summary">
+    <h2>Résultats</h2>
+    <div class="stat-row">
+      <div class="stat">Lignes SAP (départ)<b id="statTotal">0</b></div>
+      <div class="stat">Lignes retirées (déjà achetées)<b id="statRemoved">0</b></div>
+      <div class="stat">Lignes restantes<b id="statRemaining">0</b></div>
+      <div class="stat">Vendeurs concernés<b id="statVendors">0</b></div>
+    </div>
+    <table class="results" id="vendorTable">
+      <thead><tr><th>Vendeur</th><th>Email</th><th>Lignes restantes</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <details>
+      <summary>Voir les lignes retirées (déjà commandées)</summary>
+      <table class="results" id="removedTable">
+        <thead><tr><th>Vendeur</th><th>Numéro d'article</th><th>Description</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </div>
+</main>
+
+<script>
+const TABLE1_HEADERS = [
+  "Nom", "Prénom", "Numéro de document", "Date d'enregistrement",
+  "Numéro d'article", "Description article/service", "B/O", "En magasin",
+  "Total réservé", "En P/O", "Disponible"
+];
+
+function parsePastedTable(raw) {
+  const lines = raw.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (lines.length === 0) return { header: [], rows: [] };
+  const header = lines[0].split('\t');
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split('\t');
+    if (cells.every(c => c.trim() === '')) continue;
+    rows.push(cells);
+  }
+  return { header, rows };
+}
+
+function normalizeArticle(s) {
+  return (s || '').toString().trim().toUpperCase();
+}
+
+function buildTable1Rows(parsed) {
+  return parsed.rows.map(cells => {
+    const row = {};
+    TABLE1_HEADERS.forEach((h, idx) => { row[h] = (cells[idx] || '').trim(); });
+    row.__vendor = `${row['Nom']} ${row['Prénom']}`.trim();
+    return row;
+  }).filter(r => r["Numéro d'article"]);
+}
+
+function stripAccents(s) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function generateVendorEmail(nom, prenom) {
+  const initials = stripAccents(prenom || '')
+    .split(/[\s-]+/)
+    .filter(Boolean)
+    .map(p => p[0].toLowerCase())
+    .join('');
+  const lastName = stripAccents(nom || '').replace(/[\s-]+/g, '').toLowerCase();
+  return `${initials}${lastName}@gromec.com`;
+}
+
+const SIGNATURE = [
+  '',
+  '',
+  'Daniel Thibault',
+  'Acheteur / buyer',
+  '418-549-5962 ext. 2022',
+  '581-490-2521',
+  'dthibault@gromec.com',
+  'www.gromec.com',
+  '1911 rue Outardes, Chicoutimi, QC G7K 1C3'
+];
+
+function buildEmailBody(vendor, rows) {
+  const greeting = rows.length > 1 ? 'Salut, PT non commandés' : 'Salut, PT non commandé';
+  const lines = [`${greeting}`, ''];
+  rows.forEach(row => {
+    lines.push(
+      `- ${row["Numéro d'article"]} | ${row['Description article/service']} | Commande ${row['Numéro de document']}`
+    );
+  });
+  lines.push(...SIGNATURE);
+  return lines.join('\n');
+}
+
+function buildMailtoLink(vendor, email, rows) {
+  const subject = encodeURIComponent(`Liste des items à vérifier - ${vendor}`);
+  const body = encodeURIComponent(buildEmailBody(vendor, rows));
+  return `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+}
+
+function buildPurchasedArticleSet(parsed) {
+  // Column index 2 in the achats table is "Numéro article".
+  const set = new Set();
+  parsed.rows.forEach(cells => {
+    const article = normalizeArticle(cells[2]);
+    if (article) set.add(article);
+  });
+  return set;
+}
+
+document.getElementById('processBtn').addEventListener('click', () => {
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = '';
+  statusEl.className = '';
+
+  const raw1 = document.getElementById('table1').value;
+  const raw2 = document.getElementById('table2').value;
+
+  if (!raw1.trim() || !raw2.trim()) {
+    statusEl.textContent = 'Merci de coller les deux tableaux avant de traiter.';
+    statusEl.className = 'error';
+    return;
+  }
+
+  const parsed1 = parsePastedTable(raw1);
+  const parsed2 = parsePastedTable(raw2);
+
+  const sapRows = buildTable1Rows(parsed1);
+  const purchasedArticles = buildPurchasedArticleSet(parsed2);
+
+  const remaining = [];
+  const removed = [];
+
+  sapRows.forEach(row => {
+    const article = normalizeArticle(row["Numéro d'article"]);
+    if (purchasedArticles.has(article)) {
+      removed.push(row);
+    } else {
+      remaining.push(row);
+    }
+  });
+
+  const byVendor = new Map();
+  remaining.forEach(row => {
+    const vendor = row.__vendor || 'Inconnu';
+    if (!byVendor.has(vendor)) byVendor.set(vendor, []);
+    byVendor.get(vendor).push(row);
+  });
+
+  window.__gromecResult = { sapRows, remaining, removed, byVendor };
+
+  document.getElementById('statTotal').textContent = sapRows.length;
+  document.getElementById('statRemoved').textContent = removed.length;
+  document.getElementById('statRemaining').textContent = remaining.length;
+  document.getElementById('statVendors').textContent = byVendor.size;
+
+  const vendorBody = document.querySelector('#vendorTable tbody');
+  vendorBody.innerHTML = '';
+  [...byVendor.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([vendor, rows]) => {
+    const firstRow = rows[0];
+    const email = generateVendorEmail(firstRow['Nom'], firstRow['Prénom']);
+    const tr = document.createElement('tr');
+    tr.className = 'vendor-row';
+    tr.innerHTML = `<td>${vendor}</td><td>${email}</td><td>${rows.length}</td><td></td>`;
+    const btn = document.createElement('button');
+    btn.textContent = 'Ouvrir dans Outlook';
+    btn.addEventListener('click', () => {
+      window.location.href = buildMailtoLink(vendor, email, rows);
+      btn.classList.add('sent');
+      btn.textContent = 'Envoyé ✓';
+    });
+    tr.lastElementChild.appendChild(btn);
+    vendorBody.appendChild(tr);
+  });
+
+  const removedBody = document.querySelector('#removedTable tbody');
+  removedBody.innerHTML = '';
+  removed.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${row.__vendor}</td><td>${row["Numéro d'article"]}</td><td>${row['Description article/service']}</td>`;
+    removedBody.appendChild(tr);
+  });
+
+  document.getElementById('summary').classList.add('show');
+  document.getElementById('downloadBtn').disabled = byVendor.size === 0;
+
+  statusEl.textContent = 'Traitement terminé.';
+  statusEl.className = 'ok';
+});
+
+function sanitizeFilename(name) {
+  return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'vendeur';
+}
+
+document.getElementById('downloadBtn').addEventListener('click', async () => {
+  const result = window.__gromecResult;
+  if (!result || result.byVendor.size === 0) return;
+
+  const zip = new JSZip();
+
+  result.byVendor.forEach((rows, vendor) => {
+    const wb = XLSX.utils.book_new();
+    const data = [TABLE1_HEADERS, ...rows.map(r => TABLE1_HEADERS.map(h => r[h]))];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, 'Items restants');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    zip.file(`${sanitizeFilename(vendor)}.xlsx`, wbout);
+  });
+
+  const content = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(content);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'gromec-verification-pt.zip';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>

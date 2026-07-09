@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recherche de commandes — Éléments envoyés Outlook</title>
+<style>
+  :root{
+    --ink:#1c2430; --ink-soft:#55627a; --paper:#f5f6f8; --panel:#fff;
+    --line:#dde1e8; --steel:#2f6fed; --steel-dk:#215bd0;
+    --found:#0f7a4e; --found-bg:#e6f4ec; --miss:#b23a2f; --miss-bg:#fbeae7;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:var(--paper);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:28px 20px 80px}
+  header h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:-.01em}
+  header p{margin:0;color:var(--ink-soft);font-size:.92rem}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-top:20px}
+  .step-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .num{flex:0 0 auto;width:26px;height:26px;border-radius:6px;background:var(--ink);color:#fff;font-size:.85rem;font-weight:600;display:grid;place-items:center}
+  .step-head h2{font-size:1.02rem;margin:0}
+  .drop{border:1.5px dashed var(--line);border-radius:8px;padding:24px;text-align:center;color:var(--ink-soft);cursor:pointer;transition:.15s;background:#fafbfc}
+  .drop:hover,.drop.over{border-color:var(--steel);background:#f0f5ff;color:var(--steel)}
+  .drop strong{color:var(--ink)}
+  input[type=file]{display:none}
+  .loaded{display:none;margin-top:12px;padding:12px 14px;border-radius:8px;background:var(--found-bg);color:var(--found);font-size:.9rem;font-weight:500}
+  label.fld{display:block;font-size:.82rem;color:var(--ink-soft);font-weight:600;margin-bottom:6px}
+  textarea{width:100%;min-height:150px;resize:vertical;border:1px solid var(--line);border-radius:8px;padding:12px;font-family:"Cascadia Mono",Consolas,monospace;font-size:.9rem;color:var(--ink)}
+  textarea:focus{outline:2px solid var(--steel);border-color:var(--steel)}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--steel);color:#fff;border:none;border-radius:8px;padding:11px 20px;font-size:.95rem;font-weight:600;cursor:pointer;transition:.15s}
+  .btn:hover{background:var(--steel-dk)}
+  .btn:disabled{background:#b9c0cc;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--steel);border:1px solid var(--line);padding:8px 14px;font-size:.85rem}
+  .btn.ghost:hover{background:#f0f5ff;border-color:var(--steel)}
+  .hint{font-size:.82rem;color:var(--ink-soft);margin-left:10px}
+  code.k{background:#eceff3;padding:1px 6px;border-radius:4px;font-size:.82rem}
+  #results{display:none;margin-top:24px}
+  .summary{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+  .card{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+  .card .k{font-size:1.7rem;font-weight:700;line-height:1}
+  .card .l{font-size:.8rem;color:var(--ink-soft);margin-top:4px}
+  .card.ok .k{color:var(--found)} .card.no .k{color:var(--miss)}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+  .filters{display:flex;gap:4px;background:#eceff3;padding:4px;border-radius:8px}
+  .filters button{border:none;background:transparent;padding:6px 14px;border-radius:6px;font-size:.85rem;font-weight:600;color:var(--ink-soft);cursor:pointer}
+  .filters button.active{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .spacer{flex:1}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  th{text-align:left;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);padding:11px 14px;border-bottom:1px solid var(--line);background:#fafbfc}
+  td{padding:11px 14px;border-bottom:1px solid var(--line);font-size:.9rem;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .cmd{font-family:"Cascadia Mono",Consolas,monospace;font-weight:600}
+  .tag{display:inline-flex;align-items:center;gap:5px;font-size:.78rem;font-weight:600;padding:3px 9px;border-radius:20px}
+  .tag.ok{background:var(--found-bg);color:var(--found)}
+  .tag.no{background:var(--miss-bg);color:var(--miss)}
+  .sub{font-size:.82rem;color:var(--ink-soft)}
+  .empty{padding:40px;text-align:center;color:var(--ink-soft)}
+</style>
+</head>
+<body>
+<div style="background:#0f1826;padding:8px 16px;font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;border-bottom:1px solid #24344a;"><a href="/" style="color:#5ea8ff;text-decoration:none;font-weight:600;">← Retour au dashboard Gromec</a></div>
+<div class="wrap">
+  <header>
+    <h1>Recherche de commandes envoyées</h1>
+    <p>Vérifie quels numéros de ta liste SAP ont déjà été envoyés par courriel (« Commande fournisseur - 9… » / « Purchase Order - 9… »).</p>
+  </header>
+
+  <section class="step">
+    <div class="step-head"><div class="num">1</div><h2>Charger l'export Outlook (JSON)/Bouton export commande dans la barre des taches outlook</h2></div>
+    <div class="drop" id="drop">
+      <p><strong>Clique pour choisir</strong> ou glisse ici <code class="k">elements_envoyes.json</code></p>
+      <p style="font-size:.82rem;margin:6px 0 0">Généré par la macro <code class="k">ExporterCommandes</code></p>
+    </div>
+    <input type="file" id="file" accept=".json,application/json">
+    <div class="loaded" id="loaded"></div>
+  </section>
+
+  <section class="step">
+    <div class="step-head"><div class="num">2</div><h2>Coller les numéros depuis SAP</h2></div>
+    <label class="fld" for="orders">Un numéro par ligne. Le HTML extrait automatiquement les chiffres, donc un collage multi-colonnes fonctionne aussi.</label>
+    <textarea id="orders" placeholder="9007063&#10;9007044&#10;9007088&#10;..."></textarea>
+
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px">
+      <div style="flex:1;min-width:240px">
+        <label class="fld" for="exclude">Exclure des créateurs (un nom par ligne)</label>
+        <textarea id="exclude" style="min-height:80px" placeholder="Gagnon Marie-Christine"></textarea>
+      </div>
+      <div style="flex:1;min-width:240px">
+        <label class="fld" for="exclude-fourn">Exclure des fournisseurs (un par ligne)</label>
+        <textarea id="exclude-fourn" style="min-height:80px" placeholder="Ex.&#10;MAAX BATH INC&#10;KALIA INC"></textarea>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button class="btn" id="run" disabled>Rechercher</button>
+      <label class="fld" style="margin:0">Limiter aux
+        <input type="number" id="limit" value="500" min="1" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:.9rem">
+        premières commandes</label>
+      <span class="hint" id="runhint">Charge d'abord l'export à l'étape 1.</span>
+    </div>
+  </section>
+
+  <section id="results">
+    <div class="summary" id="summary"></div>
+    <div class="toolbar">
+      <div class="filters">
+        <button data-f="all" class="active">Tous</button>
+        <button data-f="found">Envoyés</button>
+        <button data-f="miss">Non envoyés</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="copy-miss">Copier les non envoyés</button>
+      <button class="btn ghost" id="reset-marks">Effacer les cases mémorisées</button>
+      <button class="btn ghost" id="csv">Exporter CSV</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:70px;text-align:center">Envoyé</th>
+        <th style="width:22%">N° commande</th>
+        <th style="width:15%">Statut</th>
+        <th style="width:18%">Date d'envoi</th>
+        <th>Destinataire</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+let index = new Map();   // numero(digits) -> [ {date,dest,sujet,numero} ]
+let results = [];
+let curFilter = "all";
+let lastExcluded = 0;
+const $ = id => document.getElementById(id);
+const drop = $("drop"), fileInput = $("file");
+const digits = s => { const m = String(s).match(/\d{4,}/); return m ? m[0] : ""; };
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+// Mémoire des commandes marquées « envoyé » à la main (persiste entre les sessions)
+const STORE_KEY = "cmd_envoyees_manuel";
+let manualSent = new Set();
+(function loadManual(){
+  try { const s = localStorage.getItem(STORE_KEY); if (s) manualSent = new Set(JSON.parse(s)); } catch(e){}
+})();
+function saveManual(){
+  try { localStorage.setItem(STORE_KEY, JSON.stringify([...manualSent])); } catch(e){}
+}
+
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener("change", e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+function loadFile(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const raw = JSON.parse(reader.result);
+      if (!Array.isArray(raw)) throw 0;
+      index = new Map();
+      raw.forEach(m => {
+        const num = m.numero || digits(m.sujet || "");
+        if (!num) return;
+        if (!index.has(num)) index.set(num, []);
+        index.get(num).push({ date:m.date||"", dest:m.destinataire||m.dest||"", sujet:m.sujet||"", numero:num });
+      });
+      const dates = raw.map(m => m.date).filter(Boolean).sort();
+      const plage = dates.length ? ` — du ${dates[0].slice(0,10)} au ${dates[dates.length-1].slice(0,10)}` : "";
+      const el = $("loaded"); el.style.display="block"; el.style.background="var(--found-bg)"; el.style.color="var(--found)";
+      el.textContent = `✓ ${raw.length} commande(s) chargée(s)${plage}`;
+      $("run").disabled = false; $("runhint").textContent = "";
+    } catch {
+      const el = $("loaded"); el.style.display="block"; el.style.background="var(--miss-bg)"; el.style.color="var(--miss)";
+      el.textContent = "✗ Fichier JSON invalide. Réexporte-le avec la macro.";
+    }
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+$("run").addEventListener("click", () => {
+  const seen = new Set();
+  const orders = [];
+  // termes d'exclusion : créateurs + fournisseurs ; on exclut si TOUS les mots d'un terme sont présents
+  const exclTerms = ($("exclude").value + "\n" + $("exclude-fourn").value)
+    .split(/\r?\n/)
+    .map(s => s.trim().toLowerCase()).filter(Boolean)
+    .map(l => l.split(/\s+/));
+  let excluded = 0;
+  $("orders").value.split(/\r?\n/).forEach(line => {
+    const raw = line.trim(); if (!raw) return;
+    const low = raw.toLowerCase();
+    if (exclTerms.some(tokens => tokens.every(t => low.includes(t)))) { excluded++; return; }
+    const d = digits(raw);
+    if (!d) return;                       // ignore l'en-tête et les lignes sans numéro
+    if (seen.has(d)) return; seen.add(d);
+    orders.push({ raw, d });
+  });
+  lastExcluded = excluded;
+  if (!orders.length){ alert("Aucun numéro trouvé après filtrage."); return; }
+
+  // limite aux N commandes les plus récentes (la liste SAP est triée du plus récent au plus ancien)
+  const limit = parseInt($("limit").value, 10);
+  const ordersLim = (limit > 0 && orders.length > limit) ? orders.slice(0, limit) : orders;
+
+  results = ordersLim.map(o => {
+    const hits = o.d && index.has(o.d) ? index.get(o.d) : [];
+    const sorted = [...hits].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+    return { order:o.raw, num:o.d, hits:sorted };
+  });
+  render();
+  $("results").scrollIntoView({behavior:"smooth", block:"start"});
+});
+
+function render(){
+  $("results").style.display = "block";
+  const state = results.map(r => {
+    const isEmail = r.hits.length > 0;
+    const isManual = manualSent.has(r.num);
+    return Object.assign({}, r, { isEmail, isManual, sent: isEmail || isManual });
+  });
+  const found = state.filter(r=>r.sent);
+  const miss = state.filter(r=>!r.sent);
+  $("summary").innerHTML = `
+    <div class="card"><div class="k">${state.length}</div><div class="l">Numéros vérifiés</div></div>
+    <div class="card ok"><div class="k">${found.length}</div><div class="l">Envoyés (courriel ou coché)</div></div>
+    <div class="card no"><div class="k">${miss.length}</div><div class="l">Aucun envoi trouvé</div></div>
+    ${lastExcluded ? `<div class="card"><div class="k">${lastExcluded}</div><div class="l">Ligne(s) exclue(s)</div></div>` : ""}`;
+
+  const list = curFilter==="found"?found:curFilter==="miss"?miss:state;
+  const tb = $("tbody");
+  if (!list.length){ tb.innerHTML = `<tr><td colspan="5" class="empty">Aucun résultat dans ce filtre.</td></tr>`; return; }
+  tb.innerHTML = list.map(r=>{
+    const h0 = r.hits[0];
+    const statut = r.isEmail ? `<span class="tag ok">● Courriel</span>`
+                 : r.isManual ? `<span class="tag ok">● Coché</span>`
+                 : `<span class="tag no">○ Non envoyé</span>`;
+    const dateCell = r.isEmail ? esc(h0.date) + (r.hits.length>1?` <span class="sub">(+${r.hits.length-1})</span>`:"")
+                   : (r.isManual ? `<span class="sub">marqué à la main</span>` : "—");
+    const destCell = r.isEmail ? esc(h0.dest) : "—";
+    return `<tr>
+      <td style="text-align:center"><input type="checkbox" class="mark" data-num="${esc(r.num)}" ${r.isManual?"checked":""} title="Marquer comme envoyé"></td>
+      <td class="cmd">${esc(r.num || r.order)}</td>
+      <td>${statut}</td>
+      <td>${dateCell}</td>
+      <td class="sub">${destCell}</td>
+    </tr>`;
+  }).join("");
+  tb.querySelectorAll(".mark").forEach(cb => cb.addEventListener("change", () => {
+    const num = cb.dataset.num;
+    if (cb.checked) manualSent.add(num); else manualSent.delete(num);
+    saveManual();
+    render();
+  }));
+}
+
+document.querySelectorAll(".filters button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll(".filters button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active"); curFilter=b.dataset.f; render();
+}));
+
+$("copy-miss").addEventListener("click", ()=>{
+  const arr = results.filter(r=>!r.hits.length && !manualSent.has(r.num)).map(r=>r.num || r.order);
+  if (!arr.length){ alert("Aucun numéro non envoyé."); return; }
+  navigator.clipboard.writeText(arr.join("\n")).then(()=>alert(arr.length+" numéro(s) copié(s)."));
+});
+$("reset-marks").addEventListener("click", ()=>{
+  if (!manualSent.size){ alert("Aucune case mémorisée."); return; }
+  if (!confirm("Effacer les "+manualSent.size+" commande(s) marquée(s) à la main ? Cette action est définitive.")) return;
+  manualSent = new Set(); saveManual();
+  if (results.length) render();
+});
+$("csv").addEventListener("click", ()=>{
+  if (!results.length) return;
+  const rows = [["N_commande","Statut","Date_envoi","Destinataire"]];
+  results.forEach(r=>{
+    const h0 = r.hits[0];
+    const statut = r.hits.length ? "Envoyé (courriel)" : (manualSent.has(r.num) ? "Envoyé (coché)" : "Non envoyé");
+    rows.push([r.num || r.order, statut, h0?h0.date:"", h0?h0.dest:""]);
+  });
+  const csv = "\uFEFF"+rows.map(row=>row.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(";")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  const a=document.createElement("a"); a.href=url; a.download="resultats_commandes.csv"; a.click();
+  URL.revokeObjectURL(url);
+});
+// Mémorise les listes d'exclusion entre les sessions
+function persistExcl(id, key, def){
+  try {
+    const v = localStorage.getItem(key);
+    $(id).value = (v !== null) ? v : def;
+  } catch(e){ $(id).value = def; }
+  $(id).addEventListener("input", () => { try { localStorage.setItem(key, $(id).value); } catch(e){} });
+}
+persistExcl("exclude", "excl_createurs", "Gagnon Marie-Christine");
+persistExcl("exclude-fourn", "excl_fournisseurs", "");
+</script>
+</body>
+</html>

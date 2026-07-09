@@ -690,12 +690,44 @@
     th:nth-child(6), td:nth-child(6), th:nth-child(7), td:nth-child(7), th:nth-child(8), td:nth-child(8){display:none;}
     .log-panel{ height:150px; }
   }
+  .outils-menu{ position:relative; flex-shrink:0; }
+  .outils-btn{
+    font-family:'IBM Plex Mono',monospace; font-size:13px;
+    padding:7px 14px; border-radius:7px;
+    border:1px solid var(--accent); background:transparent; color:var(--accent);
+    cursor:pointer; white-space:nowrap;
+  }
+  .outils-btn:hover{ background:rgba(94,168,255,0.08); }
+  .outils-dropdown{
+    display:none; position:absolute; right:0; top:calc(100% + 6px);
+    background:var(--panel); border:1px solid var(--rule); border-radius:8px;
+    min-width:270px; z-index:200; overflow:hidden;
+    box-shadow:0 8px 24px rgba(0,0,0,0.35);
+  }
+  .outils-dropdown.open{ display:block; }
+  .outils-dropdown a{
+    display:block; padding:11px 15px; color:var(--text);
+    text-decoration:none; font-size:14px; border-bottom:1px solid var(--rule);
+  }
+  .outils-dropdown a:last-child{ border-bottom:none; }
+  .outils-dropdown a:hover{ background:var(--panel-2); color:var(--accent); }
 </style>
 </head>
 <body>
 
 <header>
-  <p class="eyebrow">Gromec Inc. — Achats <span id="derniereMaj" class="derniere-maj"></span></p>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+    <p class="eyebrow">Gromec Inc. — Achats <span id="derniereMaj" class="derniere-maj"></span></p>
+    <div class="outils-menu">
+      <button class="outils-btn" id="outilsBtn">🧰 Outils ▾</button>
+      <div class="outils-dropdown" id="outilsDropdown">
+        <a href="/outils/relance-fournisseur.html">📄 Relance fournisseur (découpe PDF)</a>
+        <a href="/outils/analyseur-sap.html">📦 Analyseur de commandes SAP</a>
+        <a href="/outils/pt-non-commande.html">✅ Vérification PT non commandés</a>
+        <a href="/outils/recherche-commandes.html">🔍 Recherche commandes envoyées</a>
+      </div>
+    </div>
+  </div>
   <h1>Vérification des commandes / Remplacement de Charles St-Laurent</h1>
   <p class="subtitle">Confirmations fournisseurs comparées automatiquement aux bons de commande envoyés.</p>
   <div class="stat-row" id="statRow"></div>
@@ -783,8 +815,18 @@
 <script>
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
+// Menu Outils (dropdown)
+(function(){
+  const btn = document.getElementById('outilsBtn');
+  const dd = document.getElementById('outilsDropdown');
+  if (btn && dd){
+    btn.addEventListener('click', e => { e.stopPropagation(); dd.classList.toggle('open'); });
+    document.addEventListener('click', () => dd.classList.remove('open'));
+  }
+})();
+
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-07-08 16:05";
+const DERNIERE_MAJ_CODE = "2026-07-09 09:15";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
