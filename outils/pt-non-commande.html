@@ -159,7 +159,7 @@
     </div>
     <div class="card">
       <h2>2. Tableau Achats (à retirer)</h2>
-      <p class="hint">Colle ici les données copiées d'Excel (avec l'en-tête : Sélectionné, Code fournisseur, Numéro article, Description article, Nom du fournisseur, Quantité cible, Prix fournisseur, Prix cible, N° D.A, Nom demandeur, Info Acheteur).</p>
+      <p class="hint">Colle ici les données copiées d'Excel (avec l'en-tête : Sélectionné, Numéro article, Code fournisseur, Nom du fournisseur, Description article, Quantité cible, Prix fournisseur, Prix cible, N° D.A, Nom demandeur, Info Acheteur).</p>
       <textarea id="table2" placeholder="Colle le tableau Achats ici..."></textarea>
     </div>
   </div>
@@ -272,10 +272,11 @@ function buildMailtoLink(vendor, email, rows) {
 }
 
 function buildPurchasedArticleSet(parsed) {
-  // Column index 2 in the achats table is "Numéro article".
+  const idx = parsed.header.findIndex(h => h.trim().toLowerCase() === 'numéro article');
+  const col = idx !== -1 ? idx : 2;
   const set = new Set();
   parsed.rows.forEach(cells => {
-    const article = normalizeArticle(cells[2]);
+    const article = normalizeArticle(cells[col]);
     if (article) set.add(article);
   });
   return set;
