@@ -933,7 +933,7 @@ async function chargerDonnees(){
 }
 
 function estEffectivementOK(d){
-  return d.resolu === true || d.statut === 'OK';
+  return d.resolu === true || d.statut === 'OK' || d.statut === 'OK_PARTIEL';
 }
 
 function rendreStats(){
@@ -1235,7 +1235,7 @@ function rendreFiche(d){
   return `
   <div class="fiche" data-id="${d.id}">
     <div class="fiche-head" onclick="toggleFiche('${d.id}')">
-      <span class="stamp ${d.envoyer_confirmation === 'envoye' ? 'stamp-confirme' : estOK ? 'stamp-ok' : 'stamp-ecart'}">${d.envoyer_confirmation === 'envoye' ? 'CONFIRMÉ' : estOK ? 'CONFORME' : 'ÉCART'}</span>
+      <span class="stamp ${d.envoyer_confirmation === 'envoye' ? 'stamp-confirme' : estOK ? 'stamp-ok' : 'stamp-ecart'}">${d.envoyer_confirmation === 'envoye' ? 'CONFIRMÉ' : estOK ? (d.statut === 'OK_PARTIEL' ? 'CONFORME (partiel)' : 'CONFORME') : 'ÉCART'}</span>
       <div class="fiche-info">
         <p class="fiche-fournisseur">${d.fournisseur || 'Fournisseur inconnu'}</p>
         <div class="fiche-meta">

@@ -1912,7 +1912,13 @@ function Invoke-TraiterComparaison {
 
     $nbEcarts = ($resultats | Where-Object { $_.Statut -eq "ECART" }).Count
     $nbNonTrouves = ($resultats | Where-Object { $_.Statut -eq "NON_TROUVE" }).Count
-    $estOK = ($nbEcarts -eq 0 -and $nbNonTrouves -eq 0)
+    $nbOK = ($resultats | Where-Object { $_.Statut -eq "OK" }).Count
+    $estPartiel = ($itemsFourn.Count -lt $itemsSAP.Count)
+    if ($estPartiel) {
+        $estOK = ($nbEcarts -eq 0 -and $nbOK -gt 0)
+    } else {
+        $estOK = ($nbEcarts -eq 0 -and $nbNonTrouves -eq 0)
+    }
 
     if (-not $estOK -and $numeroBC -ne "") {
         $fichierCache = Join-Path $DossierCachePO "$numeroBC.json"
@@ -1923,9 +1929,10 @@ function Invoke-TraiterComparaison {
     }
 
     Set-CategorieConfirmation $MailConfirmation $estOK
-    Write-JournalEntry $expediteur $(if ($estOK) { "OK" } else { "ECART" }) "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves"
-    Write-RapportExcel $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC
-    Write-FirebaseHistorique $nomFourn $sujet $(if ($estOK) { "OK" } else { "ECART" }) $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP
+    $statutLabel = if ($estOK -and $estPartiel) { "OK_PARTIEL" } elseif ($estOK) { "OK" } else { "ECART" }
+    Write-JournalEntry $expediteur $statutLabel "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves OK:$nbOK Partiel:$estPartiel"
+    Write-RapportExcel $nomFourn $sujet $statutLabel $resultats $devise $numeroBC
+    Write-FirebaseHistorique $nomFourn $sujet $statutLabel $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP
 }
 
 # =====================================================================
