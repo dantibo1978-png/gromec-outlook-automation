@@ -755,6 +755,28 @@
   }
   .param-add-row button:hover{ opacity:0.85; }
   .param-empty{ color:var(--muted-2); font-size:13px; font-style:italic; }
+  .param-field-row{ margin-bottom:14px; }
+  .param-field-row label{
+    display:block; font-size:13px; font-weight:600; margin-bottom:4px; color:var(--text);
+  }
+  .param-field-row .param-hint{
+    color:var(--muted-2); font-size:11px; margin:4px 0 0; font-style:italic;
+  }
+  .param-input-wrap{
+    display:flex; align-items:center; gap:6px;
+  }
+  .param-input-wrap input{
+    width:100px; padding:8px 12px; border-radius:6px; border:1px solid var(--rule);
+    background:var(--panel-2); color:var(--text); font-family:'IBM Plex Mono',monospace;
+    font-size:14px; text-align:right;
+  }
+  .param-unit{ color:var(--muted); font-size:13px; }
+  .param-text-input{
+    width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--rule);
+    background:var(--panel-2); color:var(--text); font-family:'IBM Plex Mono',monospace;
+    font-size:13px; box-sizing:border-box;
+  }
+  .param-text-input::placeholder{ color:var(--muted-2); }
 </style>
 </head>
 <body>
@@ -2003,7 +2025,70 @@ setInterval(chargerLogs, 20000);
       </div>
     </div>
 
-    <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+    <div class="param-section">
+      <h4>Classification & matching</h4>
+      <div class="param-field-row">
+        <label>Tolérance de prix (écart acceptable)</label>
+        <div class="param-input-wrap"><input type="number" id="cfgTolerancePrix" step="0.001" min="0" max="1"><span class="param-unit">$</span></div>
+        <p class="param-hint">Différence de prix en dessous de laquelle c'est considéré OK (défaut: 0.015)</p>
+      </div>
+      <div class="param-field-row">
+        <label>Seuil de confiance automatique</label>
+        <div class="param-input-wrap"><input type="number" id="cfgSeuilConfiance" step="1" min="50" max="100"><span class="param-unit">%</span></div>
+        <p class="param-hint">Au-dessus de ce %, Claude agit seul sans demander (défaut: 85)</p>
+      </div>
+    </div>
+
+    <div class="param-section">
+      <h4>Rétention / nettoyage</h4>
+      <div class="param-field-row">
+        <label>Purge des logs Firebase</label>
+        <div class="param-input-wrap"><input type="number" id="cfgPurgeLogs" step="1" min="1" max="90"><span class="param-unit">jours</span></div>
+        <p class="param-hint">Les logs plus vieux sont supprimés automatiquement (défaut: 3)</p>
+      </div>
+      <div class="param-field-row">
+        <label>Purge de l'historique résolu</label>
+        <div class="param-input-wrap"><input type="number" id="cfgPurgeHistorique" step="1" min="1" max="365"><span class="param-unit">jours</span></div>
+        <p class="param-hint">Les entrées terminées plus vieilles sont supprimées (défaut: 7)</p>
+      </div>
+      <div class="param-field-row">
+        <label>Rétention nettoyage GitHub</label>
+        <div class="param-input-wrap"><input type="number" id="cfgRetentionGH" step="1" min="1" max="365"><span class="param-unit">jours</span></div>
+        <p class="param-hint">La job cron GitHub supprime les entrées plus vieilles (défaut: 14)</p>
+      </div>
+    </div>
+
+    <div class="param-section">
+      <h4>Bon de commande révisé (PDF)</h4>
+      <div class="param-field-row">
+        <label>Nom de l'acheteur</label>
+        <input type="text" id="cfgNomAcheteur" class="param-text-input" placeholder="Daniel Thibault">
+      </div>
+      <div class="param-field-row">
+        <label>Adresse — ligne 1</label>
+        <input type="text" id="cfgAdresse1" class="param-text-input" placeholder="1911 Rue des Outardes">
+      </div>
+      <div class="param-field-row">
+        <label>Adresse — ligne 2</label>
+        <input type="text" id="cfgAdresse2" class="param-text-input" placeholder="Chicoutimi QC G7K 1C3">
+      </div>
+      <div class="param-field-row">
+        <label>Courriel de contact</label>
+        <input type="text" id="cfgCourriel" class="param-text-input" placeholder="DTHIBAULT@GROMEC.COM">
+      </div>
+      <div class="param-field-row">
+        <label>Taux TPS</label>
+        <div class="param-input-wrap"><input type="number" id="cfgTPS" step="0.001" min="0" max="100"><span class="param-unit">%</span></div>
+      </div>
+      <div class="param-field-row">
+        <label>Taux TVQ</label>
+        <div class="param-input-wrap"><input type="number" id="cfgTVQ" step="0.001" min="0" max="100"><span class="param-unit">%</span></div>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">
+      <span id="settingsSaveStatus" style="color:var(--ok);font-size:13px;align-self:center;display:none;">Sauvegardé</span>
+      <button id="btnSaveSettings" style="padding:8px 22px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:14px;font-weight:600;">Sauvegarder</button>
       <button id="btnFermerSettings" style="padding:8px 22px;border-radius:6px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:14px;">Fermer</button>
     </div>
   </div>
@@ -2018,9 +2103,60 @@ setInterval(chargerLogs, 20000);
   document.getElementById('btnFermerSettings').addEventListener('click', () => modal.classList.remove('open'));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
 
+  const DEFAULTS = {
+    tolerance_prix: 0.015, seuil_confiance_auto: 85,
+    purge_logs_jours: 3, purge_historique_jours: 7, retention_nettoyage_jours: 14,
+    nom_acheteur: 'Daniel Thibault', adresse_ligne1: '1911 Rue des Outardes',
+    adresse_ligne2: 'Chicoutimi QC G7K 1C3', courriel_contact: 'DTHIBAULT@GROMEC.COM',
+    tps: 5, tvq: 9.975
+  };
+  const FIELD_MAP = {
+    cfgTolerancePrix: 'tolerance_prix', cfgSeuilConfiance: 'seuil_confiance_auto',
+    cfgPurgeLogs: 'purge_logs_jours', cfgPurgeHistorique: 'purge_historique_jours',
+    cfgRetentionGH: 'retention_nettoyage_jours',
+    cfgNomAcheteur: 'nom_acheteur', cfgAdresse1: 'adresse_ligne1',
+    cfgAdresse2: 'adresse_ligne2', cfgCourriel: 'courriel_contact',
+    cfgTPS: 'tps', cfgTVQ: 'tvq'
+  };
+
   async function chargerParametres(){
-    await Promise.all([chargerSujetsExclus(), chargerDomainesExclus()]);
+    await Promise.all([chargerSujetsExclus(), chargerDomainesExclus(), chargerValeurs()]);
   }
+
+  async function chargerValeurs(){
+    try {
+      const rep = await fetch(FB + 'valeurs.json');
+      const data = (await rep.json()) || {};
+      for (const [inputId, cle] of Object.entries(FIELD_MAP)) {
+        const el = document.getElementById(inputId);
+        if (!el) continue;
+        el.value = (data[cle] !== undefined && data[cle] !== null) ? data[cle] : DEFAULTS[cle];
+      }
+    } catch(e){
+      for (const [inputId, cle] of Object.entries(FIELD_MAP)) {
+        const el = document.getElementById(inputId);
+        if (el) el.value = DEFAULTS[cle];
+      }
+    }
+  }
+
+  document.getElementById('btnSaveSettings').addEventListener('click', async () => {
+    const valeurs = {};
+    for (const [inputId, cle] of Object.entries(FIELD_MAP)) {
+      const el = document.getElementById(inputId);
+      if (!el) continue;
+      valeurs[cle] = el.type === 'number' ? parseFloat(el.value) : el.value.trim();
+    }
+    try {
+      await fetch(FB + 'valeurs.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(valeurs)
+      });
+      const s = document.getElementById('settingsSaveStatus');
+      s.style.display = 'inline';
+      setTimeout(() => s.style.display = 'none', 2500);
+    } catch(e){ alert('Erreur de sauvegarde: ' + e.message); }
+  });
 
   // --- Sujets exclus ---
   async function chargerSujetsExclus(){

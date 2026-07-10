@@ -163,6 +163,17 @@ try {
     }
 } catch {}
 
+# Parametres configurables charges depuis Firebase (gromec_vba/parametres/valeurs)
+$Script:ParamTolerancePrix   = 0.015
+$Script:ParamSeuilConfiance  = 0.85
+try {
+    $repValeurs = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/valeurs.json" -Method Get -TimeoutSec 10
+    if ($repValeurs) {
+        if ($repValeurs.tolerance_prix)        { $Script:ParamTolerancePrix  = [double]$repValeurs.tolerance_prix }
+        if ($repValeurs.seuil_confiance_auto)   { $Script:ParamSeuilConfiance = [double]$repValeurs.seuil_confiance_auto / 100.0 }
+    }
+} catch {}
+
 
 # =====================================================================
 # FONCTIONS - Firebase
@@ -1080,7 +1091,7 @@ function Find-MatchesDeterministe {
     $resultats = @()
     $pdfUtilises = @{}
     $sapNonTrouves = @()
-    $tolerance = 0.015
+    $tolerance = $Script:ParamTolerancePrix
 
     foreach ($sap in $SapItems) {
         $matchIdx = -1
@@ -1197,7 +1208,7 @@ Exemple: MATCH|0|2|0.95|meme code normalise
                     $sap = $SapNonTrouves[$si]; $pdf = $PdfNonUtilises[$pi]
                     $dU = $pdf.NetUnit - $sap.Price
                     $dQ = $pdf.Qty - $sap.Qty
-                    $tolerance = 0.015
+                    $tolerance = $Script:ParamTolerancePrix
                     $statut = if ([Math]::Abs($dU) -gt $tolerance -or $dQ -ne 0) { "ECART" } else { "OK" }
                     $matches += [PSCustomObject]@{
                         SapLineNbr = $sap.LineNbr; SapArticle = $sap.Article; SapCodeManuf = $sap.CodeManuf
@@ -2072,7 +2083,7 @@ function Invoke-TraiterNouveauCourriel {
     }
 
     $adresseExp = (Get-AdresseSMTP $MailItem)
-    $seuilAuto  = 0.85
+    $seuilAuto  = $Script:ParamSeuilConfiance
 
     # Filtre domaine exclu avant d'appeler Haiku
     if (Test-DomaineExclu $adresseExp) {

@@ -29,8 +29,36 @@ function New-PDFBonDeCommande {
         [string]$ConditionsPaiement = "",
         [string]$AdresseFournisseur = "",
         [string]$NoCompteFournisseur = "",
-        [string]$LogoPath = "U:\GromecOutlook\logo_gromec.png"
+        [string]$LogoPath = "U:\GromecOutlook\logo_gromec.png",
+        [string]$NomAcheteur = "",
+        [string]$AdresseLigne1 = "",
+        [string]$AdresseLigne2 = "",
+        [string]$CourrielContact = "",
+        [double]$TauxTPS = 0,
+        [double]$TauxTVQ = 0
     )
+
+    # Charger les parametres depuis Firebase si pas fournis en argument
+    if (-not $NomAcheteur -or -not $AdresseLigne1) {
+        try {
+            $fbUrl = "https://gromec-outlook-vba-default-rtdb.firebaseio.com"
+            $pv = Invoke-RestMethod -Uri "$fbUrl/gromec_vba/parametres/valeurs.json" -Method Get -TimeoutSec 10
+            if ($pv) {
+                if (-not $NomAcheteur     -and $pv.nom_acheteur)     { $NomAcheteur     = $pv.nom_acheteur }
+                if (-not $AdresseLigne1   -and $pv.adresse_ligne1)   { $AdresseLigne1   = $pv.adresse_ligne1 }
+                if (-not $AdresseLigne2   -and $pv.adresse_ligne2)   { $AdresseLigne2   = $pv.adresse_ligne2 }
+                if (-not $CourrielContact -and $pv.courriel_contact) { $CourrielContact = $pv.courriel_contact }
+                if ($TauxTPS -eq 0 -and $pv.tps) { $TauxTPS = [double]$pv.tps / 100.0 }
+                if ($TauxTVQ -eq 0 -and $pv.tvq) { $TauxTVQ = [double]$pv.tvq / 100.0 }
+            }
+        } catch {}
+    }
+    if (-not $NomAcheteur)     { $NomAcheteur     = "Daniel Thibault" }
+    if (-not $AdresseLigne1)   { $AdresseLigne1   = "1911 Rue des Outardes" }
+    if (-not $AdresseLigne2)   { $AdresseLigne2   = "Chicoutimi QC G7K 1C3" }
+    if (-not $CourrielContact) { $CourrielContact = "DTHIBAULT@GROMEC.COM" }
+    if ($TauxTPS -eq 0) { $TauxTPS = 0.05 }
+    if ($TauxTVQ -eq 0) { $TauxTVQ = 0.09975 }
 
     # ── Encoding ──────────────────────────────────────────────────────
     $latin1 = [System.Text.Encoding]::GetEncoding("ISO-8859-1")
@@ -65,8 +93,8 @@ function New-PDFBonDeCommande {
     $sousTotal = 0.0
     foreach ($a in $Articles) { $sousTotal += [double]$a.pdfQty * [double]$a.pdfPrix }
     $sousTotal = [Math]::Round($sousTotal, 2)
-    $tps = [Math]::Round($sousTotal * 0.05, 2)
-    $tvq = [Math]::Round($sousTotal * 0.09975, 2)
+    $tps = [Math]::Round($sousTotal * $TauxTPS, 2)
+    $tvq = [Math]::Round($sousTotal * $TauxTVQ, 2)
     $grandTotal = [Math]::Round($sousTotal + $tps + $tvq, 2)
 
     # ── Pagination ────────────────────────────────────────────────────
@@ -158,8 +186,8 @@ function New-PDFBonDeCommande {
 
             # ── Company info ──
             $iy = $cy - 80
-            T $ml $iy "1911 Rue des Outardes" "F1" 8
-            T $ml ($iy-10) "Chicoutimi QC, G7K 1C3" "F1" 8
+            T $ml $iy (Esc $AdresseLigne1) "F1" 8
+            T $ml ($iy-10) (Esc $AdresseLigne2) "F1" 8
             T $ml ($iy-20) "T${eAcute}l: 418-549-5961" "F1" 8
             T $ml ($iy-30) "Email: gromec@gromec.com" "F1" 8
 
@@ -177,7 +205,7 @@ function New-PDFBonDeCommande {
                 @("Date du document:", $DateDocument),
                 @("Conditions de paiement:", $ConditionsPaiement),
                 @("Date de livraison:", $DateLivraison),
-                @("Acheteur:", "Daniel Thibault"),
+                @("Acheteur:", $NomAcheteur),
                 @("F.A.B.:", ""),
                 @("No Compte:", $NoCompteFournisseur)
             )
@@ -209,8 +237,8 @@ function New-PDFBonDeCommande {
             # Ship-to
             $sa2 = $ay - 13
             T ($mid+10) $sa2 "GROMEC" "F2" 8
-            $sa2 -= 11; T ($mid+10) $sa2 "1911 Rue des Outardes" "F1" 8
-            $sa2 -= 11; T ($mid+10) $sa2 "Chicoutimi QC G7K 1C3" "F1" 8
+            $sa2 -= 11; T ($mid+10) $sa2 (Esc $AdresseLigne1) "F1" 8
+            $sa2 -= 11; T ($mid+10) $sa2 (Esc $AdresseLigne2) "F1" 8
             $sa2 -= 11; T ($mid+10) $sa2 "CANADA" "F1" 8
             $sa2 -= 11; T ($mid+10) $sa2 "T${eAcute}l:" "F1" 8
 
@@ -303,10 +331,10 @@ function New-PDFBonDeCommande {
             T $tl ($fy2+3) "Sous-Total" "F2" 8; TR $tv ($fy2+3) $sousTotal.ToString("N2") "F1" 8
 
             $fy2 -= $trh; RS $tx $fy2 ($mr-$tx) $trh
-            T $tl ($fy2+3) "TPS 5.000" "F1" 8; TR $tv ($fy2+3) $tps.ToString("N2") "F1" 8
+            T $tl ($fy2+3) "TPS $([Math]::Round($TauxTPS * 100, 3).ToString('N3'))" "F1" 8; TR $tv ($fy2+3) $tps.ToString("N2") "F1" 8
 
             $fy2 -= $trh; RF $tx $fy2 ($mr-$tx) $trh 0.93 0.93 0.93; RS $tx $fy2 ($mr-$tx) $trh
-            T $tl ($fy2+3) "TVQ 9.975" "F1" 8; TR $tv ($fy2+3) $tvq.ToString("N2") "F1" 8
+            T $tl ($fy2+3) "TVQ $([Math]::Round($TauxTVQ * 100, 3).ToString('N3'))" "F1" 8; TR $tv ($fy2+3) $tvq.ToString("N2") "F1" 8
 
             $fy2 -= $trh; RFS $tx $fy2 ($mr-$tx) $trh 0.17 0.24 0.45
             [void]$sb.AppendLine("1 1 1 rg")
@@ -322,7 +350,7 @@ function New-PDFBonDeCommande {
             $ny = $sy - 65
             [void]$sb.AppendLine("0.15 0.15 0.15 rg")
             T $ml $ny      "NOTE AU FOURNISSEUR: S.V.P. NOUS CONFIRMER LES PRIX ET D${EAcute}LAIS DE LIVRAISON POUR CHAQUE LIGNE DE" "F2" 6
-            T $ml ($ny-8)  "COMMANDE AU: DTHIBAULT@GROMEC.COM. TOUTE MODIFICATION DE PRIX DEVRA ${eCirc}TRE COMMUNIQU${EAcute}E DANS LES" "F2" 6
+            T $ml ($ny-8)  "COMMANDE AU: $(Esc $CourrielContact). TOUTE MODIFICATION DE PRIX DEVRA ${eCirc}TRE COMMUNIQU${EAcute}E DANS LES" "F2" 6
             T $ml ($ny-16) "24 HEURES. SANS QUOI LE PAIEMENT SERA FAIT SELON LES PRIX DE NOTRE COMMANDE." "F2" 6
             [void]$sb.AppendLine("0 0 0 rg")
 
@@ -333,7 +361,7 @@ function New-PDFBonDeCommande {
         }
 
         # Page number
-        T $ml 33 "USAGER: Daniel Thibault" "F1" 7
+        T $ml 33 "USAGER: $(Esc $NomAcheteur)" "F1" 7
         TR $mr 33 "Page: $pgNum de $totalPages" "F1" 7
 
         $streamDataList += ,$latin1.GetBytes($sb.ToString())

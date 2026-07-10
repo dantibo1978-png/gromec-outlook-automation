@@ -71,6 +71,29 @@ $DTW_ScenarioLeadTime  = "$DTW_Dossier\UpdateLeadTime_PROD.xml"
 $IntervalleSecondes = 15
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
+
+# Parametres configurables charges depuis Firebase
+$Script:ParamPurgeLogsJours       = 3
+$Script:ParamPurgeHistoriqueJours = 7
+$Script:ParamNomAcheteur          = "Daniel Thibault"
+$Script:ParamAdresse1             = "1911 Rue des Outardes"
+$Script:ParamAdresse2             = "Chicoutimi QC G7K 1C3"
+$Script:ParamCourrielContact      = "DTHIBAULT@GROMEC.COM"
+$Script:ParamTPS                  = 0.05
+$Script:ParamTVQ                  = 0.09975
+try {
+    $repValeurs = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/valeurs.json" -Method Get -TimeoutSec 10
+    if ($repValeurs) {
+        if ($repValeurs.purge_logs_jours)         { $Script:ParamPurgeLogsJours       = [int]$repValeurs.purge_logs_jours }
+        if ($repValeurs.purge_historique_jours)    { $Script:ParamPurgeHistoriqueJours = [int]$repValeurs.purge_historique_jours }
+        if ($repValeurs.nom_acheteur)              { $Script:ParamNomAcheteur          = [string]$repValeurs.nom_acheteur }
+        if ($repValeurs.adresse_ligne1)            { $Script:ParamAdresse1             = [string]$repValeurs.adresse_ligne1 }
+        if ($repValeurs.adresse_ligne2)            { $Script:ParamAdresse2             = [string]$repValeurs.adresse_ligne2 }
+        if ($repValeurs.courriel_contact)          { $Script:ParamCourrielContact      = [string]$repValeurs.courriel_contact }
+        if ($repValeurs.tps)                       { $Script:ParamTPS                  = [double]$repValeurs.tps / 100.0 }
+        if ($repValeurs.tvq)                       { $Script:ParamTVQ                  = [double]$repValeurs.tvq / 100.0 }
+    }
+} catch {}
 # ──────────────────────────────────────────────────────────────────────────────
 
 function Write-Log {
@@ -91,7 +114,7 @@ function Invoke-PurgeVieuxLogs {
     # la taille du noeud (et donc la bande passante Firebase consommee par
     # le dashboard qui relit ce noeud regulierement).
     try {
-        $cutoff = (Get-Date).AddDays(-3).ToString("yyyy-MM-dd HH:mm:ss")
+        $cutoff = (Get-Date).AddDays(-$Script:ParamPurgeLogsJours).ToString("yyyy-MM-dd HH:mm:ss")
         $logs = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json?orderBy=%22ts%22&endAt=%22$cutoff%22" -Method Get -TimeoutSec 20
         if ($null -eq $logs -or $logs -eq "null") { return }
         $nb = 0
@@ -99,7 +122,7 @@ function Invoke-PurgeVieuxLogs {
             Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs/$cle.json" -Method Delete -TimeoutSec 10 | Out-Null
             $nb++
         }
-        if ($nb -gt 0) { Write-Log "INFO  Purge logs : $nb entree(s) de plus de 3 jours supprimee(s)." }
+        if ($nb -gt 0) { Write-Log "INFO  Purge logs : $nb entree(s) de plus de $($Script:ParamPurgeLogsJours) jours supprimee(s)." }
     } catch {}
 }
 
@@ -113,7 +136,7 @@ function Invoke-PurgeHistoriqueTraite {
         $historique = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json" -Method Get -TimeoutSec 20
         if ($null -eq $historique -or $historique -eq "null") { return }
 
-        $cutoff = (Get-Date).AddDays(-7)
+        $cutoff = (Get-Date).AddDays(-$Script:ParamPurgeHistoriqueJours)
         $nb = 0
         foreach ($cle in $historique.PSObject.Properties.Name) {
             $entree = $historique.$cle
@@ -557,8 +580,8 @@ function New-HtmlBonCommandeRevise {
         $lignesHtml += "<tr class=`"$classe`"><td>$i</td><td>$articleAffiche</td><td>$($a.sapCode)</td><td>$($a.sapDesc)</td><td class=`"num`">$("{0:N2}" -f $qteConfirmee)</td><td class=`"num`">$("{0:N2}" -f $prixConfirme)&nbsp;`$</td><td class=`"num`">$("{0:N2}" -f $total)&nbsp;`$</td></tr>`n"
     }
 
-    $tps = [math]::Round($sousTotal * 0.05, 2)
-    $tvq = [math]::Round($sousTotal * 0.09975, 2)
+    $tps = [math]::Round($sousTotal * $Script:ParamTPS, 2)
+    $tvq = [math]::Round($sousTotal * $Script:ParamTVQ, 2)
     $totalFinal = [math]::Round($sousTotal + $tps + $tvq, 2)
     $attention = if ($entete.fournisseurAttention) { "À L'ATTENTION DE: $($entete.fournisseurAttention)" } else { "" }
 
@@ -605,7 +628,7 @@ function New-HtmlBonCommandeRevise {
   </div>
   <div class="top" style="margin-top:4px;">
     <div class="adr">
-      1911 Rue des Outardes<br>Chicoutimi QC,G7K 1C3<br>Tél: 418-549-5961<br>Email: gromec@gromec.com
+      $($Script:ParamAdresse1)<br>$($Script:ParamAdresse2)<br>Tél: 418-549-5961<br>Email: gromec@gromec.com
     </div>
     <div class="infobox">
       <table>
@@ -613,7 +636,7 @@ function New-HtmlBonCommandeRevise {
         <tr><td class="lbl">Date du document:</td><td class="val">$($entete.dateDocument)</td></tr>
         <tr><td class="lbl">Conditions de paiement:</td><td class="val">$($entete.conditionsPaiement)</td></tr>
         <tr><td class="lbl">Date de livraison:</td><td class="val">$($entete.dateLivraison)</td></tr>
-        <tr><td class="lbl">Acheteur:</td><td class="val">Daniel Thibault</td></tr>
+        <tr><td class="lbl">Acheteur:</td><td class="val">$($Script:ParamNomAcheteur)</td></tr>
         <tr><td class="lbl">No Compte :</td><td class="val">$($entete.noCompteAchete)</td></tr>
       </table>
     </div>
@@ -630,7 +653,7 @@ function New-HtmlBonCommandeRevise {
     </div>
     <div class="col">
       <div class="col-hd"><span>Expédié à :</span></div>
-      1911 Rue des Outardes<br>Chicoutimi QC G7K 1C3<br>CANADA
+      $($Script:ParamAdresse1)<br>$($Script:ParamAdresse2)<br>CANADA
     </div>
   </div>
   <table class="items">
@@ -642,8 +665,8 @@ function New-HtmlBonCommandeRevise {
   <div class="totaux">
     <table>
       <tr><td>Sous-Total</td><td>$("{0:N2}" -f $sousTotal) `$</td></tr>
-      <tr><td>TPS 5.000</td><td>$("{0:N2}" -f $tps) `$</td></tr>
-      <tr><td>TVQ 9.975</td><td>$("{0:N2}" -f $tvq) `$</td></tr>
+      <tr><td>TPS $("{0:N3}" -f ($Script:ParamTPS * 100))</td><td>$("{0:N2}" -f $tps) `$</td></tr>
+      <tr><td>TVQ $("{0:N3}" -f ($Script:ParamTVQ * 100))</td><td>$("{0:N2}" -f $tvq) `$</td></tr>
       <tr class="total"><td>Total $devise</td><td>$("{0:N2}" -f $totalFinal) `$</td></tr>
     </table>
   </div>
@@ -653,10 +676,10 @@ function New-HtmlBonCommandeRevise {
       <div style="border-top:1px solid #333; padding-top:2px;">Signataire autorisé</div>
     </div>
     <div class="note-txt">
-      NOTE AU FOURNISSEUR: S.V.P. NOUS CONFIRMER LES PRIX ET DÉLAIS DE LIVRAISON POUR CHAQUE LIGNE DE COMMANDE AU: DTHIBAULT@GROMEC.COM. TOUTE MODIFICATION DE PRIX DEVRA ÊTRE COMMUNIQUÉE DANS LES 24 HEURES. SANS QUOI LE PAIEMENT SERA FAIT SELON LES PRIX DE NOTRE COMMANDE.
+      NOTE AU FOURNISSEUR: S.V.P. NOUS CONFIRMER LES PRIX ET DÉLAIS DE LIVRAISON POUR CHAQUE LIGNE DE COMMANDE AU: $($Script:ParamCourrielContact). TOUTE MODIFICATION DE PRIX DEVRA ÊTRE COMMUNIQUÉE DANS LES 24 HEURES. SANS QUOI LE PAIEMENT SERA FAIT SELON LES PRIX DE NOTRE COMMANDE.
     </div>
   </div>
-  <div class="footer"><span>USAGER: Daniel Thibault</span><span>Page: 1 de 1</span></div>
+  <div class="footer"><span>USAGER: $($Script:ParamNomAcheteur)</span><span>Page: 1 de 1</span></div>
 </body></html>
 "@
 
