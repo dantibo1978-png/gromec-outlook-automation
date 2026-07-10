@@ -1984,23 +1984,34 @@ ou semble etre un bon de commande.
 
 Analyse le sujet, le corps ET toutes les pieces jointes fournies.
 
-Reponds a ces 5 questions par OUI ou NON, puis donne ta conclusion:
+Reponds a ces 6 questions par OUI ou NON, puis donne ta conclusion:
 Q1_NUMERO_BC: Y a-t-il un numero de commande Gromec (format 9XXXXXX, ex: 9006906)?
-Q2_PRIX_QTE: Le DERNIER message confirme-t-il des prix ou quantites en lien avec une commande?
+Q2_PRIX_QTE: Le DERNIER message contient-il une LISTE de prix ou quantites NUMERIQUES confirmees
+    (ex: "Item X - 150.00$", tableau avec colonnes prix/qte, etc.)? ATTENTION: simplement MENTIONNER
+    un prix ou dire "le prix a ete mis a jour" sans donner de valeur numerique = NON. Un seul item
+    mentionne sans prix reel = NON. Il faut des VALEURS CHIFFREES pour plusieurs items de la commande.
 Q3_DATE_LIVRAISON: Le DERNIER message confirme-t-il une date de livraison ou delai?
-Q4_ACCUSÉ_RECEPTION: Le DERNIER message confirme-t-il explicitement avoir recu/traite la commande?
+Q4_ACCUSÉ_RECEPTION: Le DERNIER message confirme-t-il EXPLICITEMENT avoir recu ET traite la commande
+    DANS SON ENSEMBLE? ATTENTION: un message qui parle d'un seul item (ex: "line 55 updated"),
+    d'un backorder partiel, ou d'un suivi sur un probleme specifique = NON. Il faut une confirmation
+    globale de la commande complete.
 Q5_DOCUMENT_COMMANDE: Une piece jointe contient-elle une VRAIE confirmation/accuse de reception
     du FOURNISSEUR (prix/quantites/delais confirmes par le fournisseur)? ATTENTION: si la piece
     jointe est simplement LE BON DE COMMANDE ORIGINAL DE GROMEC renvoye tel quel (meme mise en page
     que ce que Daniel envoie, sans annotation ni prix confirmes par le fournisseur), reponds NON --
     ce n'est qu'une reference, pas une confirmation.
+Q6_MISE_A_JOUR_PARTIELLE: Le message est-il une MISE A JOUR PARTIELLE ou un SUIVI sur un aspect
+    specifique de la commande (ex: mise a jour de prix pour une seule ligne, notification de
+    backorder, changement d'adresse, suivi de livraison pour un item)? Si OUI, ce n'est PAS
+    une confirmation de commande.
 
-REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI).
+REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI) ET Q6=NON.
 N'EST PAS une confirmation: questions, demandes de modification (ex: changer une adresse de
 livraison, changer un contact), devis seuls, factures seules, avis expedition seuls, newsletters,
 courriels generaux sans reference a une commande specifique, MTR (Material Test Reports/certificats
 de materiaux), certificats de conformite, rapports d'inspection, documents de qualite, bons de
-livraison seuls.
+livraison seuls, mises a jour partielles (ex: "le prix de la ligne X a ete corrige"),
+notifications de backorder, suivis sur un item specifique sans confirmation globale.
 
 Reponds EXACTEMENT en ce format:
 Q1_NUMERO_BC: OUI/NON
@@ -2008,6 +2019,7 @@ Q2_PRIX_QTE: OUI/NON
 Q3_DATE_LIVRAISON: OUI/NON
 Q4_ACCUSÉ_RECEPTION: OUI/NON
 Q5_DOCUMENT_COMMANDE: OUI/NON
+Q6_MISE_A_JOUR_PARTIELLE: OUI/NON
 CONFIRMATION: OUI/NON
 CONFIANCE: 0.00
 SOURCE: PDF/CORPS
