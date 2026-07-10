@@ -141,6 +141,28 @@ if (-not (Test-Path $DossierCachePO)) { New-Item -ItemType Directory -Path $Doss
 # (voir Set-ReponseCorps).
 $SeuilConfianceCorps = 5
 
+# Exclusions de sujets chargees depuis Firebase (gromec_vba/parametres/sujets_exclus)
+$Script:SujetsExclus = @()
+try {
+    $repSujets = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/sujets_exclus.json" -Method Get -TimeoutSec 10
+    if ($repSujets -and $repSujets.PSObject.Properties.Count -gt 0) {
+        $Script:SujetsExclus = @($repSujets.PSObject.Properties | ForEach-Object {
+            if ($_.Value.texte) { $_.Value.texte } else { [string]$_.Value }
+        })
+    }
+} catch {}
+
+# Exclusions de domaines chargees depuis Firebase (gromec_vba/parametres/domaines_exclus)
+$Script:DomainesExclusFB = @()
+try {
+    $repDomaines = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/domaines_exclus.json" -Method Get -TimeoutSec 10
+    if ($repDomaines -and $repDomaines.PSObject.Properties.Count -gt 0) {
+        $Script:DomainesExclusFB = @($repDomaines.PSObject.Properties | ForEach-Object {
+            if ($_.Value.domaine) { $_.Value.domaine } else { [string]$_.Value }
+        }) | ForEach-Object { $_.ToLower().Trim() }
+    }
+} catch {}
+
 
 # =====================================================================
 # FONCTIONS - Firebase
@@ -1894,10 +1916,12 @@ function Test-DomaineExclu {
     param([string]$Adresse)
     # Toujours exclure les courriels internes Gromec
     if ($Adresse -like "*@gromec.com") { return $true }
-    # Verifier le fichier domaines_exclus.csv
+    $domaine = ($Adresse -split "@")[-1].ToLower().Trim()
+    # Verifier la liste Firebase (chargee au demarrage)
+    if ($Script:DomainesExclusFB -contains $domaine) { return $true }
+    # Verifier le fichier local domaines_exclus.csv
     $fichierExclus = Join-Path $DataFolder "domaines_exclus.csv"
     if (-not (Test-Path $fichierExclus)) { return $false }
-    $domaine = ($Adresse -split "@")[-1].ToLower().Trim()
     foreach ($ligne in Get-Content $fichierExclus) {
         if ($ligne.Trim().ToLower() -eq $domaine) { return $true }
     }
@@ -2056,10 +2080,12 @@ function Invoke-TraiterNouveauCourriel {
         return
     }
 
-    # Filtre par sujet -- courriels non pertinents a exclure
-    if ($MailItem.Subject -like "*CCTF Corp. MTR Documents for order*") {
-        Write-Log "INFO  Sujet exclu (CCTF MTR Documents) -- courriel ignore : $($MailItem.Subject)"
-        return
+    # Filtre par sujet -- courriels non pertinents (liste configurable via le dashboard)
+    foreach ($motif in $Script:SujetsExclus) {
+        if ($motif -and $MailItem.Subject -like "*$motif*") {
+            Write-Log "INFO  Sujet exclu ($motif) -- courriel ignore : $($MailItem.Subject)"
+            return
+        }
     }
 
     # Claude Haiku analyse le courriel avec PJ incluses

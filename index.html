@@ -691,7 +691,7 @@
     .log-panel{ height:150px; }
   }
   .outils-row{
-    display:flex; flex-wrap:wrap; gap:10px; margin-top:18px;
+    display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; align-items:center;
   }
   .outil-btn{
     font-family:'IBM Plex Mono',monospace; font-size:13px;
@@ -700,6 +700,61 @@
     text-decoration:none; white-space:nowrap; transition:border-color .15s, background .15s;
   }
   .outil-btn:hover{ border-color:var(--accent); color:var(--accent); background:var(--panel); }
+  .btn-settings{
+    width:38px; height:38px; border-radius:8px; border:1px solid var(--rule);
+    background:var(--panel-2); color:var(--muted); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:border-color .15s, color .15s, background .15s; margin-left:auto;
+  }
+  .btn-settings:hover{ border-color:var(--accent); color:var(--accent); background:var(--panel); }
+  .btn-settings svg{ width:18px; height:18px; }
+
+  /* ---------- MODAL PARAMETRES ---------- */
+  .modal-overlay{
+    display:none; position:fixed; inset:0; z-index:100;
+    background:rgba(0,0,0,0.6); align-items:center; justify-content:center;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-box{
+    background:var(--panel); border:1px solid var(--rule); border-radius:12px;
+    padding:28px; max-width:600px; width:92%; max-height:85vh; overflow-y:auto;
+  }
+  .modal-box h3{ font-family:'Space Grotesk',sans-serif; margin:0 0 20px; font-size:20px; }
+  .param-section{ margin-bottom:24px; }
+  .param-section h4{
+    font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--accent);
+    text-transform:uppercase; letter-spacing:0.08em; margin:0 0 10px;
+  }
+  .param-list{
+    display:flex; flex-direction:column; gap:6px; margin-bottom:10px;
+  }
+  .param-item{
+    display:flex; align-items:center; gap:8px;
+    background:var(--panel-2); border:1px solid var(--rule); border-radius:6px;
+    padding:8px 12px; font-family:'IBM Plex Mono',monospace; font-size:13px;
+  }
+  .param-item span{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .param-item .btn-del{
+    width:24px; height:24px; border-radius:4px; border:1px solid transparent;
+    background:transparent; color:var(--muted); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px; line-height:1; transition:color .15s, border-color .15s;
+  }
+  .param-item .btn-del:hover{ color:var(--ecart); border-color:var(--ecart); }
+  .param-add-row{ display:flex; gap:8px; }
+  .param-add-row input{
+    flex:1; padding:8px 12px; border-radius:6px; border:1px solid var(--rule);
+    background:var(--panel-2); color:var(--text); font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+  }
+  .param-add-row input::placeholder{ color:var(--muted-2); }
+  .param-add-row button{
+    padding:8px 16px; border-radius:6px; border:none;
+    background:var(--accent); color:#fff; cursor:pointer;
+    font-size:13px; font-weight:600; white-space:nowrap;
+  }
+  .param-add-row button:hover{ opacity:0.85; }
+  .param-empty{ color:var(--muted-2); font-size:13px; font-style:italic; }
 </style>
 </head>
 <body>
@@ -715,6 +770,9 @@
     <a class="outil-btn" href="/outils/pt-non-commande.html" target="_blank" rel="noopener">✅ Vérification PT non commandés</a>
     <a class="outil-btn" href="/outils/recherche-commandes.html" target="_blank" rel="noopener">🔍 Recherche commandes envoyées</a>
     <a class="outil-btn" href="/outils/delais-produits.html" target="_blank" rel="noopener">⏱ Délais produits (LeadTime)</a>
+    <button class="btn-settings" id="btnSettings" title="Paramètres">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
   </div>
 </header>
 
@@ -1917,6 +1975,141 @@ setInterval(chargerLogs, 20000);
       btnSend.disabled = false; btnSend.textContent = 'Réessayer';
     }
   });
+})();
+</script>
+
+<!-- Modal Parametres -->
+<div class="modal-overlay" id="modalSettings">
+  <div class="modal-box">
+    <h3>⚙ Paramètres</h3>
+
+    <div class="param-section">
+      <h4>Exclusions par sujet</h4>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 10px;">Les courriels dont le sujet contient un de ces textes seront ignorés automatiquement.</p>
+      <div class="param-list" id="listeSujetsExclus"></div>
+      <div class="param-add-row">
+        <input type="text" id="inputSujetExclu" placeholder="Ex: CCTF Corp. MTR Documents for order">
+        <button id="btnAjouterSujet">Ajouter</button>
+      </div>
+    </div>
+
+    <div class="param-section">
+      <h4>Exclusions par domaine</h4>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 10px;">Tous les courriels provenant de ces domaines seront ignorés (en plus de @gromec.com).</p>
+      <div class="param-list" id="listeDomainesExclus"></div>
+      <div class="param-add-row">
+        <input type="text" id="inputDomaineExclu" placeholder="Ex: example.com">
+        <button id="btnAjouterDomaine">Ajouter</button>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+      <button id="btnFermerSettings" style="padding:8px 22px;border-radius:6px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:14px;">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const FB = FIREBASE_URL + 'gromec_vba/parametres/';
+
+  const modal = document.getElementById('modalSettings');
+  document.getElementById('btnSettings').addEventListener('click', () => { modal.classList.add('open'); chargerParametres(); });
+  document.getElementById('btnFermerSettings').addEventListener('click', () => modal.classList.remove('open'));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+
+  async function chargerParametres(){
+    await Promise.all([chargerSujetsExclus(), chargerDomainesExclus()]);
+  }
+
+  // --- Sujets exclus ---
+  async function chargerSujetsExclus(){
+    const cont = document.getElementById('listeSujetsExclus');
+    cont.innerHTML = '<p class="param-empty">Chargement…</p>';
+    try {
+      const rep = await fetch(FB + 'sujets_exclus.json');
+      const data = await rep.json();
+      cont.innerHTML = '';
+      if (!data || Object.keys(data).length === 0) {
+        cont.innerHTML = '<p class="param-empty">Aucune exclusion de sujet configurée.</p>';
+        return;
+      }
+      for (const [cle, val] of Object.entries(data)) {
+        cont.appendChild(creerItem(val.texte || val, cle, 'sujets_exclus'));
+      }
+    } catch(e){ cont.innerHTML = '<p class="param-empty" style="color:var(--ecart)">Erreur de chargement.</p>'; }
+  }
+
+  document.getElementById('btnAjouterSujet').addEventListener('click', async () => {
+    const input = document.getElementById('inputSujetExclu');
+    const texte = input.value.trim();
+    if (!texte) return;
+    await fetch(FB + 'sujets_exclus.json', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ texte: texte, date: new Date().toISOString() })
+    });
+    input.value = '';
+    chargerSujetsExclus();
+  });
+
+  document.getElementById('inputSujetExclu').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('btnAjouterSujet').click();
+  });
+
+  // --- Domaines exclus ---
+  async function chargerDomainesExclus(){
+    const cont = document.getElementById('listeDomainesExclus');
+    cont.innerHTML = '<p class="param-empty">Chargement…</p>';
+    try {
+      const rep = await fetch(FB + 'domaines_exclus.json');
+      const data = await rep.json();
+      cont.innerHTML = '';
+      if (!data || Object.keys(data).length === 0) {
+        cont.innerHTML = '<p class="param-empty">Aucune exclusion de domaine configurée.</p>';
+        return;
+      }
+      for (const [cle, val] of Object.entries(data)) {
+        cont.appendChild(creerItem(val.domaine || val, cle, 'domaines_exclus'));
+      }
+    } catch(e){ cont.innerHTML = '<p class="param-empty" style="color:var(--ecart)">Erreur de chargement.</p>'; }
+  }
+
+  document.getElementById('btnAjouterDomaine').addEventListener('click', async () => {
+    const input = document.getElementById('inputDomaineExclu');
+    const domaine = input.value.trim().toLowerCase().replace(/^@/, '');
+    if (!domaine) return;
+    await fetch(FB + 'domaines_exclus.json', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ domaine: domaine, date: new Date().toISOString() })
+    });
+    input.value = '';
+    chargerDomainesExclus();
+  });
+
+  document.getElementById('inputDomaineExclu').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('btnAjouterDomaine').click();
+  });
+
+  // --- Helpers ---
+  function creerItem(texte, cle, collection){
+    const div = document.createElement('div');
+    div.className = 'param-item';
+    const span = document.createElement('span');
+    span.textContent = texte;
+    const btn = document.createElement('button');
+    btn.className = 'btn-del';
+    btn.innerHTML = '×';
+    btn.title = 'Supprimer';
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      await fetch(FB + collection + '/' + cle + '.json', { method: 'DELETE' });
+      if (collection === 'sujets_exclus') chargerSujetsExclus();
+      else chargerDomainesExclus();
+    });
+    div.appendChild(span);
+    div.appendChild(btn);
+    return div;
+  }
 })();
 </script>
 
