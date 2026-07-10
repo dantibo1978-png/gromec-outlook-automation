@@ -2056,6 +2056,12 @@ function Invoke-TraiterNouveauCourriel {
         return
     }
 
+    # Filtre par sujet -- courriels non pertinents a exclure
+    if ($MailItem.Subject -like "*CCTF Corp. MTR Documents for order*") {
+        Write-Log "INFO  Sujet exclu (CCTF MTR Documents) -- courriel ignore : $($MailItem.Subject)"
+        return
+    }
+
     # Claude Haiku analyse le courriel avec PJ incluses
     $analyse = Invoke-ClassifierCourriel $MailItem
 
