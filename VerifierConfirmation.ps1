@@ -1273,67 +1273,33 @@ function Find-CourrielEnvoyeCorrespondant {
     $candidatsBCSansPDF  = @()
     $candidatsFourn      = @()
 
-    $dateStr = $limiteDate.ToString("MM/dd/yyyy HH:mm")
-    $filtreDate = "[SentOn] >= '$dateStr'"
-
     foreach ($sentFolder in $dossiersSent) {
         try {
             $items = $sentFolder.Items
             $items.Sort("[SentOn]", $true)
         } catch { continue }
 
-        if ($NumeroBC -ne "") {
-            $filtreBCsujet = "$filtreDate AND [Subject] LIKE '%$NumeroBC%'"
-            try {
-                $itemsBC = $items.Restrict($filtreBCsujet)
-                for ($i = 1; $i -le $itemsBC.Count; $i++) {
-                    $item = $itemsBC.Item($i)
-                    if ($item.Class -ne 43) { continue }
-                    $aPDF = $false
-                    foreach ($pj in $item.Attachments) {
-                        if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
-                    }
-                    if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
-                }
-            } catch {}
+        for ($idx = 1; $idx -le $items.Count; $idx++) {
+            try { $item = $items.Item($idx) } catch { continue }
+            if ($item.Class -ne 43) { continue }
+            if ($item.SentOn -lt $limiteDate) { break }
+
+            $aPDF = $false
+            foreach ($pj in $item.Attachments) {
+                if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
+            }
+
+            if ($NumeroBC -ne "" -and ($item.Subject -like "*$NumeroBC*" -or $item.Body -like "*$NumeroBC*")) {
+                if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
+            }
 
             if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
-                try {
-                    $itemsDate = $items.Restrict($filtreDate)
-                    for ($i = 1; $i -le $itemsDate.Count; $i++) {
-                        $item = $itemsDate.Item($i)
-                        if ($item.Class -ne 43) { continue }
-                        try {
-                            if ($item.Body -like "*$NumeroBC*") {
-                                $aPDF = $false
-                                foreach ($pj in $item.Attachments) {
-                                    if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
-                                }
-                                if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
-                            }
-                        } catch {}
-                    }
-                } catch {}
-            }
-        }
-
-        if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
-            try {
-                $itemsDate = $items.Restrict($filtreDate)
-                for ($i = 1; $i -le $itemsDate.Count; $i++) {
-                    $item = $itemsDate.Item($i)
-                    if ($item.Class -ne 43) { continue }
-                    $aPDF = $false
-                    foreach ($pj in $item.Attachments) {
-                        if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
-                    }
-                    if ($aPDF) {
-                        foreach ($dest in $item.Recipients) {
-                            if ($dest.Address -eq $adresseFournisseur) { $candidatsFourn += $item; break }
-                        }
+                if ($aPDF) {
+                    foreach ($dest in $item.Recipients) {
+                        if ($dest.Address -eq $adresseFournisseur) { $candidatsFourn += $item; break }
                     }
                 }
-            } catch {}
+            }
         }
     }
 
