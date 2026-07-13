@@ -68,7 +68,7 @@ $DTW_FichierPrix       = "$DTW_Dossier\import_prix.txt"
 $DTW_ScenarioPrix      = "$DTW_Dossier\UpdatePriceList_PROD.xml"
 $DTW_FichierLeadTime   = "$DTW_Dossier\import_leadtime.txt"
 $DTW_ScenarioLeadTime  = "$DTW_Dossier\UpdateLeadTime_PROD.xml"
-$IntervalleSecondes = 15
+$IntervalleSecondes = 30
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
 
@@ -127,19 +127,13 @@ function Invoke-PurgeVieuxLogs {
 }
 
 function Invoke-PurgeHistoriqueTraite {
-    # Supprime les entrees de gromec_vba/historique deja completement traitees
-    # (confirmees OK et synchronisees SAP, ou "non trouve" marquees resolues)
-    # apres quelques jours, pour limiter la taille du noeud et la bande
-    # passante consommee par le dashboard. Le dashboard n'a plus besoin de
-    # ces entrees une fois qu'elles sont reglees.
+    param($Historique)
+    if ($null -eq $Historique) { return }
     try {
-        $historique = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json" -Method Get -TimeoutSec 20
-        if ($null -eq $historique -or $historique -eq "null") { return }
-
         $cutoff = (Get-Date).AddDays(-$Script:ParamPurgeHistoriqueJours)
         $nb = 0
-        foreach ($cle in $historique.PSObject.Properties.Name) {
-            $entree = $historique.$cle
+        foreach ($cle in $Historique.PSObject.Properties.Name) {
+            $entree = $Historique.$cle
             $dateEntree = $null
             try { $dateEntree = [datetime]::Parse($entree.date) } catch { continue }
             if ($dateEntree -gt $cutoff) { continue }
@@ -841,9 +835,11 @@ Write-Log "INFO  SyncDTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
 $DerniereePurgeLogs = Get-Date "2000-01-01"
 
 while ($true) {
+    $historique = Get-Historique
+
     if (((Get-Date) - $DerniereePurgeLogs).TotalHours -ge 1) {
         Invoke-PurgeVieuxLogs
-        Invoke-PurgeHistoriqueTraite
+        Invoke-PurgeHistoriqueTraite -Historique $historique
         $DerniereePurgeLogs = Get-Date
     }
 
@@ -863,28 +859,22 @@ while ($true) {
     }
 
     # Verifier les entrees a reessayer (NON_TROUVE avec numeroBCManuel fourni)
-    try {
-        $historiquePlat = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json" -Method Get -TimeoutSec 10
-        if ($null -ne $historiquePlat -and $historiquePlat -ne "null") {
-            foreach ($cleR in $historiquePlat.PSObject.Properties.Name) {
-                $entreeR = $historiquePlat.$cleR
+    if ($null -ne $historique) {
+        try {
+            foreach ($cleR in $historique.PSObject.Properties.Name) {
+                $entreeR = $historique.$cleR
                 if ($entreeR.aReessayer -eq $true -and $entreeR.numeroBCManuel -and $entreeR.entryID) {
                     Write-Log "INFO  Reessai demande pour BC $($entreeR.numeroBCManuel) (cle: $cleR)"
-                    # Remettre aReessayer a false pour eviter boucle
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cleR.json" `
                         -Method Patch -Body '{"aReessayer":false}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                    # Relancer VerifierConfirmation.ps1 avec EntryID + NumeroBC + Force
                     $scriptPath = "U:\GromecOutlook\VerifierConfirmation.ps1"
-                    $cmd = "powershell -ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force"
                     Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force" -WindowStyle Hidden
                 }
             }
+        } catch {
+            Write-Log "WARN  Erreur verification aReessayer : $($_.Exception.Message)"
         }
-    } catch {
-        Write-Log "WARN  Erreur verification aReessayer : $($_.Exception.Message)"
     }
-
-    $historique = Get-Historique
 
     if ($null -ne $historique) {
         foreach ($cle in $historique.PSObject.Properties.Name) {

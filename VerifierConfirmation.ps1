@@ -289,16 +289,10 @@ function Update-FirebaseChamp {
 }
 
 function Sync-ResolusVersOutlook {
-    param($Namespace)
+    param($Namespace, $Historique)
 
-    try {
-        $url = "${FirebaseUrl}gromec_vba/historique.json"
-        $historique = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 15
-    } catch {
-        return  # Pas de connexion -- on reessaiera au prochain passage du script
-    }
-
-    if ($null -eq $historique) { return }
+    if ($null -eq $Historique) { return }
+    $historique = $Historique
 
     foreach ($cle in $historique.PSObject.Properties.Name) {
         $entree = $historique.$cle
@@ -373,20 +367,10 @@ function Sync-SuppressionsVersOutlook {
 }
 
 function Sync-ReessaisManuels {
-    param($Namespace)
+    param($Namespace, $Historique)
 
-    # Cherche les entrees NON_APPARIE pour lesquelles un numero de BC a ete
-    # fourni manuellement depuis le dashboard (aReessayer=true), et relance
-    # la comparaison complete avec ce numero -- remplace l'entree existante
-    # par le vrai resultat (succes ou nouvel echec documente)
-    try {
-        $url = "${FirebaseUrl}gromec_vba/historique.json"
-        $historique = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 15
-    } catch {
-        return
-    }
-
-    if ($null -eq $historique) { return }
+    if ($null -eq $Historique) { return }
+    $historique = $Historique
 
     foreach ($cle in $historique.PSObject.Properties.Name) {
         $entree = $historique.$cle
@@ -2347,18 +2331,7 @@ function Invoke-DTWImport {
 }
 
 function Get-CommandesAConfirmerSAP {
-    <#
-    Interroge Firebase et retourne les entrees historique avec statut="OK"
-    et syncSAP non encore a true.
-    #>
-    $NoeudHistorique = "$Script:DTW_FirebaseUrl/gromec_vba/historique.json"
-
-    try {
-        $Historique = Invoke-RestMethod -Uri $NoeudHistorique -Method Get
-    } catch {
-        Write-Warning "Invoke-SyncDTW : echec de la lecture de l'historique Firebase : $($_.Exception.Message)"
-        return @()
-    }
+    param($Historique)
 
     if ($null -eq $Historique) { return @() }
 
@@ -2411,10 +2384,8 @@ function Set-StatutSyncSAP {
 }
 
 function Invoke-SyncDTW {
-    <#
-    Fonction principale appelee a la toute fin du programme principal.
-    #>
-    $ACofirmer = Get-CommandesAConfirmerSAP
+    param($Historique)
+    $ACofirmer = Get-CommandesAConfirmerSAP -Historique $Historique
 
     if ($ACofirmer.Count -eq 0) {
         Write-Log "Invoke-SyncDTW : aucune commande conforme en attente de synchronisation SAP."
@@ -2459,18 +2430,15 @@ try {
     $outlook = New-Object -ComObject Outlook.Application
     $namespace = $outlook.GetNamespace("MAPI")
 
-    # Synchronise vers Outlook les cases "resolu" cochees/decochees depuis le
-    # dashboard web depuis le dernier passage du script -- piggyback sur
-    # chaque execution, qu'il s'agisse d'un nouveau courriel ou d'un test manuel
-    Sync-ResolusVersOutlook $namespace
+    # Telecharge l'historique Firebase une seule fois pour toutes les syncs
+    $historiqueCache = $null
+    try {
+        $historiqueCache = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/historique.json" -Method Get -TimeoutSec 15
+    } catch {}
 
-    # Retire la categorie Outlook (code de couleur) des courriels dont la
-    # fiche a ete effacee du dashboard
+    Sync-ResolusVersOutlook $namespace $historiqueCache
     Sync-SuppressionsVersOutlook $namespace
-
-    # Relance les comparaisons "non appariees" pour lesquelles un numero de BC
-    # a ete fourni manuellement depuis le dashboard
-    Sync-ReessaisManuels $namespace
+    Sync-ReessaisManuels $namespace $historiqueCache
 
     $mail = $null
 
