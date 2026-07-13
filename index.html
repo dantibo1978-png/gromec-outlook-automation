@@ -904,32 +904,115 @@ function fmtPrix(v, devise){
   return v.toFixed(4) + ' ' + (devise || 'CAD');
 }
 
-// ── Panneau logs ─────────────────────────────────────────────────────────
+// ── Chargement historique (SSE temps réel) ──────────────────────────────
+let donneesMap = {};
+let sseHistorique = null;
+
+function trierDonnees(){
+  donnees = Object.values(donneesMap);
+  donnees.sort((a,b) => {
+    const ta = new Date(a.date).getTime();
+    const tb = new Date(b.date).getTime();
+    return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+  });
+}
+
 async function chargerDonnees(){
   const btn = document.getElementById('refreshBtn');
   btn.classList.add('spinning');
   try{
     const rep = await fetch(FIREBASE_URL + 'gromec_vba/historique.json?orderBy="$key"&limitToLast=200');
     const json = await rep.json();
-    donnees = [];
+    donneesMap = {};
     if (json){
       for (const cle in json){
-        donnees.push({ id: cle, ...json[cle] });
+        donneesMap[cle] = { id: cle, ...json[cle] };
       }
     }
-    donnees.sort((a,b) => {
-      // Une date manquante/invalide donne NaN, ce qui casse le tri de TOUT
-      // le tableau (pas seulement de cette entree) -- on la traite comme
-      // la plus ancienne possible pour garder un ordre stable.
-      const ta = new Date(a.date).getTime();
-      const tb = new Date(b.date).getTime();
-      return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
-    });
+    trierDonnees();
   }catch(e){
     console.error('Erreur de chargement Firebase', e);
   }
   btn.classList.remove('spinning');
   rendreTout();
+}
+
+function demarrerSSEHistorique(){
+  if (sseHistorique) sseHistorique.close();
+  const url = FIREBASE_URL + 'gromec_vba/historique.json';
+  sseHistorique = new EventSource(url);
+  let initRecu = false;
+  sseHistorique.addEventListener('put', ev => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.path === '/') {
+        if (initRecu) return;
+        initRecu = true;
+        donneesMap = {};
+        if (msg.data) {
+          for (const cle in msg.data) {
+            donneesMap[cle] = { id: cle, ...msg.data[cle] };
+          }
+        }
+      } else {
+        const parts = msg.path.split('/').filter(Boolean);
+        const cle = parts[0];
+        if (parts.length === 1) {
+          if (msg.data === null) {
+            delete donneesMap[cle];
+          } else {
+            donneesMap[cle] = { id: cle, ...msg.data };
+          }
+        } else {
+          if (donneesMap[cle]) {
+            let obj = donneesMap[cle];
+            for (let i = 1; i < parts.length - 1; i++) {
+              if (!obj[parts[i]]) obj[parts[i]] = {};
+              obj = obj[parts[i]];
+            }
+            obj[parts[parts.length - 1]] = msg.data;
+          }
+        }
+      }
+      trierDonnees();
+      rendreTout();
+    } catch(e) { console.error('SSE historique parse error', e); }
+  });
+  sseHistorique.addEventListener('patch', ev => {
+    try {
+      const msg = JSON.parse(ev.data);
+      const parts = msg.path.split('/').filter(Boolean);
+      if (parts.length === 0 && msg.data) {
+        for (const cle in msg.data) {
+          if (donneesMap[cle]) Object.assign(donneesMap[cle], msg.data[cle]);
+          else donneesMap[cle] = { id: cle, ...msg.data[cle] };
+        }
+      } else if (parts.length >= 1) {
+        const cle = parts[0];
+        if (donneesMap[cle] && parts.length === 1 && msg.data) {
+          Object.assign(donneesMap[cle], msg.data);
+        } else if (donneesMap[cle] && parts.length > 1) {
+          let obj = donneesMap[cle];
+          for (let i = 1; i < parts.length - 1; i++) {
+            if (!obj[parts[i]]) obj[parts[i]] = {};
+            obj = obj[parts[i]];
+          }
+          if (msg.data && typeof msg.data === 'object') {
+            if (!obj[parts[parts.length - 1]]) obj[parts[parts.length - 1]] = {};
+            Object.assign(obj[parts[parts.length - 1]], msg.data);
+          } else {
+            obj[parts[parts.length - 1]] = msg.data;
+          }
+        }
+      }
+      trierDonnees();
+      rendreTout();
+    } catch(e) { console.error('SSE historique patch error', e); }
+  });
+  sseHistorique.onerror = () => {
+    sseHistorique.close();
+    setTimeout(demarrerSSEHistorique, 15000);
+  };
 }
 
 function estEffectivementOK(d){
@@ -1488,8 +1571,7 @@ document.querySelectorAll('.filter-chip').forEach(chip => {
   });
 });
 
-chargerDonnees();
-setInterval(chargerDonnees, 30000);
+demarrerSSEHistorique();
 
 async function declencherConfirmationFournisseur(id, btnEl){
   if (btnEl.classList.contains('confirmer-envoye') || btnEl.classList.contains('confirmer-attente')) return;
@@ -1549,6 +1631,8 @@ function toggleLogPanel(){
   document.getElementById('logPanel').classList.toggle('collapsed');
 }
 
+let sseLogs = null;
+
 function chargerLogs(){
   fetch(FIREBASE_URL + 'gromec_vba/logs.json?orderBy="$key"&limitToLast=300')
     .then(r => r.json())
@@ -1557,6 +1641,41 @@ function chargerLogs(){
       rendreLogs();
     })
     .catch(() => {});
+}
+
+function demarrerSSELogs(){
+  if (sseLogs) sseLogs.close();
+  const url = FIREBASE_URL + 'gromec_vba/logs.json';
+  sseLogs = new EventSource(url);
+  let initRecu = false;
+  sseLogs.addEventListener('put', ev => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.path === '/') {
+        if (initRecu) return;
+        initRecu = true;
+        logsData = msg.data || {};
+      } else {
+        const cle = msg.path.split('/').filter(Boolean)[0];
+        if (msg.data === null) { delete logsData[cle]; }
+        else { logsData[cle] = msg.data; }
+      }
+      rendreLogs();
+    } catch(e) {}
+  });
+  sseLogs.addEventListener('patch', ev => {
+    try {
+      const msg = JSON.parse(ev.data);
+      const cle = msg.path.split('/').filter(Boolean)[0];
+      if (cle && logsData[cle] && msg.data) Object.assign(logsData[cle], msg.data);
+      else if (msg.path === '/' && msg.data) Object.assign(logsData, msg.data);
+      rendreLogs();
+    } catch(e) {}
+  });
+  sseLogs.onerror = () => {
+    sseLogs.close();
+    setTimeout(demarrerSSELogs, 15000);
+  };
 }
 
 function rendreLogs(){
@@ -1655,8 +1774,7 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
   });
 })();
 
-chargerLogs();
-setInterval(chargerLogs, 20000);
+demarrerSSELogs();
 </script>
 
 <script>
