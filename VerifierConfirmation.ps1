@@ -2005,15 +2005,18 @@ Analyse le sujet, le corps ET toutes les pieces jointes fournies.
 
 Reponds a ces 7 questions par OUI ou NON, puis donne ta conclusion:
 Q1_NUMERO_BC: Y a-t-il un numero de commande Gromec (format 9XXXXXX, ex: 9006906)?
-Q2_PRIX_QTE: Le DERNIER message contient-il des prix ou quantites NUMERIQUES confirmees pour au
-    moins un item (ex: "Item X - 150.00$", tableau avec colonnes prix/qte, "qty 10 @ 25.00$")?
+Q2_PRIX_QTE: Le DERNIER message contient-il des prix ou quantites NUMERIQUES confirmees pour
+    les items COMMANDES (ex: "Item X - 150.00$", tableau avec colonnes prix/qte, "qty 10 @ 25.00$")?
     ATTENTION: simplement MENTIONNER un prix ou dire "le prix a ete mis a jour" sans donner de
     VALEUR NUMERIQUE REELLE = NON. Il faut au moins UN prix ou UNE quantite chiffree.
+    IMPORTANT: si le fournisseur propose un PRODUIT ALTERNATIF/SUBSTITUT different de ce qui a ete
+    commande avec son propre prix, ce n'est PAS une confirmation de prix = NON.
 Q3_DATE_LIVRAISON: Le DERNIER message confirme-t-il une date de livraison ou delai?
 Q4_ACCUSÉ_RECEPTION: Le DERNIER message confirme-t-il avoir recu ou traite la commande (meme
     partiellement, ex: confirmer 1 ligne sur 10)? ATTENTION: un simple suivi de statut
     ("le prix a ete corrige", "c'est en backorder", "on surveille la commande") sans
-    confirmation explicite de reception ou traitement = NON.
+    confirmation explicite de reception ou traitement = NON. Proposer un produit alternatif
+    ou substitut n'est PAS un accuse de reception de la commande = NON.
 Q5_DOCUMENT_COMMANDE: Une piece jointe contient-elle une VRAIE confirmation/accuse de reception
     du FOURNISSEUR (prix/quantites/delais confirmes par le fournisseur)? ATTENTION: si la piece
     jointe est simplement LE BON DE COMMANDE ORIGINAL DE GROMEC renvoye tel quel (meme mise en page
@@ -2037,7 +2040,9 @@ livraison, changer un contact), devis seuls, factures seules, avis expedition se
 courriels generaux sans reference a une commande specifique, MTR (Material Test Reports/certificats
 de materiaux), certificats de conformite, rapports d'inspection, documents de qualite, bons de
 livraison seuls, simples suivis de statut sans donnees concretes (ex: "le prix a ete corrige"
-sans donner le prix, "c'est en backorder", "on surveille la commande").
+sans donner le prix, "c'est en backorder", "on surveille la commande"), propositions de produits
+alternatifs/substituts (ex: "on pourrait vous offrir un autre modele a tel prix", "nous avons
+un produit equivalent"), contre-propositions commerciales.
 
 Reponds EXACTEMENT en ce format:
 Q1_NUMERO_BC: OUI/NON
