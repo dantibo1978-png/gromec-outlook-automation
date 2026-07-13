@@ -2005,32 +2005,23 @@ Analyse le sujet, le corps ET toutes les pieces jointes fournies.
 
 Reponds a ces 7 questions par OUI ou NON, puis donne ta conclusion:
 Q1_NUMERO_BC: Y a-t-il un numero de commande Gromec (format 9XXXXXX, ex: 9006906)?
-Q2_PRIX_QTE: Le DERNIER message contient-il des prix ou quantites NUMERIQUES CONFIRMES par le
-    fournisseur pour les items COMMANDES (ex: "Item X - 150.00$", tableau avec colonnes prix/qte,
-    "qty 10 @ 25.00$")? ATTENTION: simplement MENTIONNER un prix ou dire "le prix a ete mis a jour"
-    sans donner de VALEUR NUMERIQUE REELLE = NON. Il faut au moins UN prix ou UNE quantite chiffree.
+Q2_PRIX_QTE: Le DERNIER message contient-il des prix ou quantites NUMERIQUES confirmees pour
+    les items COMMANDES (ex: "Item X - 150.00$", tableau avec colonnes prix/qte, "qty 10 @ 25.00$")?
+    ATTENTION: simplement MENTIONNER un prix ou dire "le prix a ete mis a jour" sans donner de
+    VALEUR NUMERIQUE REELLE = NON. Il faut au moins UN prix ou UNE quantite chiffree.
     IMPORTANT: si le fournisseur propose un PRODUIT ALTERNATIF/SUBSTITUT different de ce qui a ete
     commande avec son propre prix, ce n'est PAS une confirmation de prix = NON.
-    IMPORTANT: un rapport d'ecart/discrepancy montrant des differences de prix entre le PO du client
-    et les prix du fournisseur N'EST PAS une confirmation -- c'est un signalement de probleme = NON.
 Q3_DATE_LIVRAISON: Le DERNIER message confirme-t-il une date de livraison ou delai?
 Q4_ACCUSÉ_RECEPTION: Le DERNIER message confirme-t-il avoir recu ou traite la commande (meme
     partiellement, ex: confirmer 1 ligne sur 10)? ATTENTION: un simple suivi de statut
     ("le prix a ete corrige", "c'est en backorder", "on surveille la commande") sans
     confirmation explicite de reception ou traitement = NON. Proposer un produit alternatif
     ou substitut n'est PAS un accuse de reception de la commande = NON.
-    IMPORTANT: si le fournisseur BLOQUE/MET EN ATTENTE (hold) la commande a cause d'ecarts
-    de prix (Order Discrepancy, price discrepancy, order on hold) et demande au client de
-    confirmer/reconnaitre les ecarts, ce n'est PAS un accuse de reception = NON.
-    C'est le fournisseur qui demande une action au CLIENT, pas une confirmation.
 Q5_DOCUMENT_COMMANDE: Une piece jointe contient-elle une VRAIE confirmation/accuse de reception
     du FOURNISSEUR (prix/quantites/delais confirmes par le fournisseur)? ATTENTION: si la piece
     jointe est simplement LE BON DE COMMANDE ORIGINAL DE GROMEC renvoye tel quel (meme mise en page
     que ce que Daniel envoie, sans annotation ni prix confirmes par le fournisseur), reponds NON --
     ce n'est qu'une reference, pas une confirmation.
-    IMPORTANT: un "Order Discrepancy Report" ou rapport d'ecarts de prix n'est PAS une confirmation.
-    C'est un document du fournisseur qui SIGNALE des problemes de prix et DEMANDE au client de
-    reconnaitre les ecarts. Meme s'il contient des prix et quantites, ce n'est PAS une confirmation = NON.
 Q6_SIMPLE_SUIVI: Le message est-il un SIMPLE SUIVI DE STATUT sans confirmation concrete
     (ex: "le prix a ete corrige" sans donner le prix, "c'est en backorder", "on surveille",
     "je m'excuse du delai", mise a jour administrative)? ATTENTION: si le fournisseur CONFIRME
@@ -2051,9 +2042,7 @@ de materiaux), certificats de conformite, rapports d'inspection, documents de qu
 livraison seuls, simples suivis de statut sans donnees concretes (ex: "le prix a ete corrige"
 sans donner le prix, "c'est en backorder", "on surveille la commande"), propositions de produits
 alternatifs/substituts (ex: "on pourrait vous offrir un autre modele a tel prix", "nous avons
-un produit equivalent"), contre-propositions commerciales, rapports d'ecarts de prix / Order
-Discrepancy Reports (ex: Masco "Order Discrepancy", "order on hold due to price discrepancy",
-document demandant au client de reconnaitre des ecarts de prix avant traitement).
+un produit equivalent"), contre-propositions commerciales.
 
 Reponds EXACTEMENT en ce format:
 Q1_NUMERO_BC: OUI/NON
