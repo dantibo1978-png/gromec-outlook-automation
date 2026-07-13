@@ -753,10 +753,23 @@ meme vide (laisse-le vide entre les deux derniers | si vraiment introuvable, mai
 cherche attentivement avant de conclure que c'est absent -- il est presque toujours
 imprime quelque part sur le document, souvent pres du nom du client ou en en-tete.
 
+IMPORTANT -- NUMERO DE LIGNE: le premier champ apres ARTICLE| doit etre le numero de
+ligne TEL QU'IMPRIME sur le document du fournisseur (ex: "Line No", "Ligne", "#").
+Si le document montre les lignes 1, 3, 6, 7 (avec des trous), utilise ces VRAIS numeros,
+PAS une numerotation sequentielle 1, 2, 3, 4. Ces numeros correspondent aux lignes du
+bon de commande original et sont essentiels pour le matching.
+
+IMPORTANT -- RAPPORT D'ECARTS / ORDER DISCREPANCY: si le document contient DEUX colonnes
+de prix (ex: "Supplier Unit Price" / "Masco Unit Price" ET "Customer Sent PO Unit Price"),
+utilise TOUJOURS le prix du FOURNISSEUR (Masco Unit Price, Supplier Price, Our Price, etc.)
+comme prix unitaire dans le champ PRIX -- c'est le prix que le fournisseur veut facturer.
+Ne prends PAS le "Customer Sent PO Unit Price" qui est simplement ce que Gromec avait
+envoye dans sa commande.
+
 Reponds STRICTEMENT dans ce format, rien d'autre:
 FOURNISSEUR|NomFournisseur|NumConfirmationFournisseur|CAD_ou_USD|NumeroBCGromec
 ARTICLE|1|CODE|5|10.5800|description complete de la ligne
-ARTICLE|2|CODE2|3|25.0000|description
+ARTICLE|3|CODE2|3|25.0000|description
 Si aucun article trouve: ecrire AUCUN_ARTICLE
 "@
 
@@ -1123,6 +1136,15 @@ function Find-MatchesDeterministe {
                     $nPdf = Format-CodeNormalise $PdfItems[$j].Code
                     if ($nPdf.Length -ge 7 -and $nPdf.Substring($nPdf.Length - 7) -eq $suffSap) { $matchIdx = $j; break }
                 }
+            }
+        }
+
+        # 5. Numero de ligne (le PDF fournisseur indique le meme numero de
+        #    ligne que le PO Gromec, ex: rapports d'ecarts Masco)
+        if ($matchIdx -eq -1 -and $sap.LineNbr -gt 0) {
+            for ($j = 0; $j -lt $PdfItems.Count; $j++) {
+                if ($pdfUtilises.ContainsKey($j)) { continue }
+                if ($PdfItems[$j].LineNbr -eq $sap.LineNbr) { $matchIdx = $j; break }
             }
         }
 
