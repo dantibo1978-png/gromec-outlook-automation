@@ -939,7 +939,7 @@ async function chargerDonnees(){
 
 function demarrerSSEHistorique(){
   if (sseHistorique) sseHistorique.close();
-  const url = FIREBASE_URL + 'gromec_vba/historique.json';
+  const url = FIREBASE_URL + 'gromec_vba/historique.json?orderBy="$key"&limitToLast=200';
   sseHistorique = new EventSource(url);
   let initRecu = false;
   sseHistorique.addEventListener('put', ev => {
@@ -1645,7 +1645,7 @@ function chargerLogs(){
 
 function demarrerSSELogs(){
   if (sseLogs) sseLogs.close();
-  const url = FIREBASE_URL + 'gromec_vba/logs.json';
+  const url = FIREBASE_URL + 'gromec_vba/logs.json?orderBy="$key"&limitToLast=300';
   sseLogs = new EventSource(url);
   let initRecu = false;
   sseLogs.addEventListener('put', ev => {
