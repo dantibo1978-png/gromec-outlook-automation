@@ -256,6 +256,7 @@ function Write-FirebaseHistorique {
         storeID      = $StoreID
         resolu       = $false
         syncedResolu = $false
+        poReviseRequis = [bool]$Script:PoReviseRequis
     }
     if ($null -ne $Entete) { $entree["entete"] = $Entete }
 
@@ -2002,7 +2003,7 @@ ou semble etre un bon de commande.
 
 Analyse le sujet, le corps ET toutes les pieces jointes fournies.
 
-Reponds a ces 6 questions par OUI ou NON, puis donne ta conclusion:
+Reponds a ces 7 questions par OUI ou NON, puis donne ta conclusion:
 Q1_NUMERO_BC: Y a-t-il un numero de commande Gromec (format 9XXXXXX, ex: 9006906)?
 Q2_PRIX_QTE: Le DERNIER message contient-il des prix ou quantites NUMERIQUES confirmees pour au
     moins un item (ex: "Item X - 150.00$", tableau avec colonnes prix/qte, "qty 10 @ 25.00$")?
@@ -2024,6 +2025,11 @@ Q6_SIMPLE_SUIVI: Le message est-il un SIMPLE SUIVI DE STATUT sans confirmation c
     des items avec prix/quantites/delais concrets (meme pour 1 seul item), c'est une confirmation
     partielle VALIDE = NON. C'est OUI seulement si le message ne contient AUCUNE donnee concrete
     de confirmation.
+Q7_PO_REVISE_REQUIS: Le fournisseur demande-t-il explicitement qu'on lui renvoie un bon de commande
+    revise/modifie (ex: "please send revised PO", "envoyer PO corrige", "need updated purchase order",
+    "merci de modifier le PO", "please update and resend")? Si le fournisseur confirme simplement
+    la commande sans rien demander = NON. OUI seulement si une demande explicite de PO revise est
+    presente dans le message.
 
 REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI) ET Q6=NON.
 N'EST PAS une confirmation: questions, demandes de modification (ex: changer une adresse de
@@ -2040,6 +2046,7 @@ Q3_DATE_LIVRAISON: OUI/NON
 Q4_ACCUSÉ_RECEPTION: OUI/NON
 Q5_DOCUMENT_COMMANDE: OUI/NON
 Q6_SIMPLE_SUIVI: OUI/NON
+Q7_PO_REVISE_REQUIS: OUI/NON
 CONFIRMATION: OUI/NON
 CONFIANCE: 0.00
 SOURCE: PDF/CORPS
@@ -2086,8 +2093,9 @@ SOURCE: PDF/CORPS
             $confirmation = if ($texte -match "CONFIRMATION:\s*(OUI|NON)") { $Matches[1] } else { "NON" }
             $confiance    = if ($texte -match "CONFIANCE:\s*([\d.]+)")     { [double]$Matches[1] } else { 0.5 }
             $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
+            $poRevise     = if ($texte -match "Q7_PO_REVISE_REQUIS:\s*(OUI|NON)") { $Matches[1] -eq "OUI" } else { $false }
 
-            return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false }
+            return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false; PoReviseRequis = $poRevise }
         } catch {
             if ($tentative -eq 3) {
                 return @{ EstConfirmation = $false; Confiance = 0.0; VerifierCorps = $false; TexteBrut = "ERREUR: $($_.Exception.Message)"; Exclu = $false }
@@ -2133,6 +2141,7 @@ function Invoke-TraiterNouveauCourriel {
 
     # Claude Haiku analyse le courriel avec PJ incluses
     $analyse = Invoke-ClassifierCourriel $MailItem
+    $Script:PoReviseRequis = $analyse.PoReviseRequis
 
     # Prefixe indicateur dans le sujet du courriel (visible dans la liste Outlook)
     # [OK 94%] = confiant, confirmation | [X 97%] = confiant, pas une confirmation | [? 71%] = incertain
