@@ -261,9 +261,19 @@ function Write-FirebaseHistorique {
     if ($null -ne $Entete) { $entree["entete"] = $Entete }
 
     try {
+        # Chercher une entree existante par entryID pour eviter les doublons
+        # lors des reclassifications (le meme courriel re-traite doit remplacer
+        # l'ancienne carte, pas en creer une nouvelle).
+        if ($HistoriqueId -eq "" -and $EntryID -ne "") {
+            try {
+                $existant = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/historique.json?orderBy=%22entryID%22&equalTo=%22$EntryID%22" -Method Get -TimeoutSec 10
+                if ($null -ne $existant -and $existant.PSObject.Properties.Count -gt 0) {
+                    $HistoriqueId = $existant.PSObject.Properties.Name | Select-Object -First 1
+                }
+            } catch {}
+        }
+
         if ($HistoriqueId -ne "") {
-            # Remplace une entree existante (ex: NON_APPARIE corrigee manuellement)
-            # plutot que d'en creer une nouvelle -- evite les doublons sur le dashboard
             $url = "${FirebaseUrl}gromec_vba/historique/$HistoriqueId.json"
             $jsonBody = $entree | ConvertTo-Json -Depth 10 -Compress
             Invoke-RestMethod -Uri $url -Method Put -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
