@@ -1699,6 +1699,16 @@ function Invoke-TraiterComparaison {
     $sujet = $MailConfirmation.Subject
     $expediteur = (Get-AdresseSMTP $MailConfirmation)
 
+    # Re-tentative manuelle (depuis le dashboard) : le classificateur Q7
+    # n'a pas tourne, donc $Script:PoReviseRequis est $false par defaut.
+    # On relance la classification pour recuperer Q7.
+    if ($HistoriqueId -ne "" -and -not $Script:PoReviseRequis) {
+        try {
+            $analyse = Invoke-ClassifierCourriel $MailConfirmation
+            $Script:PoReviseRequis = $analyse.PoReviseRequis
+        } catch {}
+    }
+
     # Si l'appelant n'a pas precise explicitement le mode (ex: re-tentative
     # manuelle depuis le dashboard via Sync-ReessaisManuels), on se fie au
     # comportement appris pour cette adresse exacte -- par defaut PDF si

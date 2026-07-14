@@ -1237,7 +1237,7 @@ function rendreFiche(d){
   <div class="fiche" data-id="${d.id}">
     <div class="fiche-head" onclick="toggleFiche('${d.id}')">
       <span class="stamp ${d.envoyer_confirmation === 'envoye' ? 'stamp-confirme' : estOK ? 'stamp-ok' : 'stamp-ecart'}">${d.envoyer_confirmation === 'envoye' ? 'CONFIRMÉ' : estOK ? (d.statut === 'OK_PARTIEL' ? 'CONFORME (partiel)' : 'CONFORME') : 'ÉCART'}</span>
-      ${d.poReviseRequis ? '<span class="stamp stamp-po-revise">PO révisé demandé</span>' : ''}
+      ${d.poReviseRequis ? '<span class="stamp stamp-po-revise">Confirmation requise</span>' : ''}
       <div class="fiche-info">
         <p class="fiche-fournisseur">${d.fournisseur || 'Fournisseur inconnu'}</p>
         <div class="fiche-meta">
