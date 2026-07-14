@@ -174,6 +174,24 @@ try {
     }
 } catch {}
 
+# Alias de domaines: fournisseurs qui repondent d'un domaine different de celui
+# ou on a envoye la commande (ex: envoye a @nimatec.com, reponse de @boshart.com).
+# Firebase: gromec_vba/parametres/domaines_alias = { "nimatec.com": "boshart.com", ... }
+# Bidirectionnel: chaque paire est stockee dans les deux sens.
+$Script:DomainesAlias = @{}
+try {
+    $repAlias = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/domaines_alias.json" -Method Get -TimeoutSec 10
+    if ($repAlias -and $repAlias.PSObject.Properties.Count -gt 0) {
+        foreach ($prop in $repAlias.PSObject.Properties) {
+            $k = $prop.Name.ToLower().Trim()
+            $v = ([string]$prop.Value).ToLower().Trim()
+            if (-not $Script:DomainesAlias.ContainsKey($k)) { $Script:DomainesAlias[$k] = @() }
+            $Script:DomainesAlias[$k] += $v
+            if (-not $Script:DomainesAlias.ContainsKey($v)) { $Script:DomainesAlias[$v] = @() }
+            $Script:DomainesAlias[$v] += $k
+        }
+    }
+} catch {}
 
 # =====================================================================
 # FONCTIONS - Firebase
@@ -1307,9 +1325,37 @@ function Find-CourrielEnvoyeCorrespondant {
             }
 
             if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
+                foreach ($item in $itemsFiltres) {
+                    if ($item.Class -ne 43) { continue }
+                    try {
+                        if ($item.Body -like "*$NumeroBC*") {
+                            $aPDF = $false
+                            foreach ($pj in $item.Attachments) {
+                                if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
+                            }
+                            if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
+                        }
+                    } catch {}
+                }
+            }
+        }
+
+        if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
+            $domaineFourn = ($adresseFournisseur -split "@")[-1].ToLower().Trim()
+            $domainesAcceptes = @($domaineFourn)
+            if ($Script:DomainesAlias.ContainsKey($domaineFourn)) {
+                $domainesAcceptes += $Script:DomainesAlias[$domaineFourn]
+            }
+            foreach ($item in $itemsFiltres) {
+                if ($item.Class -ne 43) { continue }
+                $aPDF = $false
+                foreach ($pj in $item.Attachments) {
+                    if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
+                }
                 if ($aPDF) {
                     foreach ($dest in $item.Recipients) {
-                        if ($dest.Address -eq $adresseFournisseur) { $candidatsFourn += $item; break }
+                        $domDest = ($dest.Address -split "@")[-1].ToLower().Trim()
+                        if ($domainesAcceptes -contains $domDest) { $candidatsFourn += $item; break }
                     }
                 }
             }
