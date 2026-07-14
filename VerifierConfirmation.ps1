@@ -2050,11 +2050,17 @@ Q6_SIMPLE_SUIVI: Le message est-il un SIMPLE SUIVI DE STATUT sans confirmation c
     des items avec prix/quantites/delais concrets (meme pour 1 seul item), c'est une confirmation
     partielle VALIDE = NON. C'est OUI seulement si le message ne contient AUCUNE donnee concrete
     de confirmation.
-Q7_PO_REVISE_REQUIS: Le fournisseur demande-t-il explicitement qu'on lui renvoie un bon de commande
-    revise/modifie (ex: "please send revised PO", "envoyer PO corrige", "need updated purchase order",
-    "merci de modifier le PO", "please update and resend")? Si le fournisseur confirme simplement
-    la commande sans rien demander = NON. OUI seulement si une demande explicite de PO revise est
-    presente dans le message.
+Q7_PO_REVISE_REQUIS: Le fournisseur demande-t-il une ACTION de la part de Gromec avant de
+    traiter la commande? Exemples:
+    - Renvoyer un PO revise/modifie ("please send revised PO", "envoyer PO corrige",
+      "need updated purchase order", "please update and resend")
+    - Confirmer/reconnaitre des ecarts de prix ou quantite ("Confirmation Required",
+      "please acknowledge discrepancy", "requires your immediate attention",
+      "please review and acknowledge", "return signed copy", "veuillez confirmer")
+    - Commande mise en attente/hold jusqu'a confirmation du client ("order on hold",
+      "commande en attente de votre confirmation")
+    Si le fournisseur confirme simplement la commande sans rien demander = NON.
+    OUI seulement si le fournisseur demande explicitement une action/reponse du client.
 
 REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI) ET Q6=NON.
 N'EST PAS une confirmation: questions, demandes de modification (ex: changer une adresse de
