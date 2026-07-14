@@ -1733,7 +1733,7 @@ function Test-BCDejaTraitee {
 }
 
 function Invoke-TraiterComparaison {
-    param($Namespace, $MailConfirmation, [string]$NumeroBCOverride = "", [string]$HistoriqueId = "", [Nullable[bool]]$VerifierCorps = $null)
+    param($Namespace, $MailConfirmation, [string]$NumeroBCOverride = "", [string]$HistoriqueId = "", [Nullable[bool]]$VerifierCorps = $null, [bool]$ForcerTraitement = $false)
 
     $sujet = $MailConfirmation.Subject
     $expediteur = (Get-AdresseSMTP $MailConfirmation)
@@ -1790,7 +1790,7 @@ function Invoke-TraiterComparaison {
             if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
         }
 
-        if (-not $HistoriqueId -and (Test-BCDejaTraitee $numeroBC)) {
+        if (-not $ForcerTraitement -and -not $HistoriqueId -and (Test-BCDejaTraitee $numeroBC)) {
             Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
             return
         }
@@ -1932,7 +1932,7 @@ function Invoke-TraiterComparaison {
             if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
         }
 
-        if (-not $HistoriqueId -and (Test-BCDejaTraitee $numeroBC)) {
+        if (-not $ForcerTraitement -and -not $HistoriqueId -and (Test-BCDejaTraitee $numeroBC)) {
             Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
             Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
             return
@@ -2365,7 +2365,7 @@ function Invoke-TraiterNouveauCourriel {
     if (-not $estConfirmation) { return }
     if (-not $ForcerTraitement) { Set-ConversationTraitee $convID }
 
-    Invoke-TraiterComparaison $Namespace $MailItem -VerifierCorps $verifierCorps
+    Invoke-TraiterComparaison $Namespace $MailItem -VerifierCorps $verifierCorps -ForcerTraitement $ForcerTraitement
 }
 
 # =====================================================================
