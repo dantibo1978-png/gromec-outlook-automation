@@ -749,10 +749,19 @@ function Write-JournalEntry {
 
 function Get-NumeroBC {
     param([string]$Texte)
-    # Cherche 7-8 chiffres commencant par 90 (ex: 9006545, 9010000)
     $m = [regex]::Match($Texte, '(?<![0-9])90[0-9]{5,6}(?![0-9])')
     if ($m.Success) { return $m.Value }
     return ""
+}
+
+function Get-TousNumerosBC {
+    param([string]$Texte)
+    $resultats = @()
+    $matches = [regex]::Matches($Texte, '(?<![0-9])90[0-9]{5,6}(?![0-9])')
+    foreach ($m in $matches) {
+        if ($resultats -notcontains $m.Value) { $resultats += $m.Value }
+    }
+    return $resultats
 }
 
 function Get-ItemsFournisseur {
@@ -1784,6 +1793,19 @@ function Invoke-TraiterComparaison {
 
         $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $numeroBC
         if ($null -eq $mailEnvoye) {
+            $autresBC = @()
+            if ($bcGromec -ne "" -and $bcGromec -ne $numeroBC) { $autresBC += $bcGromec }
+            $tousBC = Get-TousNumerosBC "$sujet $($MailConfirmation.Body)"
+            foreach ($bc in $tousBC) {
+                if ($bc -ne $numeroBC -and $autresBC -notcontains $bc) { $autresBC += $bc }
+            }
+            foreach ($bcAlt in $autresBC) {
+                Write-Log "INFO  BC $numeroBC introuvable dans Envoyes, tentative avec BC alternatif=$bcAlt"
+                $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $bcAlt
+                if ($null -ne $mailEnvoye) { $numeroBC = $bcAlt; break }
+            }
+        }
+        if ($null -eq $mailEnvoye) {
             Write-JournalEntry $expediteur "AUCUNE_COMMANDE_TROUVEE" "BC recherche: $numeroBC"
             Write-FirebaseEchec $MailConfirmation "AUCUNE_COMMANDE_TROUVEE" $numeroBC $nomFourn $HistoriqueId
             return
@@ -1913,6 +1935,19 @@ function Invoke-TraiterComparaison {
         }
 
         $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $numeroBC
+        if ($null -eq $mailEnvoye) {
+            $autresBC = @()
+            if ($bcGromec -ne "" -and $bcGromec -ne $numeroBC) { $autresBC += $bcGromec }
+            $tousBC = Get-TousNumerosBC "$sujet $($MailConfirmation.Body)"
+            foreach ($bc in $tousBC) {
+                if ($bc -ne $numeroBC -and $autresBC -notcontains $bc) { $autresBC += $bc }
+            }
+            foreach ($bcAlt in $autresBC) {
+                Write-Log "INFO  BC $numeroBC introuvable dans Envoyes, tentative avec BC alternatif=$bcAlt"
+                $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailConfirmation $bcAlt
+                if ($null -ne $mailEnvoye) { $numeroBC = $bcAlt; break }
+            }
+        }
         if ($null -eq $mailEnvoye) {
             Write-JournalEntry $expediteur "AUCUNE_COMMANDE_TROUVEE" "BC recherche: $numeroBC"
             Write-FirebaseEchec $MailConfirmation "AUCUNE_COMMANDE_TROUVEE" $numeroBC $nomFourn $HistoriqueId
