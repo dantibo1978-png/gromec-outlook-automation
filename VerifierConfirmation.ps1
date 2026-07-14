@@ -256,6 +256,7 @@ function Write-FirebaseHistorique {
         storeID      = $StoreID
         resolu       = $false
         syncedResolu = $false
+        poReviseRequis = [bool]$Script:PoReviseRequis
     }
     if ($null -ne $Entete) { $entree["entete"] = $Entete }
 
@@ -289,16 +290,10 @@ function Update-FirebaseChamp {
 }
 
 function Sync-ResolusVersOutlook {
-    param($Namespace)
+    param($Namespace, $Historique)
 
-    try {
-        $url = "${FirebaseUrl}gromec_vba/historique.json"
-        $historique = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 15
-    } catch {
-        return  # Pas de connexion -- on reessaiera au prochain passage du script
-    }
-
-    if ($null -eq $historique) { return }
+    if ($null -eq $Historique) { return }
+    $historique = $Historique
 
     foreach ($cle in $historique.PSObject.Properties.Name) {
         $entree = $historique.$cle
@@ -373,20 +368,10 @@ function Sync-SuppressionsVersOutlook {
 }
 
 function Sync-ReessaisManuels {
-    param($Namespace)
+    param($Namespace, $Historique)
 
-    # Cherche les entrees NON_APPARIE pour lesquelles un numero de BC a ete
-    # fourni manuellement depuis le dashboard (aReessayer=true), et relance
-    # la comparaison complete avec ce numero -- remplace l'entree existante
-    # par le vrai resultat (succes ou nouvel echec documente)
-    try {
-        $url = "${FirebaseUrl}gromec_vba/historique.json"
-        $historique = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 15
-    } catch {
-        return
-    }
-
-    if ($null -eq $historique) { return }
+    if ($null -eq $Historique) { return }
+    $historique = $Historique
 
     foreach ($cle in $historique.PSObject.Properties.Name) {
         $entree = $historique.$cle
@@ -768,10 +753,23 @@ meme vide (laisse-le vide entre les deux derniers | si vraiment introuvable, mai
 cherche attentivement avant de conclure que c'est absent -- il est presque toujours
 imprime quelque part sur le document, souvent pres du nom du client ou en en-tete.
 
+IMPORTANT -- NUMERO DE LIGNE: le premier champ apres ARTICLE| doit etre le numero de
+ligne TEL QU'IMPRIME sur le document du fournisseur (ex: "Line No", "Ligne", "#").
+Si le document montre les lignes 1, 3, 6, 7 (avec des trous), utilise ces VRAIS numeros,
+PAS une numerotation sequentielle 1, 2, 3, 4. Ces numeros correspondent aux lignes du
+bon de commande original et sont essentiels pour le matching.
+
+IMPORTANT -- RAPPORT D'ECARTS / ORDER DISCREPANCY: si le document contient DEUX colonnes
+de prix (ex: "Supplier Unit Price" / "Masco Unit Price" ET "Customer Sent PO Unit Price"),
+utilise TOUJOURS le prix du FOURNISSEUR (Masco Unit Price, Supplier Price, Our Price, etc.)
+comme prix unitaire dans le champ PRIX -- c'est le prix que le fournisseur veut facturer.
+Ne prends PAS le "Customer Sent PO Unit Price" qui est simplement ce que Gromec avait
+envoye dans sa commande.
+
 Reponds STRICTEMENT dans ce format, rien d'autre:
 FOURNISSEUR|NomFournisseur|NumConfirmationFournisseur|CAD_ou_USD|NumeroBCGromec
 ARTICLE|1|CODE|5|10.5800|description complete de la ligne
-ARTICLE|2|CODE2|3|25.0000|description
+ARTICLE|3|CODE2|3|25.0000|description
 Si aucun article trouve: ecrire AUCUN_ARTICLE
 "@
 
@@ -1138,6 +1136,15 @@ function Find-MatchesDeterministe {
                     $nPdf = Format-CodeNormalise $PdfItems[$j].Code
                     if ($nPdf.Length -ge 7 -and $nPdf.Substring($nPdf.Length - 7) -eq $suffSap) { $matchIdx = $j; break }
                 }
+            }
+        }
+
+        # 5. Numero de ligne (le PDF fournisseur indique le meme numero de
+        #    ligne que le PO Gromec, ex: rapports d'ecarts Masco)
+        if ($matchIdx -eq -1 -and $sap.LineNbr -gt 0) {
+            for ($j = 0; $j -lt $PdfItems.Count; $j++) {
+                if ($pdfUtilises.ContainsKey($j)) { continue }
+                if ($PdfItems[$j].LineNbr -eq $sap.LineNbr) { $matchIdx = $j; break }
             }
         }
 
@@ -1666,6 +1673,16 @@ function Invoke-TraiterComparaison {
     $sujet = $MailConfirmation.Subject
     $expediteur = (Get-AdresseSMTP $MailConfirmation)
 
+    # Re-tentative manuelle (depuis le dashboard) : le classificateur Q7
+    # n'a pas tourne, donc $Script:PoReviseRequis est $false par defaut.
+    # On relance la classification pour recuperer Q7.
+    if ($HistoriqueId -ne "" -and -not $Script:PoReviseRequis) {
+        try {
+            $analyse = Invoke-ClassifierCourriel $MailConfirmation
+            $Script:PoReviseRequis = $analyse.PoReviseRequis
+        } catch {}
+    }
+
     # Si l'appelant n'a pas precise explicitement le mode (ex: re-tentative
     # manuelle depuis le dashboard via Sync-ReessaisManuels), on se fie au
     # comportement appris pour cette adresse exacte -- par defaut PDF si
@@ -1992,17 +2009,20 @@ ou semble etre un bon de commande.
 
 Analyse le sujet, le corps ET toutes les pieces jointes fournies.
 
-Reponds a ces 6 questions par OUI ou NON, puis donne ta conclusion:
+Reponds a ces 7 questions par OUI ou NON, puis donne ta conclusion:
 Q1_NUMERO_BC: Y a-t-il un numero de commande Gromec (format 9XXXXXX, ex: 9006906)?
-Q2_PRIX_QTE: Le DERNIER message contient-il des prix ou quantites NUMERIQUES confirmees pour au
-    moins un item (ex: "Item X - 150.00$", tableau avec colonnes prix/qte, "qty 10 @ 25.00$")?
+Q2_PRIX_QTE: Le DERNIER message contient-il des prix ou quantites NUMERIQUES confirmees pour
+    les items COMMANDES (ex: "Item X - 150.00$", tableau avec colonnes prix/qte, "qty 10 @ 25.00$")?
     ATTENTION: simplement MENTIONNER un prix ou dire "le prix a ete mis a jour" sans donner de
     VALEUR NUMERIQUE REELLE = NON. Il faut au moins UN prix ou UNE quantite chiffree.
+    IMPORTANT: si le fournisseur propose un PRODUIT ALTERNATIF/SUBSTITUT different de ce qui a ete
+    commande avec son propre prix, ce n'est PAS une confirmation de prix = NON.
 Q3_DATE_LIVRAISON: Le DERNIER message confirme-t-il une date de livraison ou delai?
 Q4_ACCUSÉ_RECEPTION: Le DERNIER message confirme-t-il avoir recu ou traite la commande (meme
     partiellement, ex: confirmer 1 ligne sur 10)? ATTENTION: un simple suivi de statut
     ("le prix a ete corrige", "c'est en backorder", "on surveille la commande") sans
-    confirmation explicite de reception ou traitement = NON.
+    confirmation explicite de reception ou traitement = NON. Proposer un produit alternatif
+    ou substitut n'est PAS un accuse de reception de la commande = NON.
 Q5_DOCUMENT_COMMANDE: Une piece jointe contient-elle une VRAIE confirmation/accuse de reception
     du FOURNISSEUR (prix/quantites/delais confirmes par le fournisseur)? ATTENTION: si la piece
     jointe est simplement LE BON DE COMMANDE ORIGINAL DE GROMEC renvoye tel quel (meme mise en page
@@ -2014,6 +2034,17 @@ Q6_SIMPLE_SUIVI: Le message est-il un SIMPLE SUIVI DE STATUT sans confirmation c
     des items avec prix/quantites/delais concrets (meme pour 1 seul item), c'est une confirmation
     partielle VALIDE = NON. C'est OUI seulement si le message ne contient AUCUNE donnee concrete
     de confirmation.
+Q7_PO_REVISE_REQUIS: Le fournisseur demande-t-il une ACTION de la part de Gromec avant de
+    traiter la commande? Exemples:
+    - Renvoyer un PO revise/modifie ("please send revised PO", "envoyer PO corrige",
+      "need updated purchase order", "please update and resend")
+    - Confirmer/reconnaitre des ecarts de prix ou quantite ("Confirmation Required",
+      "please acknowledge discrepancy", "requires your immediate attention",
+      "please review and acknowledge", "return signed copy", "veuillez confirmer")
+    - Commande mise en attente/hold jusqu'a confirmation du client ("order on hold",
+      "commande en attente de votre confirmation")
+    Si le fournisseur confirme simplement la commande sans rien demander = NON.
+    OUI seulement si le fournisseur demande explicitement une action/reponse du client.
 
 REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI) ET Q6=NON.
 N'EST PAS une confirmation: questions, demandes de modification (ex: changer une adresse de
@@ -2021,7 +2052,9 @@ livraison, changer un contact), devis seuls, factures seules, avis expedition se
 courriels generaux sans reference a une commande specifique, MTR (Material Test Reports/certificats
 de materiaux), certificats de conformite, rapports d'inspection, documents de qualite, bons de
 livraison seuls, simples suivis de statut sans donnees concretes (ex: "le prix a ete corrige"
-sans donner le prix, "c'est en backorder", "on surveille la commande").
+sans donner le prix, "c'est en backorder", "on surveille la commande"), propositions de produits
+alternatifs/substituts (ex: "on pourrait vous offrir un autre modele a tel prix", "nous avons
+un produit equivalent"), contre-propositions commerciales.
 
 Reponds EXACTEMENT en ce format:
 Q1_NUMERO_BC: OUI/NON
@@ -2030,6 +2063,7 @@ Q3_DATE_LIVRAISON: OUI/NON
 Q4_ACCUSÉ_RECEPTION: OUI/NON
 Q5_DOCUMENT_COMMANDE: OUI/NON
 Q6_SIMPLE_SUIVI: OUI/NON
+Q7_PO_REVISE_REQUIS: OUI/NON
 CONFIRMATION: OUI/NON
 CONFIANCE: 0.00
 SOURCE: PDF/CORPS
@@ -2076,8 +2110,9 @@ SOURCE: PDF/CORPS
             $confirmation = if ($texte -match "CONFIRMATION:\s*(OUI|NON)") { $Matches[1] } else { "NON" }
             $confiance    = if ($texte -match "CONFIANCE:\s*([\d.]+)")     { [double]$Matches[1] } else { 0.5 }
             $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
+            $poRevise     = if ($texte -match "Q7_PO_REVISE_REQUIS:\s*(OUI|NON)") { $Matches[1] -eq "OUI" } else { $false }
 
-            return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false }
+            return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false; PoReviseRequis = $poRevise }
         } catch {
             if ($tentative -eq 3) {
                 return @{ EstConfirmation = $false; Confiance = 0.0; VerifierCorps = $false; TexteBrut = "ERREUR: $($_.Exception.Message)"; Exclu = $false }
@@ -2123,6 +2158,7 @@ function Invoke-TraiterNouveauCourriel {
 
     # Claude Haiku analyse le courriel avec PJ incluses
     $analyse = Invoke-ClassifierCourriel $MailItem
+    $Script:PoReviseRequis = $analyse.PoReviseRequis
 
     # Prefixe indicateur dans le sujet du courriel (visible dans la liste Outlook)
     # [OK 94%] = confiant, confirmation | [X 97%] = confiant, pas une confirmation | [? 71%] = incertain
@@ -2134,7 +2170,7 @@ function Invoke-TraiterNouveauCourriel {
         # Retirer TOUS les anciens prefixes [X ..%]/[OK ..%]/[? ..%], meme s'ils
         # ne sont pas au tout debut (ex: apres "RE: " ajoute par Outlook a
         # chaque reponse), pour eviter l'empilement au fil des echanges.
-        $sujetNettoye = $MailItem.Subject -replace '\[(X|OK|\?)\s*\d{1,3}%\]\s*', ''
+        $sujetNettoye = $MailItem.Subject -replace '\[(X|OK!?|\?)\s*\d{1,3}%\]\s*', ''
         $MailItem.Subject = "$prefixe $sujetNettoye".Trim()
         $MailItem.Save()
     } catch {}
@@ -2321,18 +2357,7 @@ function Invoke-DTWImport {
 }
 
 function Get-CommandesAConfirmerSAP {
-    <#
-    Interroge Firebase et retourne les entrees historique avec statut="OK"
-    et syncSAP non encore a true.
-    #>
-    $NoeudHistorique = "$Script:DTW_FirebaseUrl/gromec_vba/historique.json"
-
-    try {
-        $Historique = Invoke-RestMethod -Uri $NoeudHistorique -Method Get
-    } catch {
-        Write-Warning "Invoke-SyncDTW : echec de la lecture de l'historique Firebase : $($_.Exception.Message)"
-        return @()
-    }
+    param($Historique)
 
     if ($null -eq $Historique) { return @() }
 
@@ -2385,10 +2410,8 @@ function Set-StatutSyncSAP {
 }
 
 function Invoke-SyncDTW {
-    <#
-    Fonction principale appelee a la toute fin du programme principal.
-    #>
-    $ACofirmer = Get-CommandesAConfirmerSAP
+    param($Historique)
+    $ACofirmer = Get-CommandesAConfirmerSAP -Historique $Historique
 
     if ($ACofirmer.Count -eq 0) {
         Write-Log "Invoke-SyncDTW : aucune commande conforme en attente de synchronisation SAP."
@@ -2433,18 +2456,15 @@ try {
     $outlook = New-Object -ComObject Outlook.Application
     $namespace = $outlook.GetNamespace("MAPI")
 
-    # Synchronise vers Outlook les cases "resolu" cochees/decochees depuis le
-    # dashboard web depuis le dernier passage du script -- piggyback sur
-    # chaque execution, qu'il s'agisse d'un nouveau courriel ou d'un test manuel
-    Sync-ResolusVersOutlook $namespace
+    # Telecharge l'historique Firebase une seule fois pour toutes les syncs
+    $historiqueCache = $null
+    try {
+        $historiqueCache = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/historique.json" -Method Get -TimeoutSec 15
+    } catch {}
 
-    # Retire la categorie Outlook (code de couleur) des courriels dont la
-    # fiche a ete effacee du dashboard
+    Sync-ResolusVersOutlook $namespace $historiqueCache
     Sync-SuppressionsVersOutlook $namespace
-
-    # Relance les comparaisons "non appariees" pour lesquelles un numero de BC
-    # a ete fourni manuellement depuis le dashboard
-    Sync-ReessaisManuels $namespace
+    Sync-ReessaisManuels $namespace $historiqueCache
 
     $mail = $null
 
