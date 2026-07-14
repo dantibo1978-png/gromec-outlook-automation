@@ -1786,7 +1786,7 @@ function Invoke-TraiterComparaison {
             if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
         }
 
-        if (Test-BCDejaTraitee $numeroBC) {
+        if (-not $HistoriqueId -and (Test-BCDejaTraitee $numeroBC)) {
             Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
             return
         }
@@ -1928,7 +1928,7 @@ function Invoke-TraiterComparaison {
             if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
         }
 
-        if (Test-BCDejaTraitee $numeroBC) {
+        if (-not $HistoriqueId -and (Test-BCDejaTraitee $numeroBC)) {
             Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
             Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
             return
