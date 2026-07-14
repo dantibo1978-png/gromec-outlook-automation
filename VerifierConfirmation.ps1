@@ -2105,7 +2105,9 @@ Q7_PO_REVISE_REQUIS: Le fournisseur demande-t-il au CLIENT (Gromec) de faire une
     votre commande" (le fournisseur qui confirme lui-meme = NON).
     OUI seulement si le fournisseur demande explicitement une action/reponse du client.
 
-REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI) ET Q6=NON.
+REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI ou Q7=OUI) ET Q6=NON.
+NOTE: Q7=OUI (le fournisseur demande une action) implique que c'est une confirmation --
+le fournisseur a recu la commande et la retient en attendant la reponse du client.
 N'EST PAS une confirmation: questions, demandes de modification (ex: changer une adresse de
 livraison, changer un contact), devis seuls, factures seules, avis expedition seuls, newsletters,
 courriels generaux sans reference a une commande specifique, MTR (Material Test Reports/certificats
