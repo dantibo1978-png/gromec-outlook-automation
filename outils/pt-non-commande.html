@@ -272,10 +272,11 @@ function buildMailtoLink(vendor, email, rows) {
 }
 
 function buildPurchasedArticleSet(parsed) {
-  // Column index 2 in the achats table is "Numéro article".
+  const idx = parsed.header.findIndex(h => h.trim().toLowerCase().includes('numéro article'));
+  const colIdx = idx >= 0 ? idx : 1;
   const set = new Set();
   parsed.rows.forEach(cells => {
-    const article = normalizeArticle(cells[2]);
+    const article = normalizeArticle(cells[colIdx]);
     if (article) set.add(article);
   });
   return set;

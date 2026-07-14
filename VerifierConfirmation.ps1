@@ -1222,9 +1222,9 @@ function Find-CourrielEnvoyeCorrespondant {
     param($Namespace, $MailConfirmation, [string]$NumeroBC)
 
     $limiteDate = (Get-Date).AddDays(-$JoursRecherche)
+    $limiteDateStr = $limiteDate.ToString("MM/dd/yyyy HH:mm")
     $adresseFournisseur = (Get-AdresseSMTP $MailConfirmation)
 
-    # Construire la liste de tous les dossiers Envoyes (tous comptes)
     $dossiersSent = @()
     try { $dossiersSent += $Namespace.GetDefaultFolder(5) } catch {}
     foreach ($store in $Namespace.Stores) {
@@ -1242,39 +1242,45 @@ function Find-CourrielEnvoyeCorrespondant {
 
     foreach ($sentFolder in $dossiersSent) {
         try {
-            $items = $sentFolder.Items
-            $items.Sort("[SentOn]", $true)
+            $filtre = "[SentOn] >= '$limiteDateStr'"
+            $items = $sentFolder.Items.Restrict($filtre)
         } catch { continue }
 
         foreach ($item in $items) {
             if ($item.Class -ne 43) { continue }
-            if ($item.SentOn -lt $limiteDate) { break }
+
+            $sujetMatch = ($NumeroBC -ne "" -and $item.Subject -like "*$NumeroBC*")
 
             $aPDF = $false
             foreach ($pj in $item.Attachments) {
                 if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
             }
 
-            if ($NumeroBC -ne "" -and ($item.Subject -like "*$NumeroBC*" -or $item.Body -like "*$NumeroBC*")) {
+            if ($sujetMatch) {
                 if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
             }
 
-            if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
+            if (-not $sujetMatch -and $candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
                 if ($aPDF) {
                     foreach ($dest in $item.Recipients) {
-                        if ($dest.Address -eq $adresseFournisseur) { $candidatsFourn += $item; break }
+                        $destAddr = $dest.Address
+                        try {
+                            if ($dest.AddressEntry.Type -eq "EX") {
+                                $smtp = $dest.AddressEntry.GetExchangeUser()
+                                if ($smtp) { $destAddr = $smtp.PrimarySmtpAddress }
+                            }
+                        } catch {}
+                        if ($destAddr -eq $adresseFournisseur) { $candidatsFourn += $item; break }
                     }
                 }
             }
         }
     }
 
-    # Priorite: BC + PDF > BC sans PDF > fournisseur + PDF
-    # Parmi les candidats avec PDF, prendre le plus vieux ayant un sujet de commande, sinon le plus recent avec PDF
     if ($candidatsBCAvecPDF.Count -gt 0) {
         $avecSujetPO = @($candidatsBCAvecPDF | Where-Object { $_.Subject -like "*Commande*" -or $_.Subject -like "*Purchase Order*" -or $_.Subject -like "*Bon de commande*" })
-        if ($avecSujetPO.Count -gt 0) { return $avecSujetPO[-1] }  # le plus vieux avec sujet PO
-        return $candidatsBCAvecPDF[0]  # le plus recent avec PDF
+        if ($avecSujetPO.Count -gt 0) { return $avecSujetPO[-1] }
+        return $candidatsBCAvecPDF[0]
     }
     if ($candidatsBCSansPDF.Count -gt 0) { return $candidatsBCSansPDF[-1] }
     if ($candidatsFourn.Count -gt 0) { return $candidatsFourn[-1] }
