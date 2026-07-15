@@ -1724,9 +1724,9 @@ function Invoke-TraiterComparaison {
     $sujet = $MailConfirmation.Subject
     $expediteur = (Get-AdresseSMTP $MailConfirmation)
 
-    # Re-tentative manuelle (depuis le dashboard) : le classificateur Q7
+    # Re-tentative manuelle (depuis le dashboard) : le classificateur QTYPE
     # n'a pas tourne, donc $Script:PoReviseRequis est $false par defaut.
-    # On relance la classification pour recuperer Q7.
+    # On relance la classification pour recuperer QTYPE=ACTION_REQUISE.
     if ($HistoriqueId -ne "" -and -not $Script:PoReviseRequis) {
         try {
             $analyse = Invoke-ClassifierCourriel $MailConfirmation
@@ -2073,7 +2073,7 @@ function Invoke-ClassifierCourriel {
 
     $sysPrompt = @"
 Tu es un classificateur de courriels pour Gromec Inc. (distributeur industriel, Quebec).
-Tu dois determiner si un courriel est une CONFIRMATION DE COMMANDE fournisseur.
+Tu dois determiner le TYPE d'un courriel recu d'un fournisseur.
 
 IMPORTANT -- CHAINE DE COURRIELS: le corps peut contenir plusieurs messages
 empiles (reponses/transferts avec "De: ... Envoye: ...", "Fwd:", ">").
@@ -2086,78 +2086,61 @@ ou semble etre un bon de commande.
 
 Analyse le sujet, le corps ET toutes les pieces jointes fournies.
 
-Reponds a ces 7 questions par OUI ou NON, puis donne ta conclusion:
+Reponds a ces 3 questions, puis classifie le TYPE du courriel:
+
 Q1_NUMERO_BC: Y a-t-il un numero de commande Gromec (format 9XXXXXX, ex: 9006906)?
-Q2_PRIX_QTE: Le DERNIER message contient-il des prix ou quantites NUMERIQUES confirmees pour
-    les items COMMANDES (ex: "Item X - 150.00$", tableau avec colonnes prix/qte, "qty 10 @ 25.00$")?
-    ATTENTION: simplement MENTIONNER un prix ou dire "le prix a ete mis a jour" sans donner de
-    VALEUR NUMERIQUE REELLE = NON. Il faut au moins UN prix ou UNE quantite chiffree.
-    IMPORTANT: si le fournisseur propose un PRODUIT ALTERNATIF/SUBSTITUT different de ce qui a ete
-    commande avec son propre prix, ce n'est PAS une confirmation de prix = NON.
 Q3_DATE_LIVRAISON: Le DERNIER message confirme-t-il une date de livraison ou delai?
-Q4_ACCUSÉ_RECEPTION: Le DERNIER message confirme-t-il avoir recu ou traite la commande (meme
-    partiellement, ex: confirmer 1 ligne sur 10)? ATTENTION: un simple suivi de statut
-    ("le prix a ete corrige", "c'est en backorder", "on surveille la commande") sans
-    confirmation explicite de reception ou traitement = NON. Proposer un produit alternatif
-    ou substitut n'est PAS un accuse de reception de la commande = NON.
 Q5_DOCUMENT_COMMANDE: Une piece jointe contient-elle une VRAIE confirmation/accuse de reception
     du FOURNISSEUR (prix/quantites/delais confirmes par le fournisseur)? ATTENTION: si la piece
     jointe est simplement LE BON DE COMMANDE ORIGINAL DE GROMEC renvoye tel quel (meme mise en page
     que ce que Daniel envoie, sans annotation ni prix confirmes par le fournisseur), reponds NON --
     ce n'est qu'une reference, pas une confirmation.
-Q6_SIMPLE_SUIVI: Le message est-il un SIMPLE SUIVI DE STATUT sans confirmation concrete
-    (ex: "le prix a ete corrige" sans donner le prix, "c'est en backorder", "on surveille",
-    "je m'excuse du delai", mise a jour administrative)? ATTENTION: si le fournisseur CONFIRME
-    des items avec prix/quantites/delais concrets (meme pour 1 seul item), c'est une confirmation
-    partielle VALIDE = NON. C'est OUI seulement si le message ne contient AUCUNE donnee concrete
-    de confirmation.
-Q7_PO_REVISE_REQUIS: Le fournisseur demande-t-il au CLIENT (Gromec) de faire une ACTION
-    avant de traiter/expedier la commande? Exemples:
-    - Renvoyer un PO revise/modifie ("please send revised PO", "envoyer PO corrige",
-      "need updated purchase order", "please update and resend")
-    - Demander au client de noter/accepter/confirmer les prix du fournisseur qui sont
-      DIFFERENTS de ceux commandes ("veuillez noter les prix actuels et confirmer",
-      "Confirmation Required", "please acknowledge discrepancy", "requires your
-      immediate attention", "please review and acknowledge", "return signed copy")
-    - Commande mise en attente/hold jusqu'a confirmation du client ("order on hold",
-      "commande en attente de votre confirmation")
-    ATTENTION: "veuillez noter les prix et confirmer" = le fournisseur DEMANDE a Gromec
-    de confirmer qu'il accepte les nouveaux prix = OUI. C'est DIFFERENT de "nous confirmons
-    votre commande" (le fournisseur qui confirme lui-meme = NON).
-    OUI seulement si le fournisseur demande explicitement une action/reponse du client.
-Q8_FACTURATION_LITIGE: Le message traite-t-il principalement d'une FACTURATION, RECLAMATION,
-    CREDIT, LITIGE ou CORRECTION POST-LIVRAISON? Exemples:
-    - Discussion sur une erreur de facturation ("will issue a credit", "credit memo")
-    - Reclamation sur des quantites recues vs facturees
-    - Litige sur des items manquants ou endommages apres livraison
-    - Reponse a une plainte du client concernant une livraison passee
-    - Discussion de paiement, releve de compte, solde impaye
-    ATTENTION: une confirmation de commande qui MENTIONNE un ajustement de prix ou
-    un backorder n'est PAS un litige = NON. C'est OUI seulement si le SUJET PRINCIPAL
-    du message est la resolution d'un probleme APRES livraison/facturation, pas la
-    confirmation d'une commande en cours.
 
-REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI ou Q7=OUI) ET Q6=NON ET Q8=NON.
-NOTE: Q7=OUI (le fournisseur demande une action) implique que c'est une confirmation --
-le fournisseur a recu la commande et la retient en attendant la reponse du client.
-N'EST PAS une confirmation: questions, demandes de modification (ex: changer une adresse de
-livraison, changer un contact), devis seuls, factures seules, avis expedition seuls, newsletters,
-courriels generaux sans reference a une commande specifique, MTR (Material Test Reports/certificats
-de materiaux), certificats de conformite, rapports d'inspection, documents de qualite, bons de
-livraison seuls, simples suivis de statut sans donnees concretes (ex: "le prix a ete corrige"
-sans donner le prix, "c'est en backorder", "on surveille la commande"), propositions de produits
-alternatifs/substituts (ex: "on pourrait vous offrir un autre modele a tel prix", "nous avons
-un produit equivalent"), contre-propositions commerciales, discussions de facturation/credit/litige.
+QTYPE: Classe le courriel dans EXACTEMENT UNE de ces categories:
+  CONFIRMATION = Le fournisseur CONFIRME avoir recu/traite la commande, avec des prix,
+      quantites ou delais concrets. Inclut les confirmations partielles (ex: 1 ligne sur 10).
+      Le document-cle est souvent un PDF "Order Acknowledgement" / "Accusé de réception" /
+      "Sales Order" avec tableau de prix/quantites.
+  ACTION_REQUISE = Le fournisseur a recu la commande mais DEMANDE AU CLIENT (Gromec) de faire
+      quelque chose AVANT de traiter/expedier. Exemples:
+      - Renvoyer un PO revise ("please send revised PO", "envoyer PO corrige")
+      - Accepter/confirmer des prix differents ("Confirmation Required", "please acknowledge",
+        "return signed copy", "requires your immediate attention")
+      - Commande en attente/hold ("order on hold pending your confirmation")
+      - "REPLY NEEDED TO RELEASE ORDER"
+      NOTE: le fournisseur demande a Gromec de confirmer, pas l'inverse.
+  AVIS_EXPEDITION = Notification d'expedition/livraison. Le fournisseur informe que des items
+      PARTENT ou SONT PARTIS (tracking, BOL, "ships today", "part aujourd'hui", "loaded").
+      Peut mentionner des quantites expediees et des items en backorder.
+      Ce n'est PAS une confirmation de commande, c'est un suivi logistique post-commande.
+  SUIVI_STATUT = Mise a jour de statut sans confirmation concrete. Exemples:
+      - "le prix a ete corrige" (sans donner le prix)
+      - "c'est en backorder", "on surveille la commande"
+      - "je m'excuse du delai"
+      - Question du fournisseur ("ceci vous convient?", "etes-vous ouvert?")
+      - Mise a jour administrative sans donnees concretes
+  FACTURATION = Discussion de facturation, credit, reclamation, litige, correction post-livraison.
+      Exemples: "will issue a credit", erreur de facturation, quantites recues vs facturees,
+      paiement, releve de compte.
+  AUTRE = Tout le reste: devis seuls, factures seules, newsletters, MTR/certificats,
+      documents qualite, bons de livraison seuls, propositions de produits alternatifs/substituts,
+      contre-propositions commerciales, demandes de modification (changer adresse/contact),
+      courriels sans reference a une commande specifique.
+
+REGLES DE CLASSIFICATION:
+- C'est une CONFIRMATION seulement si le fournisseur CONFIRME LUI-MEME la commande
+  (pas s'il pose une question, informe d'une expedition, ou discute d'un litige).
+- Un courriel qui mentionne des quantites dans un contexte d'EXPEDITION ("ships today",
+  "part aujourd'hui", "loaded", "items en backorder") = AVIS_EXPEDITION, pas CONFIRMATION.
+- Un courriel qui DEMANDE quelque chose au client = ACTION_REQUISE si c'est lie a la
+  commande, SUIVI_STATUT si c'est une simple question de logistique.
+- En cas de doute entre CONFIRMATION et un autre type, prefere l'autre type.
 
 Reponds EXACTEMENT en ce format:
 Q1_NUMERO_BC: OUI/NON
-Q2_PRIX_QTE: OUI/NON
 Q3_DATE_LIVRAISON: OUI/NON
-Q4_ACCUSÉ_RECEPTION: OUI/NON
 Q5_DOCUMENT_COMMANDE: OUI/NON
-Q6_SIMPLE_SUIVI: OUI/NON
-Q7_PO_REVISE_REQUIS: OUI/NON
-Q8_FACTURATION_LITIGE: OUI/NON
+QTYPE: CONFIRMATION/ACTION_REQUISE/AVIS_EXPEDITION/SUIVI_STATUT/FACTURATION/AUTRE
 CONFIRMATION: OUI/NON
 CONFIANCE: 0.00
 SOURCE: PDF/CORPS
@@ -2189,7 +2172,7 @@ SOURCE: PDF/CORPS
 
     $body = @{
         model      = "claude-haiku-4-5-20251001"
-        max_tokens = 180
+        max_tokens = 120
         system     = $sysPrompt
         messages   = @(@{ role = "user"; content = $contenuMessages })
     } | ConvertTo-Json -Depth 15
@@ -2204,9 +2187,11 @@ SOURCE: PDF/CORPS
             $confirmation = if ($texte -match "CONFIRMATION:\s*(OUI|NON)") { $Matches[1] } else { "NON" }
             $confiance    = if ($texte -match "CONFIANCE:\s*([\d.]+)")     { [double]$Matches[1] } else { 0.5 }
             $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
-            $poRevise     = if ($texte -match "Q7_PO_REVISE_REQUIS:\s*(OUI|NON)") { $Matches[1] -eq "OUI" } else { $false }
+            $qtype        = if ($texte -match "QTYPE:\s*(\S+)")            { $Matches[1] } else { "AUTRE" }
+            $poRevise     = ($qtype -eq "ACTION_REQUISE")
+            $estConf      = ($qtype -eq "CONFIRMATION" -or $qtype -eq "ACTION_REQUISE") -and ($confirmation -eq "OUI")
 
-            return @{ EstConfirmation = ($confirmation -eq "OUI"); Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false; PoReviseRequis = $poRevise }
+            return @{ EstConfirmation = $estConf; Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false; PoReviseRequis = $poRevise }
         } catch {
             if ($tentative -eq 3) {
                 return @{ EstConfirmation = $false; Confiance = 0.0; VerifierCorps = $false; TexteBrut = "ERREUR: $($_.Exception.Message)"; Exclu = $false }
