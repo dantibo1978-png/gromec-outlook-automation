@@ -1861,7 +1861,11 @@ function Invoke-TraiterComparaison {
             if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
         }
 
-        if (-not $ForcerTraitement -and -not $HistoriqueId -and (Test-BCDejaTraitee $numeroBC)) {
+        # ACTION_REQUISE contourne ce garde-fou : un courriel qui demande une
+        # action a Gromec signale par definition quelque chose de nouveau sur
+        # ce BC, peu importe qu'une confirmation anterieure ait ete OK (ex:
+        # rapport d'ecarts Masco recu apres une premiere confirmation reussie).
+        if (-not $ForcerTraitement -and -not $HistoriqueId -and -not $Script:PoReviseRequis -and (Test-BCDejaTraitee $numeroBC)) {
             Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
             return
         }
@@ -2007,7 +2011,11 @@ function Invoke-TraiterComparaison {
         }
         Write-Audit "Numero de BC determine" "BC=$numeroBC ($origineNumeroBC)`nFournisseur detecte par extraction PDF: $nomFourn"
 
-        if (-not $ForcerTraitement -and -not $HistoriqueId -and (Test-BCDejaTraitee $numeroBC)) {
+        # ACTION_REQUISE contourne ce garde-fou : un courriel qui demande une
+        # action a Gromec signale par definition quelque chose de nouveau sur
+        # ce BC, peu importe qu'une confirmation anterieure ait ete OK (ex:
+        # rapport d'ecarts Masco recu apres une premiere confirmation reussie).
+        if (-not $ForcerTraitement -and -not $HistoriqueId -and -not $Script:PoReviseRequis -and (Test-BCDejaTraitee $numeroBC)) {
             Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
             Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
             return
