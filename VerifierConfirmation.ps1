@@ -77,6 +77,7 @@ function Update-ScriptSiNecessaire {
     if ($StoreID -ne "")  { $argList += @("-StoreID", $StoreID) }
     if ($Force)           { $argList += "-Force" }
     if ($Interactive)     { $argList += "-Interactive" }
+    if ($Audit)           { $argList += "-Audit" }
 
     Start-Process -FilePath "powershell.exe" -ArgumentList $argList -WindowStyle Hidden
     exit 0
