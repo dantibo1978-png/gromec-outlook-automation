@@ -2285,7 +2285,13 @@ SOURCE: PDF/CORPS
             $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
             $qtype        = if ($texte -match "QTYPE:\s*(\S+)")            { $Matches[1] } else { "AUTRE" }
             $poRevise     = ($qtype -eq "ACTION_REQUISE")
-            $estConf      = ($qtype -eq "CONFIRMATION" -or $qtype -eq "ACTION_REQUISE") -and ($confirmation -eq "OUI")
+            # EstConfirmation depend UNIQUEMENT de QTYPE (regle documentee du modele
+            # de classification actuel). Le champ CONFIRMATION est un reliquat de
+            # l'ancien modele a 8 questions, sans definition claire dans le prompt
+            # pour les cas ACTION_REQUISE -- Claude y repond parfois NON pour un
+            # rapport d'ecarts qui EST une action requise legitime (ex: Masco "Order
+            # Discrepancy"), ce qui bloquait silencieusement tout le traitement.
+            $estConf      = ($qtype -eq "CONFIRMATION" -or $qtype -eq "ACTION_REQUISE")
 
             Write-Audit "Classification (Claude Haiku)" "--- PROMPT UTILISATEUR ---`n$usrPrompt`n`n--- REPONSE BRUTE ---`n$texte`n`n--- INTERPRETATION ---`nQTYPE=$qtype  CONFIRMATION=$confirmation  CONFIANCE=$confiance  SOURCE=$source`n=> EstConfirmation=$estConf  PoReviseRequis=$poRevise"
 
