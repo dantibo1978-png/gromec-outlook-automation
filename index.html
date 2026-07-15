@@ -985,7 +985,8 @@ async function declencherDTW(id, copierPrix, copierQty, btnEl){
     dtw_copierQty:     copierQty,
     dtw_lignesCochees: lignesCochees,
     dtw_statut:        'en_attente',
-    dtw_demandeLe:     new Date().toISOString()
+    dtw_demandeLe:     new Date().toISOString(),
+    actionRequise:     true
   };
 
   try{
@@ -1348,7 +1349,7 @@ async function relancerMaintenant(id){
     await fetch(FIREBASE_URL + 'gromec_vba/historique/' + id + '.json', {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ aReessayer: true, reessayerLe: new Date().toISOString() })
+      body: JSON.stringify({ aReessayer: true, reessayerLe: new Date().toISOString(), actionRequise: true })
     });
     const el = document.querySelector(`.fiche[data-id="${id}"] .retry-pending span`);
     if (el) el.textContent = '⏳ Demande envoyée — SyncDTW va relancer dans ~15 secondes…';
@@ -1372,7 +1373,7 @@ async function soumettreBCManuel(id){
     await fetch(FIREBASE_URL + 'gromec_vba/historique/' + id + '.json', {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ numeroBCManuel: valeur, aReessayer: true })
+      body: JSON.stringify({ numeroBCManuel: valeur, aReessayer: true, actionRequise: true })
     });
   }catch(e){
     console.error('Erreur lors de la mise à jour Firebase', e);
@@ -1504,7 +1505,7 @@ async function declencherConfirmationFournisseur(id, btnEl){
     await fetch(FIREBASE_URL + 'gromec_vba/historique/' + id + '.json', {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ envoyer_confirmation: 'en_attente', envoyer_confirmation_le: new Date().toISOString() })
+      body: JSON.stringify({ envoyer_confirmation: 'en_attente', envoyer_confirmation_le: new Date().toISOString(), actionRequise: true })
     });
     const entree = donnees.find(d => d.id === id);
     if (entree) entree.envoyer_confirmation = 'en_attente';

@@ -161,6 +161,16 @@ function Get-Historique {
     }
 }
 
+function Get-HistoriqueActif {
+    try {
+        $rep = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json?orderBy=%22actionRequise%22&equalTo=true" -Method Get -TimeoutSec 15
+        return $rep
+    } catch {
+        Write-Log "WARN  Impossible de lire Firebase (actif) : $($_.Exception.Message)"
+        return $null
+    }
+}
+
 function Set-StatutDTW {
     param(
         [string]$Cle,
@@ -171,11 +181,9 @@ function Set-StatutDTW {
     $body = @{
         dtw_statut         = $Statut
         dtw_traiteLe       = $Maintenant
-        # Remettre les flags a false pour ne pas retraiter au prochain poll
         dtw_copierPrix     = $false
         dtw_copierQty      = $false
     }
-    # Si succes DTW, marquer la commande comme conforme dans Firebase
     if ($Statut -eq 'ok') {
         $body["statut"]  = "OK"
         $body["confirme"] = $true
@@ -482,7 +490,7 @@ function Set-CategorieOutlook {
 
 function Set-StatutConfirmation {
     param([string]$Cle, [string]$Statut, [string]$Erreur = $null)
-    $body = @{ envoyer_confirmation = $Statut; envoyer_confirmation_le = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss") }
+    $body = @{ envoyer_confirmation = $Statut; envoyer_confirmation_le = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss"); actionRequise = $false }
     if ($Erreur) { $body["envoyer_confirmation_erreur"] = $Erreur }
     try {
         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$Cle.json" `
@@ -832,14 +840,41 @@ try {
 
 Write-Log "INFO  SyncDTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
 
+# Migration unique: initialiser actionRequise sur les entrees existantes
+try {
+    $histMigration = Get-Historique
+    if ($null -ne $histMigration) {
+        $nbMigre = 0
+        foreach ($cle in $histMigration.PSObject.Properties.Name) {
+            $e = $histMigration.$cle
+            if ($null -eq $e.actionRequise) {
+                $besoinAction = ($e.dtw_copierPrix -eq $true) -or ($e.dtw_copierQty -eq $true) -or
+                                ($e.dtw_statut -eq 'en_attente') -or ($e.aReessayer -eq $true) -or
+                                ($e.envoyer_confirmation -eq 'en_attente') -or
+                                (($e.statut -eq 'OK' -or ($e.statut -eq 'ECART' -and $e.resolu -eq $true)) -and $e.syncSAP -ne $true)
+                try {
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
+                        -Method Patch -Body (@{ actionRequise = [bool]$besoinAction } | ConvertTo-Json -Compress) `
+                        -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    $nbMigre++
+                } catch {}
+            }
+        }
+        if ($nbMigre -gt 0) { Write-Log "INFO  Migration actionRequise : $nbMigre entree(s) mises a jour." }
+    }
+} catch {
+    Write-Log "WARN  Erreur migration actionRequise : $($_.Exception.Message)"
+}
+
 $DerniereePurgeLogs = Get-Date "2000-01-01"
 
 while ($true) {
-    $historique = Get-Historique
+    $historique = Get-HistoriqueActif
 
     if (((Get-Date) - $DerniereePurgeLogs).TotalHours -ge 1) {
         Invoke-PurgeVieuxLogs
-        Invoke-PurgeHistoriqueTraite -Historique $historique
+        $historiqueFull = Get-Historique
+        Invoke-PurgeHistoriqueTraite -Historique $historiqueFull
         $DerniereePurgeLogs = Get-Date
     }
 
@@ -866,7 +901,7 @@ while ($true) {
                 if ($entreeR.aReessayer -eq $true -and $entreeR.numeroBCManuel -and $entreeR.entryID) {
                     Write-Log "INFO  Reessai demande pour BC $($entreeR.numeroBCManuel) (cle: $cleR)"
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cleR.json" `
-                        -Method Patch -Body '{"aReessayer":false}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                        -Method Patch -Body '{"aReessayer":false,"actionRequise":false}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
                     $scriptPath = "U:\GromecOutlook\VerifierConfirmation.ps1"
                     Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force" -WindowStyle Hidden
                 }
@@ -943,7 +978,7 @@ while ($true) {
                 try {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
                         -Method Patch `
-                        -Body (@{ syncSAP = $true; syncSAPDate = $maintenant; confirme = $true; confirme_le = $maintenant } | ConvertTo-Json -Compress) `
+                        -Body (@{ syncSAP = $true; syncSAPDate = $maintenant; confirme = $true; confirme_le = $maintenant; actionRequise = $false } | ConvertTo-Json -Compress) `
                         -ContentType "application/json" -TimeoutSec 15 | Out-Null
                 } catch {}
             } else {
