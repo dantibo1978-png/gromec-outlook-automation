@@ -1334,20 +1334,6 @@ function Find-CourrielEnvoyeCorrespondant {
                 if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
             }
 
-            if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
-                foreach ($item in $itemsFiltres) {
-                    if ($item.Class -ne 43) { continue }
-                    try {
-                        if ($item.Body -like "*$NumeroBC*") {
-                            $aPDF = $false
-                            foreach ($pj in $item.Attachments) {
-                                if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
-                            }
-                            if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
-                        }
-                    } catch {}
-                }
-            }
         }
 
         if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
@@ -1356,16 +1342,18 @@ function Find-CourrielEnvoyeCorrespondant {
             if ($Script:DomainesAlias.ContainsKey($domaineFourn)) {
                 $domainesAcceptes += $Script:DomainesAlias[$domaineFourn]
             }
-            foreach ($item in $itemsFiltres) {
-                if ($item.Class -ne 43) { continue }
+            for ($idx2 = 1; $idx2 -le $items.Count; $idx2++) {
+                try { $itemD = $items.Item($idx2) } catch { continue }
+                if ($itemD.Class -ne 43) { continue }
+                if ($itemD.SentOn -lt $limiteDate) { break }
                 $aPDF = $false
-                foreach ($pj in $item.Attachments) {
+                foreach ($pj in $itemD.Attachments) {
                     if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
                 }
                 if ($aPDF) {
-                    foreach ($dest in $item.Recipients) {
+                    foreach ($dest in $itemD.Recipients) {
                         $domDest = ($dest.Address -split "@")[-1].ToLower().Trim()
-                        if ($domainesAcceptes -contains $domDest) { $candidatsFourn += $item; break }
+                        if ($domainesAcceptes -contains $domDest) { $candidatsFourn += $itemD; break }
                     }
                 }
             }
