@@ -69,6 +69,7 @@ $DTW_ScenarioPrix      = "$DTW_Dossier\UpdatePriceList_PROD.xml"
 $DTW_FichierLeadTime   = "$DTW_Dossier\import_leadtime.txt"
 $DTW_ScenarioLeadTime  = "$DTW_Dossier\UpdateLeadTime_PROD.xml"
 $IntervalleSecondes = 30
+$DTW_TimeoutSecondes = 600  # DTW.exe est tue si bloque plus de 10 min (ex: dialogue SAP cache)
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
 
@@ -306,7 +307,17 @@ function Invoke-DTW {
     try {
         $proc = Start-Process -FilePath $DTW_Exe `
             -ArgumentList "-s `"$ScenarioXml`"" `
-            -Wait -PassThru -WindowStyle Hidden
+            -PassThru -WindowStyle Hidden
+
+        # -Wait sans limite peut bloquer indefiniment si DTW affiche un dialogue
+        # modal cache (session SAP expiree, licence) -- on borne l'attente et on
+        # tue le processus au besoin pour ne jamais figer la boucle principale.
+        $exited = $proc.WaitForExit($DTW_TimeoutSecondes * 1000)
+        if (-not $exited) {
+            Write-Log "ERREUR DTW.exe bloque depuis plus de $DTW_TimeoutSecondes s (dialogue modal ?) - processus tue."
+            try { $proc.Kill() } catch {}
+            return @{ Succes = $false; Erreur = "DTW.exe bloque (timeout $DTW_TimeoutSecondes s) - processus tue." }
+        }
 
         # Attendre que DTW soit completement ferme (jusqu'a 30s)
         $attente = 0
@@ -465,6 +476,8 @@ function Set-CategorieOutlook {
     param([string]$EntryID, [string]$StoreID, [bool]$EstOK)
     if (-not $EntryID -or -not $StoreID) { return }
     $outlook = $null
+    $namespace = $null
+    $mail = $null
     try {
         $outlook   = New-Object -ComObject Outlook.Application
         $namespace = $outlook.GetNamespace("MAPI")
@@ -484,6 +497,11 @@ function Set-CategorieOutlook {
     } catch {
         Write-Log "WARN  Impossible de mettre a jour la categorie Outlook : $($_.Exception.Message)"
     } finally {
+        # Relacher tous les RCW obtenus (pas seulement $outlook) -- cette fonction
+        # tourne en continu dans la boucle 24/7 et une fuite ici accumule sur
+        # plusieurs semaines (processus OUTLOOK.EXE zombies, memoire).
+        if ($mail) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail) | Out-Null }
+        if ($namespace) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($namespace) | Out-Null }
         if ($outlook) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook) | Out-Null }
     }
 }
@@ -838,6 +856,17 @@ try {
     Write-Log "WARN  Impossible de synchroniser domaines_exclus : $($_.Exception.Message)"
 }
 
+# ── Verrou d'instance unique ────────────────────────────────────────────────
+# Empeche deux copies de SyncDTW.ps1 de tourner en parallele (ex: apres un
+# crash + redemarrage manuel sans fermer l'ancienne instance), ce qui pourrait
+# dupliquer un import DTW pour le meme PO. Le mutex est relache automatiquement
+# par Windows si le processus se termine, meme anormalement.
+$Script:MutexInstance = New-Object System.Threading.Mutex($false, "Global\GromecSyncDTW_InstanceUnique")
+if (-not $Script:MutexInstance.WaitOne(0)) {
+    Write-Log "AVERT une autre instance de SyncDTW.ps1 tourne deja - arret de cette copie."
+    exit 0
+}
+
 Write-Log "INFO  SyncDTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
 
 # Migration unique: initialiser actionRequise sur les entrees existantes
@@ -869,6 +898,7 @@ try {
 $DerniereePurgeLogs = Get-Date "2000-01-01"
 
 while ($true) {
+  try {
     $historique = Get-HistoriqueActif
 
     if (((Get-Date) - $DerniereePurgeLogs).TotalHours -ge 1) {
@@ -1107,6 +1137,11 @@ while ($true) {
     } catch {
         Write-Log "WARN  Erreur lecture noeud leadtime_dtw : $($_.Exception.Message)"
     }
+  } catch {
+    # Filet de securite : une exception non geree ailleurs dans l'iteration ne doit
+    # jamais tuer le processus (il tourne en continu, sans superviseur externe).
+    Write-Log "ERREUR FATALE boucle principale (iteration ignoree) : $($_.Exception.Message)"
+  }
 
     Start-Sleep -Seconds $IntervalleSecondes
 }

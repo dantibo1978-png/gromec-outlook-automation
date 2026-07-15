@@ -219,6 +219,24 @@ function Get-FirebaseValue {
     }
 }
 
+function Invoke-AvecRetry {
+    # Reessaie une action Firebase (ecriture) jusqu'a 3 fois avec backoff exponentiel,
+    # meme pattern que Invoke-ClaudeMessage/Invoke-ClaudeDocument. Utilise pour les
+    # ecritures dont la perte silencieuse fait perdre un resultat de comparaison
+    # complet (contrairement aux simples mises a jour de statut, moins critiques).
+    param([scriptblock]$Action)
+    $delai = 2
+    for ($tentative = 1; $tentative -le 3; $tentative++) {
+        try {
+            return (& $Action)
+        } catch {
+            if ($tentative -eq 3) { throw }
+            Start-Sleep -Seconds $delai
+            $delai *= 2
+        }
+    }
+}
+
 function Set-FirebaseValue {
     param([string]$Chemin, [string]$Valeur)
     try {
@@ -293,13 +311,17 @@ function Write-FirebaseHistorique {
         }
 
         if ($HistoriqueId -ne "") {
+            # PATCH (pas PUT) : un PUT remplacerait le noeud au complet et effacerait
+            # les champs geres par SyncDTW.ps1 (syncSAP, confirme, dtw_statut, ...)
+            # qui ne font pas partie de $entree, causant un re-import DTW d'un BC
+            # deja synchronise avec SAP si le courriel est retraite entre-temps.
             $url = "${FirebaseUrl}gromec_vba/historique/$HistoriqueId.json"
             $jsonBody = $entree | ConvertTo-Json -Depth 10 -Compress
-            Invoke-RestMethod -Uri $url -Method Put -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
+            Invoke-AvecRetry -Action { Invoke-RestMethod -Uri $url -Method Patch -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 } | Out-Null
         } else {
             $url = "${FirebaseUrl}gromec_vba/historique.json"
             $jsonBody = $entree | ConvertTo-Json -Depth 10 -Compress
-            Invoke-RestMethod -Uri $url -Method Post -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 | Out-Null
+            Invoke-AvecRetry -Action { Invoke-RestMethod -Uri $url -Method Post -Body $jsonBody -ContentType "application/json; charset=utf-8" -TimeoutSec 15 } | Out-Null
         }
     } catch {
         # Echec silencieux -- le rapport Excel local reste la source de verite principale
@@ -2363,6 +2385,7 @@ function Invoke-TraiterNouveauCourriel {
 # format attendu par le scenario ConfirmPO_PROD.xml.
 
 $Script:DTW_Exe           = "C:\Program Files\sap\Data Transfer Workbench\DTW.exe"
+$Script:DTW_TimeoutSecondes = 600  # tue si bloque plus de 10 min (ex: dialogue SAP cache)
 $Script:DTW_ScenarioXml   = "U:\GromecOutlook\DTW\ConfirmPO_PROD.xml"
 $Script:DTW_FichierSource = "U:\GromecOutlook\DTW\template.txt"
 $Script:DTW_FirebaseUrl   = "https://gromec-outlook-vba-default-rtdb.firebaseio.com"
@@ -2421,7 +2444,13 @@ function Invoke-DTWImport {
     try {
         $Process = Start-Process -FilePath $Script:DTW_Exe `
             -ArgumentList "-s `"$Script:DTW_ScenarioXml`"" `
-            -Wait -PassThru -WindowStyle Hidden
+            -PassThru -WindowStyle Hidden
+
+        $Exited = $Process.WaitForExit($Script:DTW_TimeoutSecondes * 1000)
+        if (-not $Exited) {
+            try { $Process.Kill() } catch {}
+            return @{ Succes = $false; Erreur = "DTW.exe bloque (timeout $($Script:DTW_TimeoutSecondes) s, dialogue modal ?) - processus tue." }
+        }
 
         if ($Process.ExitCode -eq 0) {
             Start-Sleep -Seconds 5
