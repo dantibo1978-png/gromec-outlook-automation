@@ -15,7 +15,8 @@ param(
     [string]$EntryID = "",
     [string]$StoreID = "",
     [switch]$Force,
-    [switch]$Interactive
+    [switch]$Interactive,
+    [switch]$Audit
 )
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -206,6 +207,40 @@ function Write-Log {
         $body = @{ ts = $ts; msg = $Message; niveau = $niveau; source = "Verifier" } | ConvertTo-Json -Compress
         Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/logs.json" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 3 | Out-Null
     } catch {}
+}
+
+# =====================================================================
+# MODE AUDIT (-Audit) -- trace pas-a-pas des decisions (classification,
+# recherche du courriel envoye, extractions PDF) pour diagnostiquer un
+# courriel precis (ex: fournisseurs problematiques comme Masco).
+# Ecrit UNIQUEMENT dans un fichier local -- jamais vers Firebase, pour ne
+# pas reproduire le probleme de quota de bande passante deja rencontre.
+# =====================================================================
+$Script:AuditMode = $false
+$Script:AuditLignes = New-Object System.Collections.Generic.List[string]
+
+function Write-Audit {
+    param([string]$Section, [string]$Contenu)
+    if (-not $Script:AuditMode) { return }
+    $ts = (Get-Date).ToString("HH:mm:ss")
+    $bloc = "`n===== [$ts] $Section =====`n$Contenu"
+    $Script:AuditLignes.Add($bloc)
+    Write-Host $bloc -ForegroundColor Cyan
+}
+
+function Save-AuditTrace {
+    param([string]$Identifiant)
+    if (-not $Script:AuditMode -or $Script:AuditLignes.Count -eq 0) { return }
+    try {
+        $dossierAudit = "U:\GromecOutlook\audit"
+        if (-not (Test-Path $dossierAudit)) { New-Item -ItemType Directory -Path $dossierAudit -Force | Out-Null }
+        $nomFichier = "audit_$($Identifiant)_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+        $chemin = Join-Path $dossierAudit $nomFichier
+        ($Script:AuditLignes -join "`n") | Set-Content -Path $chemin -Encoding UTF8
+        Write-Host "`n[AUDIT] Trace complete enregistree dans : $chemin" -ForegroundColor Green
+    } catch {
+        Write-Host "[AUDIT] Erreur d'ecriture du fichier de trace : $($_.Exception.Message)" -ForegroundColor Red
+    }
 }
 
 function Get-FirebaseValue {
@@ -863,12 +898,15 @@ Si aucun article trouve: ecrire AUCUN_ARTICLE
         }
     }
 
+    Write-Audit "Extraction PDF fournisseur ($CheminPDF)" "$reponse"
+
     return @{
         Items          = $items
         NomFournisseur = $nomFournisseur
         Devise         = $devise
         BCGromec       = $bcGromec
         Erreur         = $null
+        TexteBrut      = $reponse
     }
 }
 
@@ -1013,12 +1051,15 @@ $prompt
         }
     }
 
+    Write-Audit "Extraction corps du courriel (mode CORPS)" "$reponse"
+
     return @{
         Items          = $items
         NomFournisseur = $nomFournisseur
         Devise         = $devise
         BCGromec       = $bcGromec
         Erreur         = $null
+        TexteBrut      = $reponse
     }
 }
 
@@ -1039,6 +1080,7 @@ function Get-ItemsCommandeGromec {
                             Desc = $_.Desc; Qty = [int]$_.Qty; Price = [double]$_.Price; RawLine = $_.RawLine
                         }
                     })
+                    Write-Audit "Extraction PO Gromec envoye (BC=$NumeroBC)" "SERVI DEPUIS LE CACHE local ($fichierCache) -- pas d'appel Claude, $($items.Count) article(s)."
                     return @{ Items = $items; Entete = $cached.Entete; Erreur = $null }
                 } catch {}
             }
@@ -1123,7 +1165,9 @@ Pour LIGNE:
         } catch {}
     }
 
-    return @{ Items = $items; Entete = $entete; Erreur = $null }
+    Write-Audit "Extraction PO Gromec envoye ($CheminPDF, BC=$NumeroBC)" "$reponse"
+
+    return @{ Items = $items; Entete = $entete; Erreur = $null; TexteBrut = $reponse }
 }
 
 # =====================================================================
@@ -1358,6 +1402,7 @@ function Find-CourrielEnvoyeCorrespondant {
 
         }
 
+        $domainesAcceptes = @()
         if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
             $domaineFourn = ($adresseFournisseur -split "@")[-1].ToLower().Trim()
             $domainesAcceptes = @($domaineFourn)
@@ -1382,15 +1427,32 @@ function Find-CourrielEnvoyeCorrespondant {
         }
     }
 
+    Write-Audit "Recherche du courriel envoye" "NumeroBC recherche: '$NumeroBC'`nAdresse fournisseur: $adresseFournisseur`nCandidats BC+PDF: $($candidatsBCAvecPDF.Count)`nCandidats BC sans PDF: $($candidatsBCSansPDF.Count)`nCandidats par domaine (fallback, domaines acceptes: $($domainesAcceptes -join ', ')): $($candidatsFourn.Count)"
+
     # Priorite: BC + PDF > BC sans PDF > fournisseur + PDF
     # Parmi les candidats avec PDF, prendre le plus vieux ayant un sujet de commande, sinon le plus recent avec PDF
     if ($candidatsBCAvecPDF.Count -gt 0) {
         $avecSujetPO = @($candidatsBCAvecPDF | Where-Object { $_.Subject -like "*Commande*" -or $_.Subject -like "*Purchase Order*" -or $_.Subject -like "*Bon de commande*" })
-        if ($avecSujetPO.Count -gt 0) { return $avecSujetPO[-1] }  # le plus vieux avec sujet PO
-        return $candidatsBCAvecPDF[0]  # le plus recent avec PDF
+        if ($avecSujetPO.Count -gt 0) {
+            $choix = $avecSujetPO[-1]
+            Write-Audit "Recherche du courriel envoye -- CHOIX" "Strategie: BC+PDF avec sujet de commande (le plus vieux)`nSujet: $($choix.Subject)`nEnvoye le: $($choix.SentOn)"
+            return $choix  # le plus vieux avec sujet PO
+        }
+        $choix = $candidatsBCAvecPDF[0]
+        Write-Audit "Recherche du courriel envoye -- CHOIX" "Strategie: BC+PDF (le plus recent, aucun sujet de commande trouve)`nSujet: $($choix.Subject)`nEnvoye le: $($choix.SentOn)"
+        return $choix  # le plus recent avec PDF
     }
-    if ($candidatsBCSansPDF.Count -gt 0) { return $candidatsBCSansPDF[-1] }
-    if ($candidatsFourn.Count -gt 0) { return $candidatsFourn[-1] }
+    if ($candidatsBCSansPDF.Count -gt 0) {
+        $choix = $candidatsBCSansPDF[-1]
+        Write-Audit "Recherche du courriel envoye -- CHOIX" "Strategie: BC sans PDF`nSujet: $($choix.Subject)`nEnvoye le: $($choix.SentOn)"
+        return $choix
+    }
+    if ($candidatsFourn.Count -gt 0) {
+        $choix = $candidatsFourn[-1]
+        Write-Audit "Recherche du courriel envoye -- CHOIX" "Strategie: fallback domaine fournisseur`nSujet: $($choix.Subject)`nEnvoye le: $($choix.SentOn)"
+        return $choix
+    }
+    Write-Audit "Recherche du courriel envoye -- CHOIX" "AUCUN courriel envoye trouve (les 3 strategies ont echoue)."
     return $null
 }
 
@@ -1905,6 +1967,7 @@ function Invoke-TraiterComparaison {
         # --- MODE PDF (comportement original, inchange) ---
 
         $cheminConfirmation = Save-PDFConfirmationFournisseur $MailConfirmation
+        Write-Audit "Mode de traitement" "MODE PDF (VerifierCorps=$false)`nPJ choisie comme confirmation: $cheminConfirmation"
         if ($cheminConfirmation -eq "") {
             Write-JournalEntry $expediteur "PIECE_JOINTE_PDF_MANQUANTE" "PDF confirmation introuvable"
             Write-FirebaseEchec $MailConfirmation "PIECE_JOINTE_PDF_MANQUANTE_CONFIRMATION" "" "" $HistoriqueId
@@ -1935,10 +1998,13 @@ function Invoke-TraiterComparaison {
         # il a priorite absolue sur la detection automatique
         if ($NumeroBCOverride -ne "") {
             $numeroBC = $NumeroBCOverride
+            $origineNumeroBC = "fourni manuellement (override)"
         } else {
             $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
-            if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
+            $origineNumeroBC = "extrait du sujet/corps du courriel"
+            if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec; $origineNumeroBC = "extrait du PDF (BCGromec)" }
         }
+        Write-Audit "Numero de BC determine" "BC=$numeroBC ($origineNumeroBC)`nFournisseur detecte par extraction PDF: $nomFourn"
 
         if (-not $ForcerTraitement -and -not $HistoriqueId -and (Test-BCDejaTraitee $numeroBC)) {
             Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
@@ -2021,6 +2087,14 @@ function Invoke-TraiterComparaison {
     Set-CategorieConfirmation $MailConfirmation $estOK
     $statutLabel = if ($estOK -and $estPartiel) { "OK_PARTIEL" } elseif ($estOK) { "OK" } else { "ECART" }
     Write-JournalEntry $expediteur $statutLabel "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves OK:$nbOK Partiel:$estPartiel"
+
+    if ($Script:AuditMode) {
+        $tableau = ($resultats | ForEach-Object {
+            "  Ligne $($_.SapLineNbr) [$($_.Statut)] Code=$($_.SapCodeManuf) | SAP: qty=$($_.SapQty) prix=$($_.SapPrice) | PDF: code=$($_.PdfCode) qty=$($_.PdfQty) prix=$($_.PdfUnit) | diffQty=$($_.DiffQty) diffUnit=$($_.DiffUnit)"
+        }) -join "`n"
+        Write-Audit "Resultat final de la comparaison" "BC=$numeroBC Fournisseur=$nomFourn Statut=$statutLabel`nArticles SAP=$($itemsSAP.Count) Articles PDF/fournisseur=$($itemsFourn.Count)`nEcarts=$nbEcarts NonTrouves=$nbNonTrouves OK=$nbOK Partiel=$estPartiel`n$tableau"
+    }
+
     Write-RapportExcel $nomFourn $sujet $statutLabel $resultats $devise $numeroBC
     Write-FirebaseHistorique $nomFourn $sujet $statutLabel $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP
 }
@@ -2212,6 +2286,8 @@ SOURCE: PDF/CORPS
             $qtype        = if ($texte -match "QTYPE:\s*(\S+)")            { $Matches[1] } else { "AUTRE" }
             $poRevise     = ($qtype -eq "ACTION_REQUISE")
             $estConf      = ($qtype -eq "CONFIRMATION" -or $qtype -eq "ACTION_REQUISE") -and ($confirmation -eq "OUI")
+
+            Write-Audit "Classification (Claude Haiku)" "--- PROMPT UTILISATEUR ---`n$usrPrompt`n`n--- REPONSE BRUTE ---`n$texte`n`n--- INTERPRETATION ---`nQTYPE=$qtype  CONFIRMATION=$confirmation  CONFIANCE=$confiance  SOURCE=$source`n=> EstConfirmation=$estConf  PoReviseRequis=$poRevise"
 
             return @{ EstConfirmation = $estConf; Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false; PoReviseRequis = $poRevise }
         } catch {
@@ -2560,6 +2636,9 @@ function Invoke-SyncDTW {
 # PROGRAMME PRINCIPAL
 # =====================================================================
 
+$Script:AuditMode = $Audit.IsPresent
+if ($Script:AuditMode) { Write-Host "`n[AUDIT] Mode audit actif -- trace complete des decisions Claude en cours...`n" -ForegroundColor Yellow }
+
 try {
     $outlook = New-Object -ComObject Outlook.Application
     $namespace = $outlook.GetNamespace("MAPI")
@@ -2637,7 +2716,12 @@ try {
 
 } catch {
     Write-JournalEntry "" "ERREUR_FATALE" $_.Exception.Message
+    if ($Script:AuditMode) { Write-Audit "ERREUR FATALE" $_.Exception.Message }
 } finally {
+    if ($Script:AuditMode) {
+        $idAudit = if ($mail) { ($mail.SenderName -replace '[^a-zA-Z0-9]', '_') } else { "inconnu" }
+        Save-AuditTrace $idAudit
+    }
     if ($outlook) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook) | Out-Null }
     [System.GC]::Collect()
 }
