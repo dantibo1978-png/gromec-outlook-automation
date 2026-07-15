@@ -1803,6 +1803,41 @@ function Test-BCDejaTraitee {
     return $false
 }
 
+function Get-LignesConfirmeesAnterieurement {
+    <#
+    Certains fournisseurs (ex: Masco) envoient plusieurs courriels distincts
+    pour UNE seule commande -- une confirmation initiale, puis un ou des
+    rapports d'ecarts/correctifs partiels ne couvrant que quelques lignes.
+    Sans memoire entre courriels, chaque nouveau courriel partiel re-signale
+    en NON_TROUVE toutes les lignes deja confirmees ailleurs, simplement
+    parce qu'elles n'apparaissent pas dans CE PDF-ci.
+
+    Retourne un hashtable [ArticleSAP -> dernier article OK connu] en
+    parcourant tout l'historique Firebase pour ce BC, du plus ancien au plus
+    recent (les plus recents ecrasent les plus anciens en cas de doublon).
+    #>
+    param([string]$NumeroBC)
+    $map = @{}
+    if ([string]::IsNullOrEmpty($NumeroBC)) { return $map }
+    try {
+        $historique = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json?orderBy=%22numeroCommande%22&equalTo=%22$NumeroBC%22" -Method Get -TimeoutSec 10
+        if ($null -eq $historique -or $historique.PSObject.Properties.Count -eq 0) { return $map }
+
+        $entrees = @($historique.PSObject.Properties.Name | ForEach-Object { $historique.$_ } |
+            Sort-Object { try { [datetime]$_.date } catch { [datetime]::MinValue } })
+
+        foreach ($entree in $entrees) {
+            if ($null -eq $entree.articles) { continue }
+            foreach ($art in $entree.articles) {
+                if ($art.statut -eq "OK" -and $art.sapArticle) {
+                    $map[[string]$art.sapArticle] = $art
+                }
+            }
+        }
+    } catch {}
+    return $map
+}
+
 function Invoke-TraiterComparaison {
     param($Namespace, $MailConfirmation, [string]$NumeroBCOverride = "", [string]$HistoriqueId = "", [Nullable[bool]]$VerifierCorps = $null, [bool]$ForcerTraitement = $false)
 
@@ -2061,6 +2096,40 @@ function Invoke-TraiterComparaison {
             Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Fourn:$($itemsFourn.Count) SAP:$($itemsSAP.Count)"
             Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn $HistoriqueId
             return
+        }
+
+        # --- Report des lignes deja confirmees OK dans un courriel PRECEDENT pour
+        # ce meme BC (fournisseurs qui envoient plusieurs courriels par commande,
+        # ex: Masco -- confirmation initiale puis rapport d'ecarts partiel). Sans
+        # ca, les lignes absentes de CE PDF-ci (parce que deja reglees ailleurs)
+        # seraient re-signalees a tort en NON_TROUVE.
+        $lignesConfirmeesAnt = Get-LignesConfirmeesAnterieurement $numeroBC
+        if ($lignesConfirmeesAnt.Count -gt 0) {
+            $articlesPresents = @{}
+            foreach ($f in $itemsFourn) {
+                $sapCorr = $itemsSAP | Where-Object {
+                    $_.CodeManuf -ne "" -and $f.Code -ne "" -and $_.CodeManuf.ToUpper() -eq $f.Code.ToUpper()
+                } | Select-Object -First 1
+                if ($sapCorr) { $articlesPresents[[string]$sapCorr.Article] = $true }
+            }
+            $nbHerites = 0
+            foreach ($sapItem in $itemsSAP) {
+                $articleSap = [string]$sapItem.Article
+                if ($articlesPresents.ContainsKey($articleSap)) { continue }
+                if (-not $lignesConfirmeesAnt.ContainsKey($articleSap)) { continue }
+                $art = $lignesConfirmeesAnt[$articleSap]
+                $itemsFourn += [PSCustomObject]@{
+                    LineNbr = $sapItem.LineNbr
+                    Code    = $art.pdfCode
+                    Qty     = [int]$art.pdfQty
+                    NetUnit = [double]$art.pdfPrix
+                    RawLine = "(confirme dans un courriel precedent pour ce BC -- reporte automatiquement)"
+                }
+                $nbHerites++
+            }
+            if ($nbHerites -gt 0) {
+                Write-Audit "Report de lignes deja confirmees" "$nbHerites ligne(s) du BC $numeroBC deja confirmees OK dans un courriel anterieur, reportees pour eviter un faux NON_TROUVE."
+            }
         }
     }
 
