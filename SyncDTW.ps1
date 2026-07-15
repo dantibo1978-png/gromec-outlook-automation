@@ -869,27 +869,43 @@ if (-not $Script:MutexInstance.WaitOne(0)) {
 
 Write-Log "INFO  SyncDTW.ps1 demarre. Poll toutes les ${IntervalleSecondes}s."
 
-# Migration unique: initialiser actionRequise sur les entrees existantes
+# Migration unique: initialiser actionRequise sur les entrees existantes.
+# Vraiment "unique" : gatee par un drapeau persiste dans Firebase, sinon ce
+# bloc retelechargeait TOUT l'historique (potentiellement plusieurs Mo) a
+# CHAQUE demarrage du script -- couteux en bande passante Firebase si le
+# script redemarre souvent (auto-update, crash-loop avant le fix de la
+# boucle principale, tache planifiee, etc.).
 try {
-    $histMigration = Get-Historique
-    if ($null -ne $histMigration) {
-        $nbMigre = 0
-        foreach ($cle in $histMigration.PSObject.Properties.Name) {
-            $e = $histMigration.$cle
-            if ($null -eq $e.actionRequise) {
-                $besoinAction = ($e.dtw_copierPrix -eq $true) -or ($e.dtw_copierQty -eq $true) -or
-                                ($e.dtw_statut -eq 'en_attente') -or ($e.aReessayer -eq $true) -or
-                                ($e.envoyer_confirmation -eq 'en_attente') -or
-                                (($e.statut -eq 'OK' -or ($e.statut -eq 'ECART' -and $e.resolu -eq $true)) -and $e.syncSAP -ne $true)
-                try {
-                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
-                        -Method Patch -Body (@{ actionRequise = [bool]$besoinAction } | ConvertTo-Json -Compress) `
-                        -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                    $nbMigre++
-                } catch {}
+    $dejaFaite = $null
+    try {
+        $dejaFaite = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/migration_actionRequise_faite.json" -Method Get -TimeoutSec 10
+    } catch {}
+
+    if ($dejaFaite -ne $true) {
+        $histMigration = Get-Historique
+        if ($null -ne $histMigration) {
+            $nbMigre = 0
+            foreach ($cle in $histMigration.PSObject.Properties.Name) {
+                $e = $histMigration.$cle
+                if ($null -eq $e.actionRequise) {
+                    $besoinAction = ($e.dtw_copierPrix -eq $true) -or ($e.dtw_copierQty -eq $true) -or
+                                    ($e.dtw_statut -eq 'en_attente') -or ($e.aReessayer -eq $true) -or
+                                    ($e.envoyer_confirmation -eq 'en_attente') -or
+                                    (($e.statut -eq 'OK' -or ($e.statut -eq 'ECART' -and $e.resolu -eq $true)) -and $e.syncSAP -ne $true)
+                    try {
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
+                            -Method Patch -Body (@{ actionRequise = [bool]$besoinAction } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                        $nbMigre++
+                    } catch {}
+                }
             }
+            if ($nbMigre -gt 0) { Write-Log "INFO  Migration actionRequise : $nbMigre entree(s) mises a jour." }
         }
-        if ($nbMigre -gt 0) { Write-Log "INFO  Migration actionRequise : $nbMigre entree(s) mises a jour." }
+        try {
+            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/migration_actionRequise_faite.json" `
+                -Method Put -Body 'true' -ContentType "application/json" -TimeoutSec 10 | Out-Null
+        } catch {}
     }
 } catch {
     Write-Log "WARN  Erreur migration actionRequise : $($_.Exception.Message)"
