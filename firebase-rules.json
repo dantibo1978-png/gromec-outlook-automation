@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "gromec_vba": {
+      ".read": true,
+      ".write": true,
+      "historique": {
+        ".indexOn": ["entryID", "numeroCommande", "actionRequise"]
+      },
+      "logs": {
+        ".indexOn": ["ts"]
+      }
+    }
+  }
+}
