@@ -2125,8 +2125,19 @@ Q7_PO_REVISE_REQUIS: Le fournisseur demande-t-il au CLIENT (Gromec) de faire une
     de confirmer qu'il accepte les nouveaux prix = OUI. C'est DIFFERENT de "nous confirmons
     votre commande" (le fournisseur qui confirme lui-meme = NON).
     OUI seulement si le fournisseur demande explicitement une action/reponse du client.
+Q8_FACTURATION_LITIGE: Le message traite-t-il principalement d'une FACTURATION, RECLAMATION,
+    CREDIT, LITIGE ou CORRECTION POST-LIVRAISON? Exemples:
+    - Discussion sur une erreur de facturation ("will issue a credit", "credit memo")
+    - Reclamation sur des quantites recues vs facturees
+    - Litige sur des items manquants ou endommages apres livraison
+    - Reponse a une plainte du client concernant une livraison passee
+    - Discussion de paiement, releve de compte, solde impaye
+    ATTENTION: une confirmation de commande qui MENTIONNE un ajustement de prix ou
+    un backorder n'est PAS un litige = NON. C'est OUI seulement si le SUJET PRINCIPAL
+    du message est la resolution d'un probleme APRES livraison/facturation, pas la
+    confirmation d'une commande en cours.
 
-REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI ou Q7=OUI) ET Q6=NON.
+REGLE: C'est une confirmation si (Q1=OUI ou Q5=OUI) ET (Q4=OUI ou Q2=OUI ou Q7=OUI) ET Q6=NON ET Q8=NON.
 NOTE: Q7=OUI (le fournisseur demande une action) implique que c'est une confirmation --
 le fournisseur a recu la commande et la retient en attendant la reponse du client.
 N'EST PAS une confirmation: questions, demandes de modification (ex: changer une adresse de
@@ -2136,7 +2147,7 @@ de materiaux), certificats de conformite, rapports d'inspection, documents de qu
 livraison seuls, simples suivis de statut sans donnees concretes (ex: "le prix a ete corrige"
 sans donner le prix, "c'est en backorder", "on surveille la commande"), propositions de produits
 alternatifs/substituts (ex: "on pourrait vous offrir un autre modele a tel prix", "nous avons
-un produit equivalent"), contre-propositions commerciales.
+un produit equivalent"), contre-propositions commerciales, discussions de facturation/credit/litige.
 
 Reponds EXACTEMENT en ce format:
 Q1_NUMERO_BC: OUI/NON
@@ -2146,6 +2157,7 @@ Q4_ACCUSÉ_RECEPTION: OUI/NON
 Q5_DOCUMENT_COMMANDE: OUI/NON
 Q6_SIMPLE_SUIVI: OUI/NON
 Q7_PO_REVISE_REQUIS: OUI/NON
+Q8_FACTURATION_LITIGE: OUI/NON
 CONFIRMATION: OUI/NON
 CONFIANCE: 0.00
 SOURCE: PDF/CORPS
@@ -2177,7 +2189,7 @@ SOURCE: PDF/CORPS
 
     $body = @{
         model      = "claude-haiku-4-5-20251001"
-        max_tokens = 150
+        max_tokens = 180
         system     = $sysPrompt
         messages   = @(@{ role = "user"; content = $contenuMessages })
     } | ConvertTo-Json -Depth 15
