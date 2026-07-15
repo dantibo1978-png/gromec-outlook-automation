@@ -1325,7 +1325,7 @@ function Find-CourrielEnvoyeCorrespondant {
         } catch { continue }
 
         if ($NumeroBC -ne "") {
-            $filtreBC = "@SQL=""urn:schemas:httpmail:subject"" LIKE '%$NumeroBC%'"
+            $filtreBC = "[Subject] LIKE '%$NumeroBC%'"
             try {
                 $itemsBC = $items.Restrict("$filtreDate AND $filtreBC")
                 foreach ($item in $itemsBC) {
