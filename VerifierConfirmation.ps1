@@ -275,6 +275,7 @@ function Write-FirebaseHistorique {
         resolu       = $false
         syncedResolu = $false
         poReviseRequis = [bool]$Script:PoReviseRequis
+        actionRequise = $true
     }
     if ($null -ne $Entete) { $entree["entete"] = $Entete }
 
@@ -1703,6 +1704,7 @@ function Write-FirebaseEchec {
         articles        = @()
         aReessayer      = $false
         numeroBCManuel  = ""
+        actionRequise   = $false
     }
 
     try {
