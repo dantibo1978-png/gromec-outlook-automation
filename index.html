@@ -833,6 +833,7 @@
       <p style="margin:0;color:var(--muted);font-size:14px;" id="dropLabel">Glissez le fichier ici ou cliquez pour parcourir</p>
       <input type="file" id="fileInput" accept=".txt" style="display:none;">
     </div>
+    <p id="pasteNote" style="display:none;color:var(--muted);font-size:12px;margin:0 0 8px;">Mettre ici le copier-coller du tableau d'une commande fournisseur pour que les prix se changent dans SAP.</p>
     <textarea id="pasteZone" style="display:none;width:100%;height:180px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:12px;resize:vertical;" placeholder="Collez ici le tableau copie depuis SAP (Ctrl+V)…"></textarea>
     <div id="importStatus" style="margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:13px;display:none;"></div>
     <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
@@ -1813,6 +1814,7 @@ demarrerSSELogs();
       });
       dropZone.style.display = (modeActif === 'fichier') ? '' : 'none';
       pasteZone.style.display = (modeActif === 'coller') ? '' : 'none';
+      document.getElementById('pasteNote').style.display = (modeActif === 'coller') ? '' : 'none';
       btnSend.disabled = true; btnSend.style.opacity = '0.5';
       status.style.display = 'none';
     });
