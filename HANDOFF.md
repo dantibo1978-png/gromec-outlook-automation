@@ -1,51 +1,52 @@
 # HANDOFF
 
 ## Objectif
-Fiabiliser la classification des emails Outlook (`VerifierConfirmation.ps1`) pour
-détecter les confirmations de commande fournisseur sans faux positifs (avis
-d'expédition, facturation, litiges de crédit classés à tort comme confirmations).
+Automatiser le traitement des confirmations de commande fournisseurs chez Gromec :
+classification des courriels Outlook, extraction PDF via Claude, comparaison
+prix/quantités vs commande envoyée, sync SAP via DTW.
 
 ## État actuel
-- Fait : remplacement des 8 questions booléennes (Q2/Q4/Q6/Q7/Q8) qui se
-  contredisaient par 3 questions factuelles (Q1, Q3, Q5) + une catégorie
-  unique `QTYPE` (CONFIRMATION, ACTION_REQUISE, AVIS_EXPEDITION,
-  SUIVI_STATUT, FACTURATION, AUTRE).
-- Fait : fix du fallback de domaine (référençait une variable `$itemsFiltres`
-  supprimée) et suppression du bloc body-fallback devenu mort/redondant.
-- Reste à faire : validation en conditions réelles (batch d'emails déjà
-  traités) pour confirmer que QTYPE élimine bien les faux positifs sans
-  créer de faux négatifs sur les vraies confirmations.
-- Pas encore de PR ouverte pour cette branche.
+- Fait : 6 correctifs de stabilité (crash-loop SyncDTW, PUT→PATCH Firebase,
+  retry écritures, timeout DTW.exe, fuite COM Outlook, verrou d'instance).
+- Fait : mode `-Audit` (trace locale, jamais Firebase) sur VerifierConfirmation.ps1.
+- Fait : classifieur corrigé — EstConfirmation dépend uniquement de QTYPE.
+- Fait : ACTION_REQUISE contourne le garde-fou anti-doublon (BC déjà OK).
+- Fait : report des lignes déjà confirmées OK entre plusieurs courriels d'un
+  même BC (ex. Masco : confirmation puis rapport d'écarts partiel).
+- Fait : fallback CORPS→PDF si extraction CORPS vide et PJ PDF présente.
+- Fait : rejet des PDF renvoyés identiques (hash SHA256) au PO envoyé.
+- Fait : migration Firebase "actionRequise" rendue vraiment unique (gatée) —
+  cause probable du dépassement de quota (15,79 Go/15j sur 10 Go/mois).
+- Reste à faire : surveiller Masco en production réelle sur quelques jours.
+- Abandonné : cas DM Valve ambigu, écarts multi-BC dans un seul courriel.
+- Bloqué : SAP UI API pas installé — bloque l'automatisation Mailer SAP.
 
 ## Fichiers touchés
-- `VerifierConfirmation.ps1` — classificateur principal (prompt Claude,
-  parsing des réponses Q1/Q3/Q5/QTYPE, règle de confirmation).
-- `SyncDTW.ps1` — sync des bons de commande vers SAP DTW (touché sur `main`
-  hors de cette branche, pas modifié ici).
-- `GeneratePDF.ps1` — génération PDF du bon de commande, charge les
-  paramètres (adresse, taux TPS/TVQ) depuis Firebase.
+- `VerifierConfirmation.ps1` — classification, recherche courriel envoyé,
+  extraction PDF, comparaison, écriture Firebase (le plus modifié).
+- `SyncDTW.ps1` — boucle 30s Firebase → SAP DTW.
+- `index.html` — dashboard, ajout message `PDF_IDENTIQUE_AU_PO_ENVOYE`.
+- `firebase-rules.json` — règles Firebase de référence (à coller manuellement).
 
 ## Décisions prises
-- Catégorie unique `QTYPE` plutôt que des booléens indépendants : les
-  booléens produisaient des combinaisons incohérentes (ex. un avis
-  d'expédition mentionnant une quantité et un PO était marqué confirmation).
-  Une catégorie mutuellement exclusive force le modèle à trancher.
-- Fallback de domaine réécrit en itération manuelle identique au pattern de
-  la boucle for principale, plutôt que de réparer l'ancien filtre
-  Where-Object cassé — évite la divergence de logique entre les deux chemins.
+- Fallback CORPS→PDF seulement si CORPS vide ET PJ PDF existe (zéro impact
+  sur le cas CORPS qui fonctionne, majorité des fournisseurs).
+- Détection PDF-identique par hash, pas nom/taille — un PDF annoté même
+  légèrement reste traité normalement.
+- Pas de rotation de projet Firebase pour le quota : corriger la cause
+  (migration retéléchargée) plutôt qu'une rotation manuelle fragile.
 
 ## Prochaine étape
-Rejouer `VerifierConfirmation.ps1` sur un échantillon d'emails déjà
-qualifiés manuellement (confirmations vs avis d'expédition vs facturation)
-et comparer le verdict QTYPE au verdict attendu avant de merger vers `main`.
+Après reset du quota Firebase (1er août), vérifier dans Firebase Console →
+Usage que la consommation redescend sous 10 Go/mois. Si Masco reste stable
+en production, considérer le sujet clos.
 
 ## Pièges
-- Filtre de sujet Outlook : ne pas mélanger syntaxe Jet et DASL dans la même
-  requête (`NON TROUVÉ` silencieux) — utiliser l'itération manuelle si un
-  doute existe.
-- Ne pas fermer/rouvrir la vérification "déjà traité" sans passer
-  `ForcerTraitement` explicitement, sinon le mode Force ne reclassifie rien.
-- Deux anciennes PR (#2, #4) basées sur un `main` très ancien ont été
-  fermées sans merge le 2026-07-15 : elles auraient fait régresser
-  `GeneratePDF.ps1` (suppression du chargement des paramètres Firebase) et
-  supprimé des fichiers ajoutés depuis. Ne pas les rouvrir sans rebase complet.
+- `Update-ScriptSiNecessaire` doit propager TOUS les paramètres à la relance
+  (`$argList`) — `-Audit` et `-Nombre` oubliés une fois chacun.
+- `Write-FirebaseHistorique` : PATCH jamais PUT sur une entrée existante
+  (PUT efface `syncSAP`/`confirme` gérés par SyncDTW.ps1).
+- Champ `CONFIRMATION: OUI/NON` du classifieur = reliquat legacy, ne pas s'y
+  fier — seul `QTYPE` décide.
+- Un bloc "migration unique" sans drapeau persistant se réexécute à CHAQUE
+  démarrage, pas juste une fois.
