@@ -2115,6 +2115,24 @@ function Invoke-TraiterComparaison {
             return
         }
 
+        # Detection : le fournisseur a peut-etre simplement renvoye notre PROPRE
+        # PDF de commande, sans la moindre annotation -- comparer "sa
+        # confirmation" a notre PO reviendrait alors a se comparer a soi-meme
+        # (toujours OK, aucune verification reelle). On ne bloque QUE si les
+        # deux fichiers sont BYTE POUR BYTE identiques (un fournisseur qui
+        # annote/modifie le PDF, meme legerement, produit un fichier different
+        # et continue d'etre traite normalement).
+        $hashConfirmation = (Get-FileHash -Path $cheminConfirmation -Algorithm SHA256).Hash
+        $hashCommande = (Get-FileHash -Path $cheminCommande -Algorithm SHA256).Hash
+        if ($hashConfirmation -eq $hashCommande) {
+            Write-Audit "Detection PDF identique au PO envoye" "SHA256 identique entre la PJ du fournisseur et notre PO envoye -- le fournisseur a renvoye notre fichier tel quel, ce n'est pas une confirmation. Traitement abandonne."
+            Write-JournalEntry $expediteur "PDF_IDENTIQUE_AU_PO_ENVOYE" "Le fournisseur a renvoye notre propre PDF sans annotation"
+            Write-FirebaseEchec $MailConfirmation "PDF_IDENTIQUE_AU_PO_ENVOYE" $numeroBC $nomFourn $HistoriqueId
+            Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
+            Remove-Item $cheminCommande -Force -ErrorAction SilentlyContinue
+            return
+        }
+
         $resSAP = Get-ItemsCommandeGromec $cheminCommande $numeroBC
         $itemsSAP = @($resSAP.Items)
         $enteteSAP = $resSAP.Entete
