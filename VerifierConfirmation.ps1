@@ -16,7 +16,8 @@ param(
     [string]$StoreID = "",
     [switch]$Force,
     [switch]$Interactive,
-    [switch]$Audit
+    [switch]$Audit,
+    [int]$Nombre = 50
 )
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -78,6 +79,7 @@ function Update-ScriptSiNecessaire {
     if ($Force)           { $argList += "-Force" }
     if ($Interactive)     { $argList += "-Interactive" }
     if ($Audit)           { $argList += "-Audit" }
+    if ($Nombre -ne 50)   { $argList += @("-Nombre", $Nombre) }
 
     Start-Process -FilePath "powershell.exe" -ArgumentList $argList -WindowStyle Hidden
     exit 0
@@ -2765,10 +2767,10 @@ try {
                 StoreID     = $item.Parent.StoreID
             }
             $compte++
-            if ($compte -ge 50) { break }
+            if ($compte -ge $Nombre) { break }
         }
 
-        $choix = $liste | Out-GridView -Title "Choisissez un courriel a traiter (PJ requise)" -OutputMode Single
+        $choix = $liste | Out-GridView -Title "Choisissez un courriel a traiter (PJ requise) -- $Nombre derniers" -OutputMode Single
         if ($null -eq $choix) { exit 0 }
 
         $mail = $namespace.GetItemFromID($choix.EntryID, $choix.StoreID)
