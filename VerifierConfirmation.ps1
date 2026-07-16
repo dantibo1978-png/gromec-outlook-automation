@@ -1898,10 +1898,30 @@ function Invoke-TraiterComparaison {
         if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
 
         if ($itemsFourn.Count -eq 0) {
-            Write-JournalEntry $expediteur "AUCUN_ECART_DANS_CORPS" "Mode corps actif mais aucun article extrait du texte"
-            Write-FirebaseEchec $MailConfirmation "AUCUN_ECART_DANS_CORPS" $numeroBC $nomFourn $HistoriqueId
-            return
+            # Filet de securite : le classificateur peut se tromper de SOURCE
+            # (ex: le corps dit juste "voir la confirmation ci-jointe" sans
+            # detail -- observe avec DM Valve et Sinope). Si une PJ PDF existe,
+            # on retente en mode PDF avant d'abandonner plutot que de conclure
+            # a tort qu'il n'y a aucun ecart.
+            $aPJPdf = $false
+            foreach ($pj in $MailConfirmation.Attachments) {
+                if ($pj.FileName -like "*.pdf") { $aPJPdf = $true; break }
+            }
+            if ($aPJPdf) {
+                Write-Audit "Fallback CORPS -> PDF" "Mode CORPS n'a extrait aucun article du texte, nouvelle tentative en mode PDF (une PJ PDF est presente)."
+                Write-Log "INFO  Mode CORPS sans article extrait -- nouvelle tentative en mode PDF."
+                $VerifierCorps = $false
+            } else {
+                Write-JournalEntry $expediteur "AUCUN_ECART_DANS_CORPS" "Mode corps actif mais aucun article extrait du texte"
+                Write-FirebaseEchec $MailConfirmation "AUCUN_ECART_DANS_CORPS" $numeroBC $nomFourn $HistoriqueId
+                return
+            }
         }
+
+        # A partir d'ici, tout le reste du mode CORPS ne s'applique QUE si on y
+        # est toujours (le bloc precedent peut avoir bascule $VerifierCorps a
+        # $false pour retomber dans le mode PDF plus bas).
+        if ($VerifierCorps) {
 
         # ACTION_REQUISE contourne ce garde-fou : un courriel qui demande une
         # action a Gromec signale par definition quelque chose de nouveau sur
@@ -2010,7 +2030,10 @@ function Invoke-TraiterComparaison {
         }
         $itemsFourn = $itemsFournRempli
 
-    } else {
+        } # fin du bloc "if ($VerifierCorps)" interne (fallback CORPS->PDF)
+    }
+
+    if (-not $VerifierCorps) {
         # --- MODE PDF (comportement original, inchange) ---
 
         $cheminConfirmation = Save-PDFConfirmationFournisseur $MailConfirmation
