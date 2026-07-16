@@ -1871,29 +1871,34 @@ function Invoke-TraiterComparaison {
         if ($corpsMessage.Length -gt 4000) { $corpsMessage = $corpsMessage.Substring(0, 4000) }
 
         $imagesCorps = Get-ImagesCorpsCourriel $MailConfirmation
+
+        # --- Trouver le numero BC pour la recherche dans Envoyes -- calcule AVANT
+        # l'extraction pour que le numero reel (souvent deja present dans le sujet)
+        # s'affiche correctement dans le dashboard meme si l'extraction CORPS
+        # echoue plus bas (sinon Write-FirebaseEchec recevait un numero vide,
+        # laissant croire a tort qu'aucun BC n'etait present nulle part). ---
+        if ($NumeroBCOverride -ne "") {
+            $numeroBC = $NumeroBCOverride
+        } else {
+            $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
+        }
+
         $resFourn = Get-ItemsFournisseurDepuisCorps $corpsMessage $sujet $imagesCorps
         if ($resFourn.Erreur) {
             Write-JournalEntry $expediteur "ERREUR_EXTRACTION_CORPS" $resFourn.Erreur
-            Write-FirebaseEchec $MailConfirmation "ERREUR_EXTRACTION_CORPS" "" "" $HistoriqueId
+            Write-FirebaseEchec $MailConfirmation "ERREUR_EXTRACTION_CORPS" $numeroBC "" $HistoriqueId
             return
         }
         $itemsFourn = @($resFourn.Items)
         $nomFourn = $resFourn.NomFournisseur
         $devise = $resFourn.Devise
         $bcGromec = $resFourn.BCGromec
+        if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
 
         if ($itemsFourn.Count -eq 0) {
             Write-JournalEntry $expediteur "AUCUN_ECART_DANS_CORPS" "Mode corps actif mais aucun article extrait du texte"
-            Write-FirebaseEchec $MailConfirmation "AUCUN_ECART_DANS_CORPS" $bcGromec $nomFourn $HistoriqueId
+            Write-FirebaseEchec $MailConfirmation "AUCUN_ECART_DANS_CORPS" $numeroBC $nomFourn $HistoriqueId
             return
-        }
-
-        # --- Trouver le numero BC pour la recherche dans Envoyes ---
-        if ($NumeroBCOverride -ne "") {
-            $numeroBC = $NumeroBCOverride
-        } else {
-            $numeroBC = Get-NumeroBC "$sujet $($MailConfirmation.Body)"
-            if ($numeroBC -eq "" -and $bcGromec -ne "") { $numeroBC = $bcGromec }
         }
 
         # ACTION_REQUISE contourne ce garde-fou : un courriel qui demande une
@@ -2448,6 +2453,7 @@ function Invoke-TraiterNouveauCourriel {
         $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
         if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
         if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
+        Write-Audit "Choix du mode CORPS vs PDF (Force)" "Jugement de Claude (SOURCE): $(if($analyse.VerifierCorps){'CORPS'}else{'PDF'})`nApprentissage connu pour $adresseExp : $statutCorpsConnu`n=> Mode final retenu: $(if($verifierCorps){'CORPS'}else{'PDF'})"
 
     } elseif ($analyse.Confiance -ge $seuilAuto) {
         # Claude est confiant -- agir automatiquement sans deranger Dan
@@ -2460,6 +2466,7 @@ function Invoke-TraiterNouveauCourriel {
         $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
         if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
         if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
+        Write-Audit "Choix du mode CORPS vs PDF" "Jugement de Claude (SOURCE): $(if($analyse.VerifierCorps){'CORPS'}else{'PDF'})`nApprentissage connu pour $adresseExp : $statutCorpsConnu`n=> Mode final retenu: $(if($verifierCorps){'CORPS'}else{'PDF'})"
 
     } else {
         # Claude est incertain
