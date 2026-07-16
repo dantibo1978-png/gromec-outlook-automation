@@ -2030,6 +2030,14 @@ function Invoke-TraiterComparaison {
         }
         $itemsFourn = $itemsFournRempli
 
+        # Apprentissage base sur le RESULTAT REEL (extraction reussie), pas
+        # sur le jugement de Claude seul -- corrige aussi le mode appris quand
+        # Claude etait confiant mais dans le mauvais mode (ex: DM Valve,
+        # Sinope), sans attendre le popup "Claude incertain" qui ne se
+        # declenche jamais dans ce cas. S'applique a tout traitement reussi,
+        # y compris une reclassification manuelle (-Force).
+        Set-ReponseCorps $expediteur $true
+
         } # fin du bloc "if ($VerifierCorps)" interne (fallback CORPS->PDF)
     }
 
@@ -2145,6 +2153,10 @@ function Invoke-TraiterComparaison {
             Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn $HistoriqueId
             return
         }
+
+        # Apprentissage base sur le RESULTAT REEL (extraction PDF reussie) --
+        # voir commentaire equivalent en mode CORPS plus haut.
+        Set-ReponseCorps $expediteur $false
 
         # --- Report des lignes deja confirmees OK dans un courriel PRECEDENT pour
         # ce meme BC (fournisseurs qui envoient plusieurs courriels par commande,
