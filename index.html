@@ -1691,7 +1691,7 @@ setInterval(chargerLogs, 20000);
   }
 
   function handleFile(file){
-    if (!file.name.endsWith('.txt')) {
+    if (!file.name.toLowerCase().endsWith('.txt')) {
       dropLabel.textContent = 'Fichier invalide — .txt seulement';
       dropLabel.style.color = 'var(--ecart)';
       setTimeout(() => { dropLabel.style.color = 'var(--muted)'; }, 2000);
@@ -1806,7 +1806,7 @@ setInterval(chargerLogs, 20000);
   }
 
   function lireTxt(file){
-    if (!file.name.endsWith('.txt')) { dropLabel.textContent = 'Fichier .txt seulement'; dropLabel.style.color = 'var(--ecart)'; return; }
+    if (!file.name.toLowerCase().endsWith('.txt')) { dropLabel.textContent = 'Fichier .txt seulement'; dropLabel.style.color = 'var(--ecart)'; return; }
     const reader = new FileReader();
     reader.onload = e => {
       const buf = new Uint8Array(e.target.result);
