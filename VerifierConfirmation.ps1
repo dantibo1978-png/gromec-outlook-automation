@@ -1365,9 +1365,9 @@ function Find-CourrielEnvoyeCorrespondant {
     param($Namespace, $MailConfirmation, [string]$NumeroBC)
 
     $limiteDate = (Get-Date).AddDays(-$JoursRecherche)
+    $limiteDateStr = $limiteDate.ToString("MM/dd/yyyy HH:mm")
     $adresseFournisseur = (Get-AdresseSMTP $MailConfirmation)
 
-    # Construire la liste de tous les dossiers Envoyes (tous comptes)
     $dossiersSent = @()
     try { $dossiersSent += $Namespace.GetDefaultFolder(5) } catch {}
     foreach ($store in $Namespace.Stores) {
@@ -1385,24 +1385,23 @@ function Find-CourrielEnvoyeCorrespondant {
 
     foreach ($sentFolder in $dossiersSent) {
         try {
-            $items = $sentFolder.Items
-            $items.Sort("[SentOn]", $true)
+            $filtre = "[SentOn] >= '$limiteDateStr'"
+            $items = $sentFolder.Items.Restrict($filtre)
         } catch { continue }
 
-        for ($idx = 1; $idx -le $items.Count; $idx++) {
-            try { $item = $items.Item($idx) } catch { continue }
+        foreach ($item in $items) {
             if ($item.Class -ne 43) { continue }
-            if ($item.SentOn -lt $limiteDate) { break }
+
+            $sujetMatch = ($NumeroBC -ne "" -and $item.Subject -like "*$NumeroBC*")
 
             $aPDF = $false
             foreach ($pj in $item.Attachments) {
                 if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
             }
 
-            if ($NumeroBC -ne "" -and ($item.Subject -like "*$NumeroBC*" -or $item.Body -like "*$NumeroBC*")) {
+            if ($sujetMatch) {
                 if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
             }
-
         }
 
         $domainesAcceptes = @()
@@ -1412,10 +1411,8 @@ function Find-CourrielEnvoyeCorrespondant {
             if ($Script:DomainesAlias.ContainsKey($domaineFourn)) {
                 $domainesAcceptes += $Script:DomainesAlias[$domaineFourn]
             }
-            for ($idx2 = 1; $idx2 -le $items.Count; $idx2++) {
-                try { $itemD = $items.Item($idx2) } catch { continue }
+            foreach ($itemD in $items) {
                 if ($itemD.Class -ne 43) { continue }
-                if ($itemD.SentOn -lt $limiteDate) { break }
                 $aPDF = $false
                 foreach ($pj in $itemD.Attachments) {
                     if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
