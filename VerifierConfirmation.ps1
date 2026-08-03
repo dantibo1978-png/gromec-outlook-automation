@@ -508,6 +508,31 @@ function Get-DictionnaireFournisseurs {
     return @{ Dict = $dict; Regles = $regles }
 }
 
+function Get-CorrectionsUtilisateur {
+    param([string]$NomFournisseur = "")
+    try {
+        $corrections = Get-FirebaseValue "gromec_vba/corrections"
+        if ($null -eq $corrections -or $corrections -is [string]) { return "" }
+        $lignes = @()
+        foreach ($prop in $corrections.PSObject.Properties) {
+            $c = $prop.Value
+            if ($NomFournisseur -ne "" -and $c.fournisseur -ne "" -and $c.fournisseur -ne $NomFournisseur) { continue }
+            $typeTxt = switch ($c.type) {
+                "faux_ok"       { "classe comme CONFORME mais avait des ecarts" }
+                "faux_ecart"    { "classe comme ECART mais etait conforme" }
+                "mauvais_mode"  { "mauvais mode d'analyse (corps vs PDF)" }
+                default         { $c.type }
+            }
+            $desc = "- Fournisseur '$($c.fournisseur)' BC $($c.numeroBC): $typeTxt"
+            if ($c.raison -ne "") { $desc += " -- detail: $($c.raison)" }
+            $lignes += $desc
+        }
+        if ($lignes.Count -eq 0) { return "" }
+        $limite = [Math]::Min($lignes.Count, 15)
+        return ($lignes[-$limite..-1] -join "`n")
+    } catch { return "" }
+}
+
 function Add-FournisseurAuDictionnaire {
     param([string]$NouvelleLigne)
     $dictActuel = Get-FirebaseValue "gromec_vba/dict_fournisseurs"
@@ -826,8 +851,9 @@ function Get-TousNumerosBC {
 }
 
 function Get-ItemsFournisseur {
-    param([string]$CheminPDF)
+    param([string]$CheminPDF, [string]$NomFournisseur = "")
     $dictInfo = Get-DictionnaireFournisseurs
+    $correctionsTexte = Get-CorrectionsUtilisateur $NomFournisseur
     $b64 = ConvertTo-Base64File $CheminPDF
     if ([string]::IsNullOrEmpty($b64)) { return $null }
 
@@ -840,7 +866,7 @@ $($dictInfo.Dict)
 
 REGLES GENERALES:
 $($dictInfo.Regles)
-
+$(if ($correctionsTexte -ne "") { "`nCORRECTIONS DE L'UTILISATEUR (erreurs passees a eviter):`n$correctionsTexte`n" })
 Cherche aussi le numero de bon de commande GROMEC (pas le numero de confirmation
 du fournisseur) -- format typique 90XXXXX (7-8 chiffres commencant par 90).
 Ce numero peut apparaitre sous plusieurs etiquettes selon le fournisseur, par exemple:
@@ -927,9 +953,10 @@ function Get-ItemsFournisseurDepuisCorps {
     # citation varie trop d'un client courriel a l'autre pour etre fiable,
     # et le dernier message est de toute facon celui qui contient la
     # reponse pertinente.
-    param([string]$CorpsMessage, [string]$Sujet, [array]$Images = @())
+    param([string]$CorpsMessage, [string]$Sujet, [array]$Images = @(), [string]$NomFournisseur = "")
 
     $dictInfo = Get-DictionnaireFournisseurs
+    $correctionsTexte = Get-CorrectionsUtilisateur $NomFournisseur
 
     $prompt = @"
 Tu es expert en verification de commandes industrielles pour Gromec Inc.
@@ -951,7 +978,7 @@ $($dictInfo.Dict)
 
 REGLES GENERALES:
 $($dictInfo.Regles)
-
+$(if ($correctionsTexte -ne "") { "`nCORRECTIONS DE L'UTILISATEUR (erreurs passees a eviter):`n$correctionsTexte`n" })
 Cherche le numero de bon de commande GROMEC (format 90XXXXX, 7-8 chiffres
 commencant par 90) s'il apparait dans ce texte.
 
@@ -2288,6 +2315,7 @@ function Invoke-ClassifierCourriel {
     param($MailItem)
 
     $adresseExp = (Get-AdresseSMTP $MailItem)
+    $correctionsClassif = Get-CorrectionsUtilisateur
 
     # Filtre rapide -- domaines exclus et @gromec.com
     if (Test-DomaineExclu $adresseExp) {
@@ -2366,7 +2394,7 @@ REGLES DE CLASSIFICATION:
 - Un courriel qui DEMANDE quelque chose au client = ACTION_REQUISE si c'est lie a la
   commande, SUIVI_STATUT si c'est une simple question de logistique.
 - En cas de doute entre CONFIRMATION et un autre type, prefere l'autre type.
-
+$(if ($correctionsClassif -ne "") { "`nCORRECTIONS DE L'UTILISATEUR (erreurs passees -- sois plus attentif a ces cas):`n$correctionsClassif`n" })
 Reponds EXACTEMENT en ce format:
 Q1_NUMERO_BC: OUI/NON
 Q3_DATE_LIVRAISON: OUI/NON

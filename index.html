@@ -222,6 +222,24 @@
   .confirmer-btn.confirmer-attente{opacity:0.6;cursor:default;}
   .confirmer-btn.confirmer-envoye{border-color:var(--ok);color:var(--ok);cursor:default;}
   .stamp-attente{color:var(--warn); border-color:var(--warn); background:var(--warn-bg);}
+  .stamp-conteste{color:#f59e0b; border-color:#f59e0b; background:rgba(245,158,11,0.1);}
+
+  .contester-row{margin-top:12px;border-top:1px solid var(--rule);padding-top:12px;}
+  .contester-btn{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:6px 16px;border-radius:6px;border:1px solid #f59e0b;background:transparent;color:#f59e0b;cursor:pointer;transition:background .15s;}
+  .contester-btn:hover{background:rgba(245,158,11,0.1);}
+  .contester-panel{margin-top:10px;background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;padding:14px;display:none;}
+  .contester-panel.visible{display:block;}
+  .contester-panel h4{margin:0 0 10px;font-size:14px;color:var(--text);font-family:'Space Grotesk',sans-serif;}
+  .contester-options{display:flex;flex-direction:column;gap:8px;}
+  .contester-option{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--rule);border-radius:6px;cursor:pointer;transition:border-color .15s,background .15s;font-size:13px;color:var(--text);font-family:'IBM Plex Mono',monospace;}
+  .contester-option:hover{border-color:#f59e0b;background:rgba(245,158,11,0.06);}
+  .contester-option input[type=radio]{accent-color:#f59e0b;}
+  .contester-raison{margin-top:10px;}
+  .contester-raison textarea{width:100%;height:60px;box-sizing:border-box;background:var(--bg);border:1px solid var(--rule);border-radius:6px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:8px;resize:vertical;}
+  .contester-submit{margin-top:10px;padding:8px 20px;border-radius:6px;border:none;background:#f59e0b;color:#0e1520;cursor:pointer;font-size:13px;font-weight:600;}
+  .contester-submit:hover{background:#d97706;}
+  .contester-submit:disabled{opacity:0.5;cursor:default;}
+  .conteste-badge{display:inline-block;margin-left:8px;font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.15);color:#f59e0b;font-weight:600;}
 
   .fiche-info{flex:1; min-width:0;}
   .fiche-fournisseur{
@@ -1322,7 +1340,7 @@ function rendreFiche(d){
   return `
   <div class="fiche" data-id="${d.id}">
     <div class="fiche-head" onclick="toggleFiche('${d.id}')">
-      <span class="stamp ${d.envoyer_confirmation === 'envoye' ? 'stamp-confirme' : estOK ? 'stamp-ok' : 'stamp-ecart'}">${d.envoyer_confirmation === 'envoye' ? 'CONFIRMÉ' : estOK ? (d.statut === 'OK_PARTIEL' ? 'CONFORME (partiel)' : 'CONFORME') : 'ÉCART'}</span>
+      <span class="stamp ${d.contestation ? 'stamp-conteste' : d.envoyer_confirmation === 'envoye' ? 'stamp-confirme' : estOK ? 'stamp-ok' : 'stamp-ecart'}">${d.contestation ? 'CONTESTÉ' : d.envoyer_confirmation === 'envoye' ? 'CONFIRMÉ' : estOK ? (d.statut === 'OK_PARTIEL' ? 'CONFORME (partiel)' : 'CONFORME') : 'ÉCART'}</span>
       ${d.poReviseRequis ? '<span class="stamp stamp-po-revise">Confirmation requise</span>' : ''}
       <div class="fiche-info">
         <p class="fiche-fournisseur">${d.fournisseur || 'Fournisseur inconnu'}</p>
@@ -1369,6 +1387,7 @@ function rendreFiche(d){
             <tbody>${lignesHtml || '<tr><td colspan="8" style="text-align:center; color:var(--muted-2);">Aucun article</td></tr>'}</tbody>
           </table>
         </div>
+        ${genererContestationHtml(d, estOK)}
       </div>
     </div>
   </div>`;
@@ -1498,6 +1517,110 @@ async function modifierQuantite(event, ficheId, ligne, nouvelleValeur){
     });
   }catch(e){
     console.error('Erreur lors de la mise à jour de la quantité', e);
+  }
+}
+
+function genererContestationHtml(d, estOK){
+  if (d.contestation) {
+    const c = d.contestation;
+    const typeTxt = {faux_ok:'Faux conforme — il y a des écarts', faux_ecart:'Faux écart — c\'est conforme', mauvais_mode:'Mauvais mode d\'analyse', retraiter:'Retraiter la commande'}[c.type] || c.type;
+    return `<div class="contester-row">
+      <span class="conteste-badge">Contesté : ${typeTxt}</span>
+      ${c.raison ? `<span style="font-size:12px;color:var(--muted);margin-left:8px;">${c.raison}</span>` : ''}
+      <span style="font-size:11px;color:var(--muted-2);margin-left:8px;">${c.date ? fmtDate(c.date) : ''}</span>
+    </div>`;
+  }
+  const optionsOK = `
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="faux_ok"> Ce n'est PAS conforme — il y a des écarts que le script n'a pas détectés</label>
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="mauvais_mode"> Mauvais mode d'analyse (aurait dû lire le PDF au lieu du corps, ou vice versa)</label>
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="retraiter"> Retraiter ce courriel avec un nouveau numéro de BC</label>`;
+  const optionsEcart = `
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="faux_ecart"> C'est conforme — les écarts détectés sont incorrects</label>
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="mauvais_mode"> Mauvais mode d'analyse (aurait dû lire le PDF au lieu du corps, ou vice versa)</label>
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="retraiter"> Retraiter ce courriel avec un nouveau numéro de BC</label>`;
+  return `<div class="contester-row">
+    <button class="contester-btn" onclick="event.stopPropagation(); toggleContestation('${d.id}')">&#x26A0; Contester ce résultat</button>
+    <div class="contester-panel" id="contest-panel-${d.id}">
+      <h4>Qu'est-ce qui ne va pas ?</h4>
+      <div class="contester-options">${estOK ? optionsOK : optionsEcart}</div>
+      <div class="contester-raison"><textarea id="contest-raison-${d.id}" placeholder="Détails optionnels (ex: les prix de la ligne 3 ne correspondent pas, le fournisseur a changé des quantités...)" onclick="event.stopPropagation()"></textarea></div>
+      <div id="contest-bc-row-${d.id}" style="display:none;margin-top:8px;">
+        <label style="font-size:12px;color:var(--muted);">Nouveau numéro de BC :</label>
+        <input type="text" id="contest-bc-${d.id}" placeholder="ex: 9006882" style="margin-left:8px;padding:4px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;" onclick="event.stopPropagation()">
+      </div>
+      <button class="contester-submit" onclick="event.stopPropagation(); soumettreContestation('${d.id}')">Envoyer la contestation</button>
+    </div>
+  </div>`;
+}
+
+function toggleContestation(id){
+  const panel = document.getElementById('contest-panel-' + id);
+  if (!panel) return;
+  panel.classList.toggle('visible');
+  panel.querySelectorAll('input[type=radio]').forEach(r => {
+    r.addEventListener('change', () => {
+      const bcRow = document.getElementById('contest-bc-row-' + id);
+      if (bcRow) bcRow.style.display = r.value === 'retraiter' ? 'block' : 'none';
+    });
+  });
+}
+
+async function soumettreContestation(id){
+  const entree = donnees.find(d => d.id === id);
+  if (!entree) return;
+  const radios = document.querySelectorAll(`input[name="contest-${id}"]`);
+  let typeChoisi = null;
+  radios.forEach(r => { if (r.checked) typeChoisi = r.value; });
+  if (!typeChoisi) { alert('Choisissez un type de contestation.'); return; }
+
+  const raison = (document.getElementById('contest-raison-' + id)?.value || '').trim();
+  const bcManuel = (document.getElementById('contest-bc-' + id)?.value || '').trim();
+
+  const contestation = {
+    type: typeChoisi,
+    raison: raison,
+    date: new Date().toISOString(),
+    statutOriginal: entree.statut,
+    fournisseur: entree.fournisseur || '',
+    numeroBC: entree.numeroCommande || ''
+  };
+
+  const updates = { contestation: contestation };
+
+  if (typeChoisi === 'retraiter') {
+    if (!bcManuel && !entree.numeroCommande) { alert('Indiquez un numéro de BC pour retraiter.'); return; }
+    updates.aReessayer = true;
+    if (bcManuel) updates.numeroBCManuel = bcManuel;
+  }
+
+  try {
+    await fetch(FIREBASE_URL + 'gromec_vba/historique/' + id + '.json', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(updates)
+    });
+
+    await fetch(FIREBASE_URL + 'gromec_vba/corrections.json', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        ...contestation,
+        ficheId: id,
+        sujet: (entree.sujet || '').substring(0, 100),
+        articles: (entree.articles || []).map(a => ({
+          code: a.sapArticle, sapPrix: a.sapPrix, pdfPrix: a.pdfPrix,
+          sapQty: a.sapQty, pdfQty: a.pdfQty, statut: a.statut
+        }))
+      })
+    });
+
+    entree.contestation = contestation;
+    if (typeChoisi === 'retraiter') { entree.aReessayer = true; if (bcManuel) entree.numeroBCManuel = bcManuel; }
+    rendreTout();
+    const el = document.querySelector(`.fiche[data-id="${id}"]`);
+    if (el) el.classList.add('open');
+  } catch(e) {
+    alert('Erreur : ' + e.message);
   }
 }
 
