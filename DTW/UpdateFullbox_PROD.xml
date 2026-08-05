@@ -1,7 +1,7 @@
 <Transfer>
   <Logon>
-    <UserName>dD9wya984gkisUvGwoQw4w==.gQmD7UznxIaEUgXnM94Y3aI56oWnmM5FCNyWRWDNRnY=.ERhCibFjQmQXBpvdmZel1w==</UserName>
-    <Password>Hx7oaCJdxjBApuWPi1NStQ==.jSnIZtlItozu6oSTaZeMDiRLDJ9j7b9SQpsVfcefxUQ=.B8z/FMkiibrHp/qUqIB4mw==</Password>
+    <UserName>HOXrWe9rgNJGYOjk8NVNgg==.bYrmcK/ZSfUk0upV71TrtxJNXkBXBZgRSRVurHaxb18=.4xLxuDCfJLycM0ASqTT+dQ==</UserName>
+    <Password>u5B7dQRc0UNFfg0tm/JTdw==.bcduGWOBqUsw2d0pbAaNEE6kUekdTAi4n8l3AL27qNc=.bS6dY+wDEPOzVgmXW66k6Q==</Password>
     <Company>SAP_GROMEC_PROD</Company>
     <CompanyID />
     <Server>NDB@hana:30013</Server>
@@ -14,7 +14,7 @@
     <DBUser>
     </DBUser>
     <SybasePort />
-    <DBPassword>yfzNfFO5R2KCg+uAqLy27Q==.vYJNiC7tsZ4eVCxK5GSLZ6YXV9O99/r9413bVqOgMNA=.UkjOANwDaeejlNdCMkQdFg==</DBPassword>
+    <DBPassword>P0h2GoW87ySiXsJ9yaCzgQ==.o4DTYMuC9oRD/TypoYmw17FLJw+DxqSj3K206rZnW2c=.NIFngPfviXbmpohPPq/o/Q==</DBPassword>
   </Logon>
   <ObjectCode>oItems</ObjectCode>
   <FileExtractor>
@@ -32,14 +32,16 @@
     <Fields>
       <Items>
         <SourceFields>
+          <RecordKey />
           <ItemCode />
-          <PurPackUn />
-          <QryGroup26 />
+          <PurchaseQtyPerPackUnit />
+          <Properties26 />
         </SourceFields>
         <TargetFields>
+          <RecordKey>RecordKey</RecordKey>
           <ItemCode>ItemCode</ItemCode>
-          <PurPackUn>PurPackUn</PurPackUn>
-          <QryGroup26>QryGroup26</QryGroup26>
+          <PurchaseQtyPerPackUnit>PurchaseQtyPerPackUnit</PurchaseQtyPerPackUnit>
+          <Properties26>Properties26</Properties26>
         </TargetFields>
       </Items>
     </Fields>
