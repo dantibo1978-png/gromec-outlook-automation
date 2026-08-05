@@ -68,6 +68,8 @@ $DTW_FichierPrix       = "$DTW_Dossier\import_prix.txt"
 $DTW_ScenarioPrix      = "$DTW_Dossier\UpdatePriceList_PROD.xml"
 $DTW_FichierLeadTime   = "$DTW_Dossier\import_leadtime.txt"
 $DTW_ScenarioLeadTime  = "$DTW_Dossier\UpdateLeadTime_PROD.xml"
+$DTW_FichierFullbox    = "$DTW_Dossier\import_fullbox.txt"
+$DTW_ScenarioFullbox   = "$DTW_Dossier\UpdateFullbox_PROD.xml"
 $IntervalleSecondes = 30
 $DTW_TimeoutSecondes = 600  # DTW.exe est tue si bloque plus de 10 min (ex: dialogue SAP cache)
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
@@ -1152,6 +1154,53 @@ while ($true) {
         }
     } catch {
         Write-Log "WARN  Erreur lecture noeud leadtime_dtw : $($_.Exception.Message)"
+    }
+
+    # ── Import Fullbox (PurPackUn + QryGroup26) depuis le dashboard ────────────
+    try {
+        $importsFB = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox.json" -Method Get -TimeoutSec 10
+        if ($null -ne $importsFB -and $importsFB -ne "null") {
+            foreach ($cleFB in $importsFB.PSObject.Properties.Name) {
+                $impFB = $importsFB.$cleFB
+                if ($impFB.statut -ne 'en_attente') { continue }
+
+                Write-Log "INFO  Import Fullbox : $($impFB.nbArticles) article(s) (cle: $cleFB)"
+
+                try {
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
+
+                    [System.IO.File]::WriteAllText($DTW_FichierFullbox, $impFB.contenu, [System.Text.Encoding]::Unicode)
+
+                    $resFB = Invoke-DTW -ScenarioXml $DTW_ScenarioFullbox
+                    $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+
+                    if ($resFB.Succes) {
+                        Write-Log "INFO  Import Fullbox : OK."
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
+                            -Method Patch `
+                            -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    } else {
+                        Write-Log "WARN  Import Fullbox : echec : $($resFB.Erreur)"
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
+                            -Method Patch `
+                            -Body (@{ statut = 'erreur'; erreur = $resFB.Erreur; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    }
+                } catch {
+                    Write-Log "ERREUR Import Fullbox '$cleFB' : $($_.Exception.Message)"
+                    try {
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
+                            -Method Patch `
+                            -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    } catch {}
+                }
+            }
+        }
+    } catch {
+        Write-Log "WARN  Erreur lecture noeud imports_fullbox : $($_.Exception.Message)"
     }
   } catch {
     # Filet de securite : une exception non geree ailleurs dans l'iteration ne doit

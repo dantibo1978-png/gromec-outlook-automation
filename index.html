@@ -835,6 +835,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
     Import prix de détail
   </button>
+  <button class="filter-chip" id="btnFullbox" style="border-color:#f59e0b;color:#f59e0b;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    Import fullbox
+  </button>
 </div>
 
 <!-- Modal import prix -->
@@ -884,6 +888,23 @@
       <button id="btnMatchCancel" style="padding:8px 18px;border-radius:6px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:14px;">Annuler</button>
       <button id="btnMatchListing" disabled style="padding:8px 18px;border-radius:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;font-size:14px;font-weight:600;opacity:0.5;">⬇ Listing (CSV)</button>
       <button id="btnMatchSend" disabled style="padding:8px 18px;border-radius:6px;border:none;background:var(--ok);color:#fff;cursor:pointer;font-size:14px;font-weight:600;opacity:0.5;">Envoyer à DTW (Liste 1)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal import fullbox (PurPackUn + QryGroup26) -->
+<div id="modalFullbox" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:28px;max-width:580px;width:92%;max-height:90vh;overflow-y:auto;">
+    <h3 style="font-family:'Space Grotesk',sans-serif;margin:0 0 6px;font-size:20px;">Import fullbox — Quantité à la boîte</h3>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 18px;">Collez un tableau avec 3 colonnes : <b>Code article</b>, <b>PurPackUn</b> (quantité par boîte) et <b>Propriété 26</b> (Y ou N, optionnel). Les données seront importées via DTW dans SAP.</p>
+
+    <textarea id="fullboxZone" style="width:100%;height:200px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:12px;resize:vertical;" placeholder="Collez ici les 3 colonnes (tab-separated) :&#10;Code article &#9; PurPackUn &#9; Prop26&#10;PT7141120 &#9; 12 &#9; Y&#10;PT8200050 &#9; 6 &#9; &#10;..."></textarea>
+
+    <div id="fullboxStatus" style="margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:13px;display:none;"></div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">
+      <button id="btnFullboxCancel" style="padding:8px 18px;border-radius:6px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:14px;">Annuler</button>
+      <button id="btnFullboxSend" disabled style="padding:8px 18px;border-radius:6px;border:none;background:#f59e0b;color:#0e1520;cursor:pointer;font-size:14px;font-weight:600;opacity:0.5;">Envoyer à DTW</button>
     </div>
   </div>
 </div>
@@ -2493,6 +2514,87 @@ demarrerSSELogs();
     div.appendChild(btn);
     return div;
   }
+})();
+
+// ── Import Fullbox (PurPackUn + QryGroup26) ──────────────────────────────────
+(function(){
+  const modal = document.getElementById('modalFullbox');
+  const zone = document.getElementById('fullboxZone');
+  const status = document.getElementById('fullboxStatus');
+  const btnSend = document.getElementById('btnFullboxSend');
+  const btnCancel = document.getElementById('btnFullboxCancel');
+
+  document.getElementById('btnFullbox').addEventListener('click', () => {
+    modal.style.display = 'flex';
+    zone.value = ''; status.style.display = 'none';
+    btnSend.disabled = true; btnSend.style.opacity = '0.5'; btnSend.textContent = 'Envoyer à DTW';
+  });
+  btnCancel.addEventListener('click', () => modal.style.display = 'none');
+  modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+
+  zone.addEventListener('input', () => {
+    const lignes = zone.value.split(/\r?\n/).filter(l => l.trim() !== '');
+    const nb = Math.max(0, lignes.length - 1);
+    const has = lignes.length >= 2;
+    btnSend.disabled = !has; btnSend.style.opacity = has ? '1' : '0.5';
+    status.style.display = lignes.length > 0 ? 'block' : 'none';
+    status.style.color = 'var(--muted)';
+    status.textContent = has ? nb + ' article(s) détecté(s).' : 'Collez au moins un en-tête + une ligne de données.';
+  });
+
+  btnSend.addEventListener('click', async () => {
+    const lignes = zone.value.split(/\r?\n/).filter(l => l.trim() !== '');
+    if (lignes.length < 2) return;
+
+    const entetes = lignes[0].split('\t').map(h => h.trim().toLowerCase());
+    let idxCode = entetes.findIndex(h => /code|item|article|numéro/i.test(h));
+    let idxPack = entetes.findIndex(h => /purpackun|pack|boîte|boite|box/i.test(h));
+    let idxProp = entetes.findIndex(h => /prop|26|qry|group/i.test(h));
+    if (idxCode === -1) idxCode = 0;
+    if (idxPack === -1) idxPack = 1;
+    if (idxProp === -1 && entetes.length > 2) idxProp = 2;
+
+    const Tab = '\t';
+    const dtwLignes = [
+      'ItemCode' + Tab + 'PurPackUn' + Tab + 'QryGroup26',
+      'ItemCode' + Tab + 'PurPackUn' + Tab + 'QryGroup26'
+    ];
+    let nbArticles = 0;
+    for (let i = 1; i < lignes.length; i++) {
+      const c = lignes[i].split('\t');
+      const code = (c[idxCode] || '').trim();
+      if (!code) continue;
+      const pack = (c[idxPack] || '').trim();
+      let prop = idxProp >= 0 ? (c[idxProp] || '').trim().toUpperCase() : '';
+      if (prop === 'Y' || prop === 'OUI' || prop === 'YES') prop = 'tYES';
+      else if (prop === 'N' || prop === 'NON' || prop === 'NO') prop = 'tNO';
+      else if (prop !== '') prop = 'tYES';
+      dtwLignes.push(code + Tab + pack + Tab + prop);
+      nbArticles++;
+    }
+
+    if (nbArticles === 0) { status.style.display = 'block'; status.style.color = 'var(--ecart)'; status.textContent = 'Aucun article valide trouvé.'; return; }
+
+    btnSend.disabled = true; btnSend.textContent = 'Envoi...';
+    status.style.display = 'block'; status.style.color = 'var(--muted)';
+    status.textContent = 'Envoi vers Firebase...';
+
+    try {
+      const contenu = dtwLignes.join('\r\n') + '\r\n';
+      const payload = { contenu: contenu, nbArticles: nbArticles, statut: 'en_attente', date: new Date().toISOString() };
+      const rep = await fetch(FIREBASE_URL + 'gromec_vba/imports_fullbox.json', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+      });
+      if (!rep.ok) throw new Error('HTTP ' + rep.status);
+      status.style.color = 'var(--ok)';
+      status.textContent = nbArticles + ' article(s) envoyé(s) — en attente de traitement par SyncDTW.';
+      btnSend.textContent = 'Envoyé';
+    } catch(e) {
+      status.style.color = 'var(--ecart)';
+      status.textContent = 'Erreur : ' + e.message;
+      btnSend.disabled = false; btnSend.textContent = 'Réessayer';
+    }
+  });
 })();
 </script>
 
