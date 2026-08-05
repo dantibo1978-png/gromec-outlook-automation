@@ -2534,12 +2534,12 @@ demarrerSSELogs();
 
   function majFullbox(){
     const lignes = zone.value.split(/\r?\n/).filter(l => l.trim() !== '');
-    const nb = Math.max(0, lignes.length - 1);
-    const has = lignes.length >= 2;
+    const nb = lignes.length;
+    const has = nb >= 1;
     btnSend.disabled = !has; btnSend.style.opacity = has ? '1' : '0.5';
-    status.style.display = lignes.length > 0 ? 'block' : 'none';
+    status.style.display = nb > 0 ? 'block' : 'none';
     status.style.color = 'var(--muted)';
-    status.textContent = has ? nb + ' article(s) détecté(s).' : 'Collez au moins un en-tête + une ligne de données.';
+    status.textContent = has ? nb + ' ligne(s) détectée(s).' : 'Collez les données (3 colonnes séparées par des tabulations).';
   }
   zone.addEventListener('input', majFullbox);
   zone.addEventListener('paste', () => setTimeout(majFullbox, 50));
@@ -2549,20 +2549,19 @@ demarrerSSELogs();
     if (lignes.length < 2) return;
 
     const sep = lignes[0].includes('\t') ? '\t' : /\s{2,}/.test(lignes[0]) ? /\s{2,}/ : '\t';
-    const entetes = lignes[0].split(sep).map(h => h.trim().toLowerCase());
+    const premiersCols = lignes[0].split(sep).map(h => h.trim());
 
-    if (entetes.length < 2) {
+    if (premiersCols.length < 2) {
       status.style.display = 'block'; status.style.color = 'var(--ecart)';
       status.textContent = 'Format non reconnu — les colonnes doivent être séparées par des tabulations (copie depuis SAP/Excel).';
       return;
     }
 
-    let idxCode = entetes.findIndex(h => /code|item|article|numéro/i.test(h));
-    let idxPack = entetes.findIndex(h => /purpackun|pack|boîte|boite|box|emballage/i.test(h));
-    let idxProp = entetes.findIndex(h => /prop|26|qry|group/i.test(h));
-    if (idxCode === -1) idxCode = 0;
-    if (idxPack === -1) idxPack = 1;
-    if (idxProp === -1 && entetes.length > 2) idxProp = 2;
+    const aEntete = premiersCols.some(h => /code|item|article|numéro|purpackun|pack|prop|group/i.test(h));
+    const startIdx = aEntete ? 1 : 0;
+    const idxCode = 0;
+    const idxPack = 1;
+    const idxProp = premiersCols.length > 2 ? 2 : -1;
 
     const Tab = '\t';
     const dtwLignes = [
@@ -2570,7 +2569,7 @@ demarrerSSELogs();
       'ItemCode' + Tab + 'PurPackUn' + Tab + 'QryGroup26'
     ];
     let nbArticles = 0;
-    for (let i = 1; i < lignes.length; i++) {
+    for (let i = startIdx; i < lignes.length; i++) {
       const c = lignes[i].split(sep);
       const code = (c[idxCode] || '').trim();
       if (!code) continue;
