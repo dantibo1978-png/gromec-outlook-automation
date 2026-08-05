@@ -1,7 +1,7 @@
 <Transfer>
   <Logon>
-    <UserName>ke6kVANmjWVR+EZ3d7eTfw==.B7BrHLZdT9skhUE2wyfAQ+u94vRfkzGIY1HlshCgqF0=.RsFjyMeJhg3rGcfMwcJXfg==</UserName>
-    <Password>exU0ijJRi6PiZo+BklGMiA==.yZcFEdFJrlO3YvLYi8hdgIGQqpazLORQhBdzcq+McfU=.8sURJ3UKBXz/huqzJwg1Jg==</Password>
+    <UserName>dD9wya984gkisUvGwoQw4w==.gQmD7UznxIaEUgXnM94Y3aI56oWnmM5FCNyWRWDNRnY=.ERhCibFjQmQXBpvdmZel1w==</UserName>
+    <Password>Hx7oaCJdxjBApuWPi1NStQ==.jSnIZtlItozu6oSTaZeMDiRLDJ9j7b9SQpsVfcefxUQ=.B8z/FMkiibrHp/qUqIB4mw==</Password>
     <Company>SAP_GROMEC_PROD</Company>
     <CompanyID />
     <Server>NDB@hana:30013</Server>
@@ -14,7 +14,7 @@
     <DBUser>
     </DBUser>
     <SybasePort />
-    <DBPassword>HsMBlqqY8sXSHMLM3c/4bQ==.kxhgK+mwGhH2EJ2J7NvOTdQiecXy2ZLD7HyRbW81ac0=.2YdwEaS8e2y8gMDCeNGnWQ==</DBPassword>
+    <DBPassword>yfzNfFO5R2KCg+uAqLy27Q==.vYJNiC7tsZ4eVCxK5GSLZ6YXV9O99/r9413bVqOgMNA=.UkjOANwDaeejlNdCMkQdFg==</DBPassword>
   </Logon>
   <ObjectCode>oItems</ObjectCode>
   <FileExtractor>
