@@ -2566,9 +2566,9 @@ demarrerSSELogs();
       if (!code) continue;
       const pack = (c[idxPack] || '').trim();
       let prop = idxProp >= 0 ? (c[idxProp] || '').trim().toUpperCase() : '';
-      if (prop === 'Y' || prop === 'OUI' || prop === 'YES') prop = 'tYES';
-      else if (prop === 'N' || prop === 'NON' || prop === 'NO') prop = 'tNO';
-      else if (prop !== '') prop = 'tYES';
+      if (prop === 'OUI' || prop === 'YES') prop = 'Y';
+      else if (prop === 'NON' || prop === 'NO') prop = 'N';
+      else if (prop !== '' && prop !== 'Y' && prop !== 'N') prop = 'Y';
       dtwLignes.push(code + Tab + pack + Tab + prop);
       nbArticles++;
     }
