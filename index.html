@@ -922,7 +922,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-08-07 08:59";
+const DERNIERE_MAJ_CODE = "2026-08-07 11:18";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1119,9 +1119,10 @@ async function declencherDTW(id, copierPrix, copierQty, btnEl){
       body: JSON.stringify(payload)
     });
 
-    // Mettre à jour les données locales
     const entree = donnees.find(d => d.id === id);
     if (entree) Object.assign(entree, payload);
+
+    setTimeout(() => { if (fiche) fiche.classList.remove('open'); }, 800);
 
   }catch(e){
     btnEl.classList.remove('etat-attente');
