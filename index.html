@@ -922,7 +922,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-08-05 14:51";
+const DERNIERE_MAJ_CODE = "2026-08-07 08:47";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1166,7 +1166,7 @@ async function declencherDTW(id, copierPrix, copierQty, btnEl){
           const stampEl = fiche ? fiche.querySelector('.stamp') : null;
           if (stampEl){ stampEl.className = 'stamp stamp-ok'; stampEl.textContent = 'CONFORME'; }
         } catch(e){ /* silencieux */ }
-        // Recharger après 3s pour refléter l'état à jour
+        setTimeout(() => { if (fiche) fiche.classList.remove('open'); }, 1500);
         setTimeout(chargerDonnees, 3000);
 
       } else if (statut === 'erreur'){
@@ -1439,9 +1439,11 @@ function toggleFiche(id){
   const el = document.querySelector(`.fiche[data-id="${id}"]`);
   if (!el) return;
   const estOuverte = el.classList.contains('open');
+  if (!estOuverte){
+    document.querySelectorAll('.fiche.open').forEach(f => f.classList.remove('open'));
+  }
   el.classList.toggle('open');
   if (!estOuverte){
-    // Scroll vers la carte apres l'animation d'ouverture
     setTimeout(() => {
       const toolbarH = document.querySelector('.toolbar') ? document.querySelector('.toolbar').offsetHeight : 0;
       const headerH = document.querySelector('header') ? document.querySelector('header').offsetHeight : 0;
@@ -1777,7 +1779,9 @@ let logsData = {};
 let logPollTimer = null;
 
 function toggleLogPanel(){
-  document.getElementById('logPanel').classList.toggle('collapsed');
+  const p = document.getElementById('logPanel');
+  p.classList.toggle('collapsed');
+  localStorage.setItem('logPanelCollapsed', p.classList.contains('collapsed') ? '1' : '0');
 }
 
 let sseLogs = null;
@@ -1910,14 +1914,26 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
 (function(){
   const panel = document.getElementById('logPanel');
   const handle = document.getElementById('logResize');
+  const savedH = localStorage.getItem('logPanelHeight');
+  if (savedH) panel.style.height = savedH;
+  if (localStorage.getItem('logPanelCollapsed') === '1') panel.classList.add('collapsed');
+  else panel.classList.remove('collapsed');
   let startY, startH;
   handle.addEventListener('mousedown', e => {
     e.preventDefault();
     startY = e.clientY;
     startH = panel.offsetHeight;
     panel.classList.remove('collapsed');
-    const onMove = ev => { panel.style.height = Math.max(80, startH + (startY - ev.clientY)) + 'px'; };
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    localStorage.setItem('logPanelCollapsed', '0');
+    const onMove = ev => {
+      const h = Math.max(80, startH + (startY - ev.clientY));
+      panel.style.height = h + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      localStorage.setItem('logPanelHeight', panel.style.height);
+    };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
