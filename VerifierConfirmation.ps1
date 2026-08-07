@@ -465,11 +465,7 @@ function Sync-ReessaisManuels {
     foreach ($cle in $historique.PSObject.Properties.Name) {
         $entree = $historique.$cle
 
-        if ($entree.statut -ne "NON_APPARIE") { continue }
         if ([bool]$entree.aReessayer -ne $true) { continue }
-
-        $numeroBCManuel = $entree.numeroBCManuel
-        if ([string]::IsNullOrEmpty($numeroBCManuel)) { continue }
 
         $entryID = $entree.entryID
         $storeID = $entree.storeID
@@ -482,7 +478,6 @@ function Sync-ReessaisManuels {
         }
 
         if ($null -eq $mail) {
-            # Le courriel original n'existe plus -- on documente l'echec et on arrete d'essayer
             Update-FirebaseChamp "gromec_vba/historique/$cle" @{
                 raisonEchec      = "COURRIEL_ORIGINAL_INTROUVABLE"
                 aReessayer       = $false
@@ -491,8 +486,10 @@ function Sync-ReessaisManuels {
             continue
         }
 
-        # Relance la comparaison complete avec le numero fourni manuellement,
-        # en reutilisant le meme identifiant Firebase (remplace plutot que duplique)
+        $numeroBCManuel = $entree.numeroBCManuel
+        if ($entree.statut -eq "NON_APPARIE" -and [string]::IsNullOrEmpty($numeroBCManuel)) { continue }
+
+        Write-Log "INFO  Retraitement contestation pour $cle (type: $($entree.contestation.type))"
         Invoke-TraiterComparaison $Namespace $mail $numeroBCManuel $cle
     }
 }

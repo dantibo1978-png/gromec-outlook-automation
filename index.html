@@ -922,7 +922,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-08-07 11:18";
+const DERNIERE_MAJ_CODE = "2026-08-07 13:24";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1609,12 +1609,11 @@ async function soumettreContestation(id){
     numeroBC: entree.numeroCommande || ''
   };
 
-  const updates = { contestation: contestation };
+  const updates = { contestation: contestation, aReessayer: true };
 
-  if (typeChoisi === 'retraiter') {
-    if (!bcManuel && !entree.numeroCommande) { alert('Indiquez un numéro de BC pour retraiter.'); return; }
-    updates.aReessayer = true;
-    if (bcManuel) updates.numeroBCManuel = bcManuel;
+  if (bcManuel) updates.numeroBCManuel = bcManuel;
+  if (typeChoisi === 'retraiter' && !bcManuel && !entree.numeroCommande) {
+    alert('Indiquez un numéro de BC pour retraiter.'); return;
   }
 
   try {
@@ -1639,7 +1638,8 @@ async function soumettreContestation(id){
     });
 
     entree.contestation = contestation;
-    if (typeChoisi === 'retraiter') { entree.aReessayer = true; if (bcManuel) entree.numeroBCManuel = bcManuel; }
+    entree.aReessayer = true;
+    if (bcManuel) entree.numeroBCManuel = bcManuel;
     rendreTout();
     const el = document.querySelector(`.fiche[data-id="${id}"]`);
     if (el) el.classList.add('open');
