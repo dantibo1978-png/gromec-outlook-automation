@@ -922,7 +922,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-08-07 08:47";
+const DERNIERE_MAJ_CODE = "2026-08-07 08:59";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1981,33 +1981,57 @@ demarrerSSELogs();
   });
 
   function transformerTableauSAPversDTW(texte){
-    // Detecte un tableau copie depuis SAP (colonnes "Numero d'article" /
-    // "Prix coutant") et le convertit vers le format DTW attendu par
-    // UpdatePriceList_PROD.xml (LineNum=1, PriceList=2 = prix direct).
     const lignes = texte.split(/\r?\n/).filter(l => l.trim() !== '');
-    if (lignes.length < 2) return null;
+    if (lignes.length < 1) return null;
+
     const entetes = lignes[0].split('\t').map(h => h.trim());
     const idxArticle = entetes.findIndex(h => h === "Numéro d'article");
     const idxPrix = entetes.findIndex(h => h === 'Prix coûtant');
-    if (idxArticle === -1 || idxPrix === -1) return null;
 
     const sortie = [
       'ParentKey\tLineNum\tPriceList\tPrice\tCurrency\tBasePriceList\tFactor\tManual\tAutoUpdate',
       'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
     ];
-    for (let i = 1; i < lignes.length; i++){
-      const champs = lignes[i].split('\t');
-      const article = (champs[idxArticle] || '').trim();
-      let prixTxt = (champs[idxPrix] || '').trim().replace(/[^0-9.,\-]/g, '').replace(',', '.');
-      if (!article || !prixTxt) continue;
-      const prix = parseFloat(prixTxt);
-      if (isNaN(prix)) continue;
-      sortie.push(`${article}\t1\t2\t${prix}\t\t\t\t\t`);
+
+    if (idxArticle !== -1 && idxPrix !== -1) {
+      for (let i = 1; i < lignes.length; i++){
+        const champs = lignes[i].split('\t');
+        const article = (champs[idxArticle] || '').trim();
+        let prixTxt = (champs[idxPrix] || '').trim().replace(/[^0-9.,\-]/g, '').replace(',', '.');
+        if (!article || !prixTxt) continue;
+        const prix = parseFloat(prixTxt);
+        if (isNaN(prix)) continue;
+        sortie.push(`${article}\t1\t2\t${prix}\t\t\t\t\t`);
+      }
+      return sortie.length > 2 ? sortie.join('\r\n') : null;
     }
-    return sortie.length > 2 ? sortie.join('\r\n') : null;
+
+    const estFormatPrixArticle = /^\$[\d,.]+\t/.test(lignes[0]) || /\t\$[\d,.]+$/.test(lignes[0]);
+    if (estFormatPrixArticle || /^\d+[\d.,]*\t[A-Za-z]/.test(lignes[0]) || /^[A-Za-z].*\t\$?[\d,.]+$/.test(lignes[0])) {
+      for (let i = 0; i < lignes.length; i++){
+        const sep = lignes[i].includes('\t') ? '\t' : /\s{2,}/.test(lignes[i]) ? /\s{2,}/ : /\s+/;
+        const champs = lignes[i].split(sep).map(c => c.trim());
+        if (champs.length < 2) continue;
+        let article = '', prixTxt = '';
+        if (/^\$/.test(champs[0]) || /^[\d,.]+$/.test(champs[0])) {
+          prixTxt = champs[0]; article = champs[1];
+        } else {
+          article = champs[0]; prixTxt = champs[1];
+        }
+        prixTxt = prixTxt.replace(/[^0-9.,\-]/g, '').replace(/,/g, '');
+        article = article.trim();
+        if (!article || !prixTxt) continue;
+        const prix = parseFloat(prixTxt);
+        if (isNaN(prix)) continue;
+        sortie.push(`${article}\t1\t2\t${prix}\t\t\t\t\t`);
+      }
+      return sortie.length > 2 ? sortie.join('\r\n') : null;
+    }
+
+    return null;
   }
 
-  pasteZone.addEventListener('input', () => {
+  function majPasteZone(){
     const texteBrut = pasteZone.value;
     const transforme = transformerTableauSAPversDTW(texteBrut);
     fileContent = transforme || texteBrut;
@@ -2017,11 +2041,13 @@ demarrerSSELogs();
     btnSend.disabled = lignes.length < 3;
     btnSend.style.opacity = btnSend.disabled ? '0.5' : '1';
     status.style.display = texteBrut.trim() ? 'block' : 'none';
-    status.style.color = 'var(--muted)';
+    status.style.color = transforme ? 'var(--ok)' : 'var(--muted)';
     status.textContent = transforme
-      ? ('Tableau SAP detecte -- ' + nbArticles + ' article(s) converti(s) vers le format DTW (Liste 02).')
-      : (texteBrut.trim() ? nbArticles + ' ligne(s) -- format non reconnu, envoye tel quel.' : '');
-  });
+      ? (nbArticles + ' article(s) detecte(s) — pret pour import DTW (Liste 02).')
+      : (texteBrut.trim() ? 'Format non reconnu. Utilisez un tableau SAP ou 2 colonnes (prix + code article).' : '');
+  }
+  pasteZone.addEventListener('input', majPasteZone);
+  pasteZone.addEventListener('paste', () => setTimeout(majPasteZone, 50));
 
   btnCancel.addEventListener('click', () => { modal.style.display = 'none'; });
   modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
