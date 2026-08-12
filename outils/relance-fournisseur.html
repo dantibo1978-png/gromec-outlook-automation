@@ -160,7 +160,7 @@
     </div>
     <input type="file" id="filePdf" accept=".pdf,application/pdf" style="display:none">
     <div class="toolbar" id="envoyerTousWrap" style="display:none;margin-top:10px">
-      <button class="btn" id="envoyerTous" title="Met en file d'envoi auto tous les fournisseurs relançables détectés dans le PDF (l'envoi réel se fait par RelanceFournisseur.ps1)">📤 Envoyer les relances aux fournisseurs (<span id="envoyerTousCount">0</span> prêts)</button>
+      <button class="btn" id="envoyerTous" title="Ces fournisseurs sont déjà dans la file d'envoi auto (mis un par un ou en lot) — le clic ne fait qu'en confirmer le nombre, l'envoi réel se fait par RelanceFournisseur.ps1 -Envoyer qui doit tourner sur le poste Windows.">📤 Envoyer les relances en file (<span id="envoyerTousCount">0</span>)</button>
     </div>
     <div class="status" id="pdfStatus"></div>
   </section>
@@ -304,19 +304,15 @@ function updateSelCount(){
   const el=document.getElementById("selCount"); if(el) el.textContent=selectedKeys.size;
   const btn=document.getElementById("queueSelected"); if(btn) btn.disabled=selectedKeys.size===0;
 }
-function fournisseursPrets(){
-  return groups.map((g,gi)=>({g,gi})).filter(({g})=>{
-    const etat=etatRelance(g);
-    const canRelancer=etat.code!=="attente" && etat.code!=="obtenu" && etat.code!=="exclu" && etat.code!=="exclu_fournisseur";
-    return canRelancer && g.email && queueStatut(g)!=="attente";
-  });
+function fournisseursDejaEnFile(){
+  return groups.map((g,gi)=>({g,gi})).filter(({g})=>queueStatut(g)==="attente");
 }
 function updateEnvoyerTousButton(){
   const wrap=document.getElementById("envoyerTousWrap"); if(!wrap) return;
-  const prets=groups.length?fournisseursPrets():[];
+  const enFile=groups.length?fournisseursDejaEnFile():[];
   wrap.style.display=groups.length?"flex":"none";
-  document.getElementById("envoyerTousCount").textContent=prets.length;
-  document.getElementById("envoyerTous").disabled=prets.length===0;
+  document.getElementById("envoyerTousCount").textContent=enFile.length;
+  document.getElementById("envoyerTous").disabled=enFile.length===0;
 }
 function categorieGroupe(g){ return g.done?"traite":etatRelance(g).code; }
 function saveFiltres(){ save("relance_filtres_v1",[...filtresActifs]); }
@@ -758,15 +754,10 @@ document.getElementById("queueSelected").onclick=async()=>{
   setStatus("pdfStatus",`${ok} fournisseur(s) mis en file d'envoi auto${ignores?`, ${ignores} ignoré(s) (courriel manquant ou pas encore relançable)`:""}.`,"ok");
   renderResults();
 };
-document.getElementById("envoyerTous").onclick=async()=>{
-  const cibles=fournisseursPrets();
+document.getElementById("envoyerTous").onclick=()=>{
+  const cibles=fournisseursDejaEnFile();
   if(!cibles.length) return;
-  if(!confirm(`Mettre en file d'envoi automatique ${cibles.length} fournisseur(s) prêt(s) ? L'envoi réel se fera par RelanceFournisseur.ps1 -Envoyer.`)) return;
-  const btn=document.getElementById("envoyerTous"); btn.disabled=true;
-  let ok=0;
-  for(const {gi} of cibles){ try{ await queueForAutoSend(gi); ok++; }catch(e){} }
-  setStatus("pdfStatus",`${ok} fournisseur(s) mis en file d'envoi automatique.`,"ok");
-  renderResults();
+  setStatus("pdfStatus",`${cibles.length} fournisseur(s) en file d'envoi automatique (${cibles.map(c=>c.g.supplier).join(", ")}). Ils partiront au prochain passage de RelanceFournisseur.ps1 -Envoyer sur le poste Windows — le navigateur ne peut pas envoyer de courriel lui-même.`,"ok");
 };
 document.getElementById("resetSession").onclick=()=>{
   if(confirm("RESET — effacer la session de relance en cours (fournisseurs détectés et progression) ? Le carnet n'est pas touché.")){
