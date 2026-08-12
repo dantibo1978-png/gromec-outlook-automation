@@ -1985,6 +1985,21 @@ function Invoke-TraiterComparaison {
         $enteteSAP = $resSAP.Entete
         Remove-Item $cheminCommande -Force -ErrorAction SilentlyContinue
 
+        # Detection independante d'une date de livraison confirmee (best-effort,
+        # ne bloque jamais le traitement principal, meme en cas d'echec).
+        # ACTION_REQUISE exclu : le fournisseur demande une action a Gromec,
+        # rien n'est encore vraiment confirme de son cote.
+        try {
+            if (-not $Script:PoReviseRequis) {
+                $dateLivrConf = Get-DateLivraisonConfirmeeParFournisseur $MailConfirmation
+                if ($dateLivrConf) {
+                    Set-DateLivraisonConfirmee -NumeroBC $numeroBC -Date $dateLivrConf -Source "confirmation" -Expediteur $expediteur -Sujet $sujet
+                }
+            }
+        } catch {
+            Write-Log "WARN  Detection date de livraison (confirmation) BC ${numeroBC} : $($_.Exception.Message)"
+        }
+
         if ($itemsSAP.Count -eq 0) {
             Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Fourn(corps):$($itemsFourn.Count) SAP:$($itemsSAP.Count)"
             Write-FirebaseEchec $MailConfirmation "ARTICLES_NON_EXTRAITS" $numeroBC $nomFourn $HistoriqueId
@@ -2168,6 +2183,21 @@ function Invoke-TraiterComparaison {
 
         Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
         Remove-Item $cheminCommande -Force -ErrorAction SilentlyContinue
+
+        # Detection independante d'une date de livraison confirmee (best-effort,
+        # ne bloque jamais le traitement principal, meme en cas d'echec).
+        # ACTION_REQUISE exclu : le fournisseur demande une action a Gromec,
+        # rien n'est encore vraiment confirme de son cote.
+        try {
+            if (-not $Script:PoReviseRequis) {
+                $dateLivrConf = Get-DateLivraisonConfirmeeParFournisseur $MailConfirmation
+                if ($dateLivrConf) {
+                    Set-DateLivraisonConfirmee -NumeroBC $numeroBC -Date $dateLivrConf -Source "confirmation" -Expediteur $expediteur -Sujet $sujet
+                }
+            }
+        } catch {
+            Write-Log "WARN  Detection date de livraison (confirmation) BC ${numeroBC} : $($_.Exception.Message)"
+        }
 
         if ($itemsFourn.Count -eq 0 -or $itemsSAP.Count -eq 0) {
             Write-JournalEntry $expediteur "ARTICLES_NON_EXTRAITS" "Fourn:$($itemsFourn.Count) SAP:$($itemsSAP.Count)"
@@ -2582,21 +2612,98 @@ NUMERO_COMMANDE|AUCUNE
             }
         }
 
-        try {
-            $bodyConfirm = @{
-                docNum = $bc; date = $dateTxt; source = "email"; expediteur = $adresseExp
-                sujet = $sujet; recuLe = (Get-Date).ToString("o")
-            } | ConvertTo-Json -Compress
-            Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/relance_dates_confirmees/$bc.json" -Method Put -Body $bodyConfirm -ContentType "application/json" -TimeoutSec 15 | Out-Null
+        Set-DateLivraisonConfirmee -NumeroBC $bc -Date $dateTxt -Source "relance" -Expediteur $adresseExp -Sujet $sujet
+    }
+}
 
-            $bodyDtw = @{
-                docNum = $bc; date = $dateTxt; statut = "attente"; dateAjout = (Get-Date).ToString("o")
-            } | ConvertTo-Json -Compress
-            Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/sap_shipdate_a_synchroniser/$bc.json" -Method Put -Body $bodyDtw -ContentType "application/json" -TimeoutSec 15 | Out-Null
-        } catch {
-            Write-Log "ERREUR  Ecriture Firebase pour date de relance BC $bc : $($_.Exception.Message)"
+function Set-DateLivraisonConfirmee {
+    <#
+    Point d'ecriture UNIQUE pour une date de livraison confirmee par un
+    fournisseur, peu importe d'ou elle vient (reponse a une relance, ou
+    confirmation de commande normale). Ecrit dans gromec_vba/relance_dates_confirmees
+    (pour l'onglet web) et met en file gromec_vba/sap_shipdate_a_synchroniser
+    (pour SyncDTW.ps1) -- jamais d'ecriture SAP directe ici.
+    #>
+    param([string]$NumeroBC, [string]$Date, [string]$Source, [string]$Expediteur, [string]$Sujet)
+    try {
+        $bodyConfirm = @{
+            docNum = $NumeroBC; date = $Date; source = $Source; expediteur = $Expediteur
+            sujet = $Sujet; recuLe = (Get-Date).ToString("o")
+        } | ConvertTo-Json -Compress
+        Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/relance_dates_confirmees/$NumeroBC.json" -Method Put -Body $bodyConfirm -ContentType "application/json" -TimeoutSec 15 | Out-Null
+
+        $bodyDtw = @{
+            docNum = $NumeroBC; date = $Date; statut = "attente"; dateAjout = (Get-Date).ToString("o")
+        } | ConvertTo-Json -Compress
+        Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/sap_shipdate_a_synchroniser/$NumeroBC.json" -Method Put -Body $bodyDtw -ContentType "application/json" -TimeoutSec 15 | Out-Null
+
+        Write-Log "INFO  Date de livraison confirmee pour BC $NumeroBC : $Date (source: $Source / $Expediteur)"
+    } catch {
+        Write-Log "ERREUR  Ecriture Firebase pour date de livraison BC ${NumeroBC} : $($_.Exception.Message)"
+    }
+}
+
+function Get-DateLivraisonConfirmeeParFournisseur {
+    <#
+    Question CIBLEE et INDEPENDANTE de l'extraction principale (Get-ItemsFournisseur /
+    Get-ItemsFournisseurDepuisCorps) -- n'a aucun impact sur elles, ne modifie pas
+    leur prompt deja tres travaille. Volontairement tres conservatrice : en cas
+    du moindre doute (dates differentes selon les lignes, estimation vague,
+    plage de dates), retourne AUCUNE plutot que de risquer une mauvaise date
+    dans SAP.
+    #>
+    param($MailItem)
+
+    $corps = $MailItem.Body
+    if ($corps.Length -gt 4000) { $corps = $corps.Substring(0, 4000) }
+
+    $contenuMessages = @(@{ type = "text"; text = "Sujet: $($MailItem.Subject)`n`nCorps du courriel:`n$corps" })
+    foreach ($pj in $MailItem.Attachments) {
+        if ($pj.FileName -like "*.pdf") {
+            try {
+                $cheminTemp = Join-Path $env:TEMP "datepdf_$([guid]::NewGuid().ToString('N').Substring(0,8))_$($pj.FileName)"
+                $pj.SaveAsFile($cheminTemp)
+                $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($cheminTemp))
+                Remove-Item $cheminTemp -Force -ErrorAction SilentlyContinue
+                $contenuMessages += @{ type = "document"; source = @{ type = "base64"; media_type = "application/pdf"; data = $b64 } }
+            } catch {}
         }
     }
+
+    $sysPrompt = @"
+Tu lis un courriel de confirmation de commande envoye par un fournisseur a
+Gromec Inc. (texte du courriel et pieces jointes PDF s'il y en a). Determine
+UNIQUEMENT si ce fournisseur confirme, de facon claire et non ambigue, UNE
+SEULE date de livraison precise pour L'ENSEMBLE de la commande.
+
+Reponds AUCUNE (sans hesiter) si :
+- differents articles de la commande ont des dates de livraison differentes
+- la date est une estimation vague ("2-3 semaines", "fin du mois", "bientot")
+- c'est une plage de dates plutot qu'une date precise
+- tu as le moindre doute
+
+Reponds STRICTEMENT sur une seule ligne :
+DATE|AAAA-MM-JJ
+ou
+DATE|AUCUNE
+"@
+
+    $body = @{
+        model      = $ClaudeModel
+        max_tokens = 60
+        system     = $sysPrompt
+        messages   = @(@{ role = "user"; content = $contenuMessages })
+    } | ConvertTo-Json -Depth 15
+
+    $headers = @{ "x-api-key" = $ClaudeApiKey; "anthropic-version" = "2023-06-01"; "anthropic-beta" = "pdfs-2024-09-25" }
+    try {
+        $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 45
+        $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
+        if ($texte -match "DATE\|(\d{4}-\d{2}-\d{2})") { return $Matches[1] }
+    } catch {
+        Write-Log "WARN  Get-DateLivraisonConfirmeeParFournisseur : $($_.Exception.Message)"
+    }
+    return $null
 }
 
 function Invoke-TraiterNouveauCourriel {
