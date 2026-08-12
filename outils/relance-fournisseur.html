@@ -338,6 +338,7 @@ function arrayBufferToBase64(buf){
   return btoa(binary);
 }
 async function buildGroupPdfBytes(g){
+  if(!pdfBytes){ const err=new Error("Le PDF n'est plus chargé dans le navigateur (probablement après un rafraîchissement de la page). Reglisse le PDF à l'étape 2 — la liste des fournisseurs et leur historique sont conservés."); err.code="PDF_MANQUANT"; throw err; }
   const src=await PDFDocument.load(pdfBytes.slice(0)); const out=await PDFDocument.create();
   (await out.copyPages(src,g.pages)).forEach(p=>out.addPage(p));
   return await out.save();
@@ -567,7 +568,7 @@ function saveSession(){ save(LS_SESSION, groups.map(g=>({key:g.key,fcode:g.fcode
 function restoreSession(){
   const s=load(LS_SESSION,null);
   if(Array.isArray(s)&&s.length){ groups=s.map(g=>({...g})); renderResults(); updateDoneCount();
-    setStatus("pdfStatus","Session précédente restaurée. Reglisse le PDF si tu veux re-télécharger un découpage.","ok"); }
+    setStatus("pdfStatus","⚠ Session précédente restaurée (liste des fournisseurs conservée), mais le PDF doit être reglissé à l'étape 2 avant de pouvoir télécharger un PDF ou envoyer un courriel.","warn"); }
 }
 function updateDoneCount(){
   const el=document.getElementById("doneCount"); if(!el)return;
@@ -620,15 +621,20 @@ function renderResults(){
 function inCarnet(n){return carnet.some(c=>norm(c.name)===norm(n));}
 results.addEventListener("input",e=>{const t=e.target,gi=t.dataset.gi;if(gi===undefined||!t.dataset.f)return;groups[+gi][t.dataset.f]=t.value;saveSession();});
 results.addEventListener("click",async e=>{const t=e.target;
-  if(t.dataset.pdf!==undefined)await downloadGroupPdf(+t.dataset.pdf);
-  else if(t.dataset.open!==undefined){const gi=+t.dataset.open;await downloadGroupPdf(gi);openMail(gi);groups[gi].done=true;markRelance(groups[gi]);saveSession();renderResults();updateDoneCount();}
-  else if(t.dataset.toggle!==undefined){const gi=+t.dataset.toggle;groups[gi].done=!groups[gi].done;saveSession();renderResults();updateDoneCount();}
-  else if(t.dataset.reset!==undefined){const gi=+t.dataset.reset;resetEscalade(groups[gi]);}
-  else if(t.dataset.queue!==undefined){await queueForAutoSend(+t.dataset.queue);}
-  else if(t.dataset.unqueue!==undefined){await removeFromQueue(+t.dataset.unqueue);}
-  else if(t.dataset.fournExcl!==undefined){await toggleFournisseurExclusion(+t.dataset.fournExcl);}
-  else if(t.dataset.po!==undefined){await toggleExclusion(t.dataset.po);}
-  else if(t.dataset.save!==undefined){const g=groups[+t.dataset.save];if(!inCarnet(g.supplier)){carnet.push({name:g.supplier,email:g.email||""});carnet.sort((a,b)=>a.name.localeCompare(b.name));save(LS_CARNET,carnet);renderCarnet();renderResults();}}
+  try{
+    if(t.dataset.pdf!==undefined)await downloadGroupPdf(+t.dataset.pdf);
+    else if(t.dataset.open!==undefined){const gi=+t.dataset.open;await downloadGroupPdf(gi);openMail(gi);groups[gi].done=true;markRelance(groups[gi]);saveSession();renderResults();updateDoneCount();}
+    else if(t.dataset.toggle!==undefined){const gi=+t.dataset.toggle;groups[gi].done=!groups[gi].done;saveSession();renderResults();updateDoneCount();}
+    else if(t.dataset.reset!==undefined){const gi=+t.dataset.reset;resetEscalade(groups[gi]);}
+    else if(t.dataset.queue!==undefined){await queueForAutoSend(+t.dataset.queue);}
+    else if(t.dataset.unqueue!==undefined){await removeFromQueue(+t.dataset.unqueue);}
+    else if(t.dataset.fournExcl!==undefined){await toggleFournisseurExclusion(+t.dataset.fournExcl);}
+    else if(t.dataset.po!==undefined){await toggleExclusion(t.dataset.po);}
+    else if(t.dataset.save!==undefined){const g=groups[+t.dataset.save];if(!inCarnet(g.supplier)){carnet.push({name:g.supplier,email:g.email||""});carnet.sort((a,b)=>a.name.localeCompare(b.name));save(LS_CARNET,carnet);renderCarnet();renderResults();}}
+  }catch(err){
+    console.error(err);
+    alert((err&&err.message)?err.message:"Une erreur inattendue est survenue. Regarde la console (F12) pour les détails.");
+  }
 });
 document.getElementById("resetSession").onclick=()=>{
   if(confirm("RESET — effacer la session de relance en cours (fournisseurs détectés et progression) ? Le carnet n'est pas touché.")){
@@ -644,9 +650,14 @@ async function downloadGroupPdf(gi){
 }
 function fileName(g){const b=(g.supplier||"fournisseur").replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"_").slice(0,50)||"fournisseur";return "Relance_"+b+".pdf";}
 document.getElementById("downloadAll").onclick=async()=>{
-  const zip=new JSZip();
-  for(const g of groups){zip.file(fileName(g),await buildGroupPdfBytes(g));}
-  dl(await zip.generateAsync({type:"blob"}),"Relances_fournisseurs.zip");
+  try{
+    const zip=new JSZip();
+    for(const g of groups){zip.file(fileName(g),await buildGroupPdfBytes(g));}
+    dl(await zip.generateAsync({type:"blob"}),"Relances_fournisseurs.zip");
+  }catch(err){
+    console.error(err);
+    alert((err&&err.message)?err.message:"Une erreur inattendue est survenue. Regarde la console (F12) pour les détails.");
+  }
 };
 
 /* ---- Courriel ---- */
