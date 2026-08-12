@@ -299,6 +299,13 @@ async function loadRelanceQueue(){
   if(groups.length) renderResults();
 }
 function queueStatut(g){ const e=relanceQueue[logKey(g)]; return e?e.statut:null; }
+async function removeFromQueue(gi){
+  const g=groups[gi]; const cle=logKey(g);
+  try{ await fetch(`${FIREBASE_URL}/gromec_vba/relance_auto/${encodeURIComponent(cle)}.json`,{method:"DELETE"}); }catch(e){}
+  delete relanceQueue[cle]; save("relance_queue_v1",relanceQueue);
+  setStatus("pdfStatus",`${g.supplier} retiré de la file d'envoi automatique.`,"ok");
+  renderResults();
+}
 function arrayBufferToBase64(buf){
   let binary=""; const bytes=new Uint8Array(buf); const chunk=0x8000;
   for(let i=0;i<bytes.length;i+=chunk){ binary+=String.fromCharCode.apply(null, bytes.subarray(i,i+chunk)); }
@@ -560,6 +567,7 @@ function renderResults(){
     const qs=queueStatut(g);
     const queueTag=qs==="attente"?`<span class="tag warn">📤 en file d'envoi auto</span>`:qs==="envoye"?`<span class="tag ok">📤 envoyé automatiquement</span>`:qs==="erreur"?`<span class="tag miss">📤 erreur d'envoi</span>`:"";
     const queueBtn=(canRelancer&&g.email&&qs!=="attente")?`<button class="btn sec sm" data-queue="${gi}" title="Ajoute ce fournisseur à la file que RelanceFournisseur.ps1 traitera (aucun envoi tant que le script n'est pas activé)">📤 Mettre en file d'envoi auto</button>`:"";
+    const unqueueBtn=(qs==="attente")?`<button class="btn ghost sm" data-unqueue="${gi}" title="Retire ce fournisseur de la file d'envoi automatique">✕ Retirer de la file</button>`:"";
     const cmdsHtml=g.orders.length
       ? g.orders.map(o=>`<span class="tag ${exclusions[o]?'miss':'ok'} po-chip" data-po="${esc(o)}" style="cursor:pointer" title="${exclusions[o]?'Cliquer pour réactiver les relances pour cette commande':'Cliquer pour ne plus jamais relancer cette commande'}">${exclusions[o]?'🚫 ':''}${esc(o)}</span>`).join(" ")
       : "aucun n° détecté";
@@ -573,6 +581,7 @@ function renderResults(){
         <button class="btn ${g.done?'doneb':''} sm" data-open="${gi}" ${canRelancer?"":"disabled title=\"Pas encore relançable (délai ou déjà obtenu)\""}>${g.done?'✓ Refaire — PDF + Outlook':'✉️ Télécharger PDF + ouvrir Outlook'}</button>
         <button class="btn sec sm" data-pdf="${gi}">PDF seulement</button>
         ${queueBtn}
+        ${unqueueBtn}
         <button class="btn sec sm" data-toggle="${gi}">${g.done?'Marquer à faire':'Marquer traité'}</button>
         ${resetBtn}
         ${g.known&&!inCarnet(g.supplier)?`<button class="btn sec sm" data-save="${gi}">Ajouter au carnet</button>`:""}
@@ -588,6 +597,7 @@ results.addEventListener("click",async e=>{const t=e.target;
   else if(t.dataset.toggle!==undefined){const gi=+t.dataset.toggle;groups[gi].done=!groups[gi].done;saveSession();renderResults();updateDoneCount();}
   else if(t.dataset.reset!==undefined){const gi=+t.dataset.reset;resetEscalade(groups[gi]);}
   else if(t.dataset.queue!==undefined){await queueForAutoSend(+t.dataset.queue);}
+  else if(t.dataset.unqueue!==undefined){await removeFromQueue(+t.dataset.unqueue);}
   else if(t.dataset.po!==undefined){await toggleExclusion(t.dataset.po);}
   else if(t.dataset.save!==undefined){const g=groups[+t.dataset.save];if(!inCarnet(g.supplier)){carnet.push({name:g.supplier,email:g.email||""});carnet.sort((a,b)=>a.name.localeCompare(b.name));save(LS_CARNET,carnet);renderCarnet();renderResults();}}
 });
