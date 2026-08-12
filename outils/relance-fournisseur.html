@@ -245,6 +245,7 @@ function fmtDate(iso){ if(!iso)return null; try{const d=new Date(iso);return d.t
 
 /* ---- État de relance d'un groupe fournisseur ---- */
 function etatRelance(g){
+  if(fournisseurExclusions[logKey(g)]) return {code:"exclu_fournisseur", label:"🚫 Fournisseur exclu — ne plus relancer", cls:"ok"};
   if(g.dateObtenue) return {code:"obtenu", label:"✅ Date obtenue", cls:"ok"};
   if((g.orders||[]).length>0 && activeOrders(g).length===0) return {code:"exclu", label:"🚫 Commande(s) exclue(s) — ne plus relancer", cls:"ok"};
   const e=relanceLog[logKey(g)];
@@ -258,11 +259,36 @@ function etatRelance(g){
   }
   return {code:"pret", label:`🔁 Prêt à relancer (dernière relance il y a ${jours} j)`, cls:"miss", jours};
 }
-const ETAT_ORDRE={escalade:0, pret:1, nouveau:2, attente:3, obtenu:4, exclu:5};
+const ETAT_ORDRE={escalade:0, pret:1, nouveau:2, attente:3, obtenu:4, exclu:5, exclu_fournisseur:6};
 let showDone=false;
 
 /* ---- Commandes exclues des relances (clic sur un n° de commande dans la carte) ---- */
 let exclusions=load("relance_exclusions_v1",{}); // { "9005472": true, ... }
+
+/* ---- Fournisseurs exclus des relances (bouton dans la carte, permanent) ---- */
+let fournisseurExclusions=load("relance_fournisseur_exclusions_v1",{}); // { "F001234": true, "NOM:XYZ": true, ... }
+async function loadFournisseurExclusions(){
+  try{
+    const r=await fetch(`${FIREBASE_URL}/gromec_vba/relance_fournisseur_exclusions.json`);
+    const d=await r.json();
+    fournisseurExclusions=d&&typeof d==="object"?d:{};
+    save("relance_fournisseur_exclusions_v1",fournisseurExclusions);
+  }catch(e){/* hors-ligne : cache local conservé */}
+  if(groups.length) renderResults();
+}
+async function toggleFournisseurExclusion(gi){
+  const g=groups[gi]; const cle=logKey(g);
+  if(fournisseurExclusions[cle]){
+    delete fournisseurExclusions[cle];
+    try{ await fetch(`${FIREBASE_URL}/gromec_vba/relance_fournisseur_exclusions/${encodeURIComponent(cle)}.json`,{method:"DELETE"}); }catch(e){}
+  }else{
+    if(!confirm(`Ne plus jamais relancer « ${g.supplier} » ? Ce fournisseur ne sera plus proposé pour la relance (manuelle ou automatique) tant que tu ne le réactives pas ici.`)) return;
+    fournisseurExclusions[cle]=true;
+    try{ await fetch(`${FIREBASE_URL}/gromec_vba/relance_fournisseur_exclusions/${encodeURIComponent(cle)}.json`,{method:"PUT",body:"true"}); }catch(e){}
+  }
+  save("relance_fournisseur_exclusions_v1",fournisseurExclusions);
+  renderResults();
+}
 async function loadExclusions(){
   try{
     const r=await fetch(`${FIREBASE_URL}/gromec_vba/relance_exclusions.json`);
@@ -554,7 +580,7 @@ const results=document.getElementById("results");
 function renderResults(){
   if(!groups.length){results.innerHTML=`<div class="empty">Aucun résultat.</div>`;document.getElementById("globalActions").style.display="none";return;}
   document.getElementById("globalActions").style.display="flex"; results.innerHTML="";
-  let visibles=groups.map((g,gi)=>({g,gi,etat:etatRelance(g)})).filter(o=>showDone||(!o.g.done && o.etat.code!=="obtenu" && o.etat.code!=="exclu"));
+  let visibles=groups.map((g,gi)=>({g,gi,etat:etatRelance(g)})).filter(o=>showDone||(!o.g.done && o.etat.code!=="obtenu" && o.etat.code!=="exclu" && o.etat.code!=="exclu_fournisseur"));
   visibles.sort((a,b)=>(ETAT_ORDRE[a.etat.code]-ETAT_ORDRE[b.etat.code])||(a.g.supplier||"").localeCompare(b.g.supplier||""));
   if(!visibles.length){ results.innerHTML=`<div class="empty">Tous les fournisseurs sont traités, ont une date de livraison, ou n'ont plus de commande active. ✓<br><span style="font-size:.85rem">Coche « Afficher les traités » pour les revoir.</span></div>`; return; }
   visibles.forEach(({g,gi,etat})=>{
@@ -563,7 +589,8 @@ function renderResults(){
     const doneTag=g.done?`<span class="tag ok">✓ traité manuellement</span>`:"";
     const etatTag=`<span class="tag ${etat.cls}" title="Délai actuel : ${relanceParams.delaiJours} j · max ${relanceParams.maxRelances} relance(s)">${etat.label}</span>`;
     const resetBtn=etat.code==="escalade"?`<button class="btn ghost sm" data-reset="${gi}" title="Remettre à zéro le compteur de relances">↺ Réinitialiser</button>`:"";
-    const canRelancer=etat.code!=="attente" && etat.code!=="obtenu" && etat.code!=="exclu";
+    const canRelancer=etat.code!=="attente" && etat.code!=="obtenu" && etat.code!=="exclu" && etat.code!=="exclu_fournisseur";
+    const fournBtn=`<button class="btn ghost sm" data-fourn-excl="${gi}" title="${etat.code==='exclu_fournisseur'?'Réactiver les relances pour ce fournisseur':'Exclure définitivement ce fournisseur des relances'}">${etat.code==='exclu_fournisseur'?'↺ Réactiver ce fournisseur':'🚫 Ne plus jamais relancer'}</button>`;
     const qs=queueStatut(g);
     const queueTag=qs==="attente"?`<span class="tag warn">📤 en file d'envoi auto</span>`:qs==="envoye"?`<span class="tag ok">📤 envoyé automatiquement</span>`:qs==="erreur"?`<span class="tag miss">📤 erreur d'envoi</span>`:"";
     const queueBtn=(canRelancer&&g.email&&qs!=="attente")?`<button class="btn sec sm" data-queue="${gi}" title="Ajoute ce fournisseur à la file que RelanceFournisseur.ps1 traitera (aucun envoi tant que le script n'est pas activé)">📤 Mettre en file d'envoi auto</button>`:"";
@@ -584,6 +611,7 @@ function renderResults(){
         ${unqueueBtn}
         <button class="btn sec sm" data-toggle="${gi}">${g.done?'Marquer à faire':'Marquer traité'}</button>
         ${resetBtn}
+        ${fournBtn}
         ${g.known&&!inCarnet(g.supplier)?`<button class="btn sec sm" data-save="${gi}">Ajouter au carnet</button>`:""}
       </div>`;
     results.appendChild(card);
@@ -598,6 +626,7 @@ results.addEventListener("click",async e=>{const t=e.target;
   else if(t.dataset.reset!==undefined){const gi=+t.dataset.reset;resetEscalade(groups[gi]);}
   else if(t.dataset.queue!==undefined){await queueForAutoSend(+t.dataset.queue);}
   else if(t.dataset.unqueue!==undefined){await removeFromQueue(+t.dataset.unqueue);}
+  else if(t.dataset.fournExcl!==undefined){await toggleFournisseurExclusion(+t.dataset.fournExcl);}
   else if(t.dataset.po!==undefined){await toggleExclusion(t.dataset.po);}
   else if(t.dataset.save!==undefined){const g=groups[+t.dataset.save];if(!inCarnet(g.supplier)){carnet.push({name:g.supplier,email:g.email||""});carnet.sort((a,b)=>a.name.localeCompare(b.name));save(LS_CARNET,carnet);renderCarnet();renderResults();}}
 });
@@ -655,7 +684,7 @@ document.getElementById("showDone").addEventListener("change",e=>{showDone=e.tar
 applyParamsToUI();
 document.getElementById("paramDelai").addEventListener("change",e=>{relanceParams.delaiJours=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.delaiJours);saveParametres();if(groups.length)renderResults();});
 document.getElementById("paramMax").addEventListener("change",e=>{relanceParams.maxRelances=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.maxRelances);saveParametres();if(groups.length)renderResults();});
-loadParametres(); loadRelanceLog(); loadRelanceQueue(); loadExclusions();
+loadParametres(); loadRelanceLog(); loadRelanceQueue(); loadExclusions(); loadFournisseurExclusions();
 </script>
 </body>
 </html>
