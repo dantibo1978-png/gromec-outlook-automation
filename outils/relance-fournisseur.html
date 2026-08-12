@@ -246,6 +246,7 @@ function fmtDate(iso){ if(!iso)return null; try{const d=new Date(iso);return d.t
 /* ---- État de relance d'un groupe fournisseur ---- */
 function etatRelance(g){
   if(g.dateObtenue) return {code:"obtenu", label:"✅ Date obtenue", cls:"ok"};
+  if((g.orders||[]).length>0 && activeOrders(g).length===0) return {code:"exclu", label:"🚫 Commande(s) exclue(s) — ne plus relancer", cls:"ok"};
   const e=relanceLog[logKey(g)];
   if(!e || !e.count) return {code:"nouveau", label:"🆕 Jamais relancé", cls:"warn"};
   const jours=Math.floor((Date.now()-new Date(e.lastSent).getTime())/86400000);
@@ -257,8 +258,34 @@ function etatRelance(g){
   }
   return {code:"pret", label:`🔁 Prêt à relancer (dernière relance il y a ${jours} j)`, cls:"miss", jours};
 }
-const ETAT_ORDRE={escalade:0, pret:1, nouveau:2, attente:3, obtenu:4};
+const ETAT_ORDRE={escalade:0, pret:1, nouveau:2, attente:3, obtenu:4, exclu:5};
 let showDone=false;
+
+/* ---- Commandes exclues des relances (clic sur un n° de commande dans la carte) ---- */
+let exclusions=load("relance_exclusions_v1",{}); // { "9005472": true, ... }
+async function loadExclusions(){
+  try{
+    const r=await fetch(`${FIREBASE_URL}/gromec_vba/relance_exclusions.json`);
+    const d=await r.json();
+    exclusions=d&&typeof d==="object"?d:{};
+    save("relance_exclusions_v1",exclusions);
+  }catch(e){/* hors-ligne : cache local conservé */}
+  if(groups.length) renderResults();
+}
+async function toggleExclusion(po){
+  if(exclusions[po]){ delete exclusions[po]; }
+  else{ exclusions[po]=true; }
+  save("relance_exclusions_v1",exclusions);
+  try{
+    if(exclusions[po]){
+      await fetch(`${FIREBASE_URL}/gromec_vba/relance_exclusions/${encodeURIComponent(po)}.json`,{method:"PUT",body:"true"});
+    }else{
+      await fetch(`${FIREBASE_URL}/gromec_vba/relance_exclusions/${encodeURIComponent(po)}.json`,{method:"DELETE"});
+    }
+  }catch(e){}
+  renderResults();
+}
+function activeOrders(g){ return (g.orders||[]).filter(o=>!exclusions[o]); }
 
 /* ---- File d'envoi automatique (RelanceFournisseur.ps1 lit cette file côté Outlook) ---- */
 let relanceQueue=load("relance_queue_v1",{}); // cache local, miroir de gromec_vba/relance_auto
@@ -287,10 +314,11 @@ async function queueForAutoSend(gi){
   if(!g.email){ alert("Pas de courriel destinataire pour ce fournisseur — impossible de mettre en file."); return; }
   const cle=logKey(g);
   const date=new Date().toLocaleDateString("fr-CA");
-  const cmds=g.orders.length?g.orders.join(", "):"(voir pièce jointe)";
+  const actifs=activeOrders(g);
+  const cmds=actifs.length?actifs.join(", "):"(voir pièce jointe)";
   const bytes=await buildGroupPdfBytes(g);
   const job={
-    cle, fournisseur:g.supplier||"", email:g.email, orders:g.orders||[],
+    cle, fournisseur:g.supplier||"", email:g.email, orders:actifs,
     subject:fill(tmpl.subject,g,cmds,date), body:fill(tmpl.body,g,cmds,date),
     pdfBase64:arrayBufferToBase64(bytes), pdfNom:fileName(g),
     statut:"attente", dateAjout:new Date().toISOString()
@@ -519,21 +547,24 @@ const results=document.getElementById("results");
 function renderResults(){
   if(!groups.length){results.innerHTML=`<div class="empty">Aucun résultat.</div>`;document.getElementById("globalActions").style.display="none";return;}
   document.getElementById("globalActions").style.display="flex"; results.innerHTML="";
-  let visibles=groups.map((g,gi)=>({g,gi,etat:etatRelance(g)})).filter(o=>showDone||(!o.g.done && o.etat.code!=="obtenu"));
+  let visibles=groups.map((g,gi)=>({g,gi,etat:etatRelance(g)})).filter(o=>showDone||(!o.g.done && o.etat.code!=="obtenu" && o.etat.code!=="exclu"));
   visibles.sort((a,b)=>(ETAT_ORDRE[a.etat.code]-ETAT_ORDRE[b.etat.code])||(a.g.supplier||"").localeCompare(b.g.supplier||""));
-  if(!visibles.length){ results.innerHTML=`<div class="empty">Tous les fournisseurs sont traités ou ont une date de livraison. ✓<br><span style="font-size:.85rem">Coche « Afficher les traités » pour les revoir.</span></div>`; return; }
+  if(!visibles.length){ results.innerHTML=`<div class="empty">Tous les fournisseurs sont traités, ont une date de livraison, ou n'ont plus de commande active. ✓<br><span style="font-size:.85rem">Coche « Afficher les traités » pour les revoir.</span></div>`; return; }
   visibles.forEach(({g,gi,etat})=>{
     const card=document.createElement("div"); card.className="card"+(g.known?"":" unknown")+(g.done?" done":"");
     const emailTag=g.known?(g.email?"":`<span class="tag miss">courriel manquant</span>`):`<span class="tag miss">nom à assigner</span>`;
     const doneTag=g.done?`<span class="tag ok">✓ traité manuellement</span>`:"";
     const etatTag=`<span class="tag ${etat.cls}" title="Délai actuel : ${relanceParams.delaiJours} j · max ${relanceParams.maxRelances} relance(s)">${etat.label}</span>`;
     const resetBtn=etat.code==="escalade"?`<button class="btn ghost sm" data-reset="${gi}" title="Remettre à zéro le compteur de relances">↺ Réinitialiser</button>`:"";
-    const canRelancer=etat.code!=="attente" && etat.code!=="obtenu";
+    const canRelancer=etat.code!=="attente" && etat.code!=="obtenu" && etat.code!=="exclu";
     const qs=queueStatut(g);
     const queueTag=qs==="attente"?`<span class="tag warn">📤 en file d'envoi auto</span>`:qs==="envoye"?`<span class="tag ok">📤 envoyé automatiquement</span>`:qs==="erreur"?`<span class="tag miss">📤 erreur d'envoi</span>`:"";
     const queueBtn=(canRelancer&&g.email&&qs!=="attente")?`<button class="btn sec sm" data-queue="${gi}" title="Ajoute ce fournisseur à la file que RelanceFournisseur.ps1 traitera (aucun envoi tant que le script n'est pas activé)">📤 Mettre en file d'envoi auto</button>`:"";
+    const cmdsHtml=g.orders.length
+      ? g.orders.map(o=>`<span class="tag ${exclusions[o]?'miss':'ok'} po-chip" data-po="${esc(o)}" style="cursor:pointer" title="${exclusions[o]?'Cliquer pour réactiver les relances pour cette commande':'Cliquer pour ne plus jamais relancer cette commande'}">${exclusions[o]?'🚫 ':''}${esc(o)}</span>`).join(" ")
+      : "aucun n° détecté";
     card.innerHTML=`<h3>${esc(g.supplier)} ${etatTag} ${doneTag} ${emailTag} ${queueTag}</h3>
-      <div class="meta">Page(s) ${g.pages.map(p=>p+1).join(", ")} · ${g.orders.length?("Commande(s) : "+g.orders.join(", ")):"aucun n° détecté"}</div>
+      <div class="meta">Page(s) ${g.pages.map(p=>p+1).join(", ")} · Commande(s) : ${cmdsHtml}</div>
       <div class="grid2">
         <div class="field"><label>Nom fournisseur</label><input class="box" data-gi="${gi}" data-f="supplier" value="${esc(g.supplier)}"></div>
         <div class="field"><label>Courriel destinataire</label><input class="box" data-gi="${gi}" data-f="email" value="${esc(g.email||"")}" placeholder="courriel@fournisseur.com"></div>
@@ -557,6 +588,7 @@ results.addEventListener("click",async e=>{const t=e.target;
   else if(t.dataset.toggle!==undefined){const gi=+t.dataset.toggle;groups[gi].done=!groups[gi].done;saveSession();renderResults();updateDoneCount();}
   else if(t.dataset.reset!==undefined){const gi=+t.dataset.reset;resetEscalade(groups[gi]);}
   else if(t.dataset.queue!==undefined){await queueForAutoSend(+t.dataset.queue);}
+  else if(t.dataset.po!==undefined){await toggleExclusion(t.dataset.po);}
   else if(t.dataset.save!==undefined){const g=groups[+t.dataset.save];if(!inCarnet(g.supplier)){carnet.push({name:g.supplier,email:g.email||""});carnet.sort((a,b)=>a.name.localeCompare(b.name));save(LS_CARNET,carnet);renderCarnet();renderResults();}}
 });
 document.getElementById("resetSession").onclick=()=>{
@@ -580,7 +612,8 @@ document.getElementById("downloadAll").onclick=async()=>{
 
 /* ---- Courriel ---- */
 function openMail(gi){const g=groups[gi];const date=new Date().toLocaleDateString("fr-CA");
-  const cmds=g.orders.length?g.orders.join(", "):"(voir pièce jointe)";
+  const actifs=activeOrders(g);
+  const cmds=actifs.length?actifs.join(", "):"(voir pièce jointe)";
   const subj=fill(tmpl.subject,g,cmds,date), body=fill(tmpl.body,g,cmds,date);
   window.location.href=`mailto:${encodeURIComponent(g.email||"")}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;}
 function fill(s,g,cmds,date){return (s||"").replace(/{fournisseur}/g,g.supplier||"").replace(/{commandes}/g,cmds).replace(/{date}/g,date);}
@@ -612,7 +645,7 @@ document.getElementById("showDone").addEventListener("change",e=>{showDone=e.tar
 applyParamsToUI();
 document.getElementById("paramDelai").addEventListener("change",e=>{relanceParams.delaiJours=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.delaiJours);saveParametres();if(groups.length)renderResults();});
 document.getElementById("paramMax").addEventListener("change",e=>{relanceParams.maxRelances=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.maxRelances);saveParametres();if(groups.length)renderResults();});
-loadParametres(); loadRelanceLog(); loadRelanceQueue();
+loadParametres(); loadRelanceLog(); loadRelanceQueue(); loadExclusions();
 </script>
 </body>
 </html>
