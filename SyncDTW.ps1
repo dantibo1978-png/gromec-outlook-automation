@@ -86,6 +86,7 @@ $Script:ParamCourrielContact      = "DTHIBAULT@GROMEC.COM"
 $Script:ParamTPS                  = 0.05
 $Script:ParamTVQ                  = 0.09975
 $Script:ParamActiverSyncShipDate  = $false  # SECURITE : desactive tant que le format de date DTW n'est pas valide manuellement
+$Script:ParamActiverEnvoiRelance  = $false  # SECURITE : desactive par defaut -- envoie de vrais courriels via Outlook
 try {
     $repValeurs = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/valeurs.json" -Method Get -TimeoutSec 10
     if ($repValeurs) {
@@ -98,6 +99,7 @@ try {
         if ($repValeurs.tps)                       { $Script:ParamTPS                  = [double]$repValeurs.tps / 100.0 }
         if ($repValeurs.tvq)                       { $Script:ParamTVQ                  = [double]$repValeurs.tvq / 100.0 }
         if ($null -ne $repValeurs.activer_sync_shipdate) { $Script:ParamActiverSyncShipDate = [bool]$repValeurs.activer_sync_shipdate }
+        if ($null -ne $repValeurs.activer_envoi_relance) { $Script:ParamActiverEnvoiRelance = [bool]$repValeurs.activer_envoi_relance }
     }
 } catch {}
 # ──────────────────────────────────────────────────────────────────────────────
@@ -291,6 +293,89 @@ function Write-FichierPrixL2DTW {
         }
     }
     throw "Impossible d'ecrire $DTW_FichierPrixL2 apres 8 tentatives"
+}
+
+function Invoke-EnvoiRelancesAutomatiques {
+    <#
+    Envoie via Outlook les relances fournisseur mises en file par l'onglet
+    outils/relance-fournisseur.html (gromec_vba/relance_auto, statut "attente").
+    Integre ici (plutot que dans RelanceFournisseur.ps1 uniquement) pour que
+    l'envoi automatique profite du meme mecanisme de demarrage que SyncDTW.ps1,
+    sans devoir configurer une deuxieme tache planifiee.
+    SECURITE : n'envoie RIEN tant que $Outlook est $null (voir
+    $Script:ParamActiverEnvoiRelance, desactive par defaut).
+    #>
+    param($Outlook)
+    if ($null -eq $Outlook) { return }
+
+    $file = $null
+    try {
+        $file = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_auto.json" -Method Get -TimeoutSec 15
+    } catch {
+        Write-Log "WARN  Impossible de lire la file relance_auto : $($_.Exception.Message)"
+        return
+    }
+    if ($null -eq $file -or $file -eq "null") { return }
+
+    $jobs = @($file.PSObject.Properties | Where-Object { $_.Value.statut -eq "attente" })
+    if ($jobs.Count -eq 0) { return }
+
+    Write-Log "INFO  $($jobs.Count) relance(s) en attente d'envoi."
+
+    foreach ($jobProp in $jobs) {
+        $cle = $jobProp.Name
+        $job = $jobProp.Value
+        $dest = $job.email
+
+        if (-not $dest) {
+            Write-Log "AVERT Relance auto '$cle' sans courriel destinataire -- ignoree."
+            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_auto/$cle.json" -Method Patch `
+                -Body '{"statut":"erreur","erreur":"Pas de courriel destinataire"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
+            continue
+        }
+
+        $cheminPdf = $null
+        try {
+            $bytes = [Convert]::FromBase64String($job.pdfBase64)
+            $nomPdf = if ($job.pdfNom) { $job.pdfNom } else { "Relance_$cle.pdf" }
+            $cheminPdf = Join-Path $env:TEMP "relance_$([guid]::NewGuid().ToString('N').Substring(0,8))_$nomPdf"
+            [System.IO.File]::WriteAllBytes($cheminPdf, $bytes)
+        } catch {
+            Write-Log "ERREUR Relance auto '$cle' : PDF invalide : $($_.Exception.Message)"
+            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_auto/$cle.json" -Method Patch `
+                -Body (@{ statut = 'erreur'; erreur = "PDF invalide : $($_.Exception.Message)" } | ConvertTo-Json -Compress) `
+                -ContentType "application/json" -TimeoutSec 5 | Out-Null
+            continue
+        }
+
+        try {
+            $mail = $Outlook.CreateItem(0)  # olMailItem
+            $mail.To = $dest
+            $mail.Subject = $job.subject
+            $mail.Body = $job.body
+            if (Test-Path $cheminPdf) { $mail.Attachments.Add($cheminPdf) | Out-Null }
+            $mail.Send()
+
+            Write-Log "INFO  Relance envoyee a '$($job.fournisseur)' <$dest> (BC: $($job.orders -join ', '))."
+            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_auto/$cle.json" -Method Patch `
+                -Body (@{ statut = 'envoye'; dateTraitement = (Get-Date).ToString('o') } | ConvertTo-Json -Compress) `
+                -ContentType "application/json" -TimeoutSec 5 | Out-Null
+
+            # Miroir de markRelance() cote web : incrementer le compteur de relance
+            $actuel = $null
+            try { $actuel = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_log/$cle.json" -Method Get -TimeoutSec 10 } catch {}
+            $count = if ($actuel -and $actuel.count) { [int]$actuel.count } else { 0 }
+            $nouveauLog = @{ count = $count + 1; lastSent = (Get-Date).ToString('o'); escalade = $false } | ConvertTo-Json -Compress
+            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_log/$cle.json" -Method Put -Body $nouveauLog -ContentType "application/json" -TimeoutSec 15 | Out-Null
+        } catch {
+            Write-Log "ERREUR Relance auto '$cle' : echec envoi Outlook : $($_.Exception.Message)"
+            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_auto/$cle.json" -Method Patch `
+                -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
+                -ContentType "application/json" -TimeoutSec 5 | Out-Null
+        } finally {
+            if ($cheminPdf -and (Test-Path $cheminPdf)) { Remove-Item $cheminPdf -Force -ErrorAction SilentlyContinue }
+        }
+    }
 }
 
 function Invoke-DTW {
@@ -918,6 +1003,19 @@ try {
 
 $DerniereePurgeLogs = Get-Date "2000-01-01"
 
+# ── Connexion Outlook pour l'envoi automatique des relances (optionnel) ────
+# Seulement si active dans les parametres -- sinon aucune dependance a
+# Outlook n'est ajoutee au demarrage de SyncDTW.ps1.
+$Script:OutlookRelance = $null
+if ($Script:ParamActiverEnvoiRelance) {
+    try {
+        $Script:OutlookRelance = New-Object -ComObject Outlook.Application
+        Write-Log "INFO  Connexion Outlook etablie -- envoi automatique des relances actif."
+    } catch {
+        Write-Log "ERREUR Connexion Outlook impossible pour l'envoi des relances : $($_.Exception.Message)"
+    }
+}
+
 while ($true) {
   try {
     $historique = Get-HistoriqueActif
@@ -927,6 +1025,11 @@ while ($true) {
         $historiqueFull = Get-Historique
         Invoke-PurgeHistoriqueTraite -Historique $historiqueFull
         $DerniereePurgeLogs = Get-Date
+    }
+
+    if ($Script:ParamActiverEnvoiRelance -and $Script:OutlookRelance) {
+        try { Invoke-EnvoiRelancesAutomatiques -Outlook $Script:OutlookRelance }
+        catch { Write-Log "ERREUR Invoke-EnvoiRelancesAutomatiques : $($_.Exception.Message)" }
     }
 
     # Verifier reclassifications manuelles (VBA Outlook) -- liste pour supporter plusieurs en meme temps

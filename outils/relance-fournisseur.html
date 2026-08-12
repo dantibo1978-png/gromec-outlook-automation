@@ -149,6 +149,13 @@
       </label>
       <p class="hint" style="margin:6px 0 0">Quand une réponse de relance contient une date précise, elle est appliquée à <strong>toutes les lignes</strong> de la commande dans SAP. Laisse désactivé tant que tu n'as pas validé le format de date avec un test réel.</p>
     </div>
+    <div class="field" style="margin-top:10px;padding:10px;border:1px solid var(--warn);border-radius:8px;background:var(--warn-bg)">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:normal;font-size:.9rem;color:var(--ink)">
+        <input type="checkbox" id="paramActiverEnvoiRelance">
+        <span>⚠ Activer l'envoi automatique des relances par courriel (via SyncDTW.ps1 / Outlook)</span>
+      </label>
+      <p class="hint" style="margin:6px 0 0">Une fois activé, <strong>SyncDTW.ps1</strong> (qui tourne déjà en continu sur le poste Windows) enverra automatiquement tout fournisseur mis en file — pas besoin d'un script ou d'une tâche planifiée séparée.</p>
+    </div>
   </section>
 
   <!-- ÉTAPE 2 : PDF -->
@@ -236,6 +243,20 @@ async function loadActiverShipDate(){
 }
 async function saveActiverShipDate(val){
   try{ await fetch(`${FIREBASE_URL}/gromec_vba/parametres/valeurs.json`,{method:"PATCH",body:JSON.stringify({activer_sync_shipdate:!!val})}); }catch(e){}
+}
+
+/* ---- Activation de l'envoi automatique des relances par SyncDTW.ps1 (meme
+   noeud gromec_vba/parametres/valeurs, meme precaution PATCH-only). ---- */
+async function loadActiverEnvoiRelance(){
+  try{
+    const r=await fetch(`${FIREBASE_URL}/gromec_vba/parametres/valeurs.json`);
+    const d=await r.json();
+    const cb=document.getElementById("paramActiverEnvoiRelance");
+    if(cb) cb.checked=!!(d && d.activer_envoi_relance);
+  }catch(e){}
+}
+async function saveActiverEnvoiRelance(val){
+  try{ await fetch(`${FIREBASE_URL}/gromec_vba/parametres/valeurs.json`,{method:"PATCH",body:JSON.stringify({activer_envoi_relance:!!val})}); }catch(e){}
 }
 
 /* ---- Journal des relances (Firebase = source de vérité, cache local pour rendu immédiat) ---- */
@@ -834,6 +855,14 @@ document.getElementById("paramActiverShipDate").addEventListener("change",e=>{
   saveActiverShipDate(on);
 });
 loadActiverShipDate();
+document.getElementById("paramActiverEnvoiRelance").addEventListener("change",e=>{
+  const on=e.target.checked;
+  if(on && !confirm("Activer l'envoi automatique RÉEL des relances par courriel ?\n\nSyncDTW.ps1 se connectera à Outlook et enverra automatiquement tout fournisseur mis en file d'envoi auto — sans confirmation supplémentaire. Assure-toi que ça correspond bien à ce que tu veux avant de continuer.")){
+    e.target.checked=false; return;
+  }
+  saveActiverEnvoiRelance(on);
+});
+loadActiverEnvoiRelance();
 // Charger tout l'état (délais, historique, file d'envoi, exclusions) AVANT
 // de charger/analyser le PDF, pour que le tout premier rendu des cartes ait
 // déjà les bonnes données (sinon la file d'envoi auto pouvait sembler
