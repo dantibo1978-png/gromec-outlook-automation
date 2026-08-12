@@ -2495,7 +2495,7 @@ function Invoke-TraiterReponseRelance {
     Ne modifie jamais SAP directement -- se contente d'ecrire dans Firebase,
     exactement comme le reste du pipeline (SyncDTW.ps1 fait l'ecriture SAP).
     #>
-    param($MailItem)
+    param($Namespace, $MailItem)
 
     $adresseExp = Get-AdresseSMTP $MailItem
     $sujet = $MailItem.Subject
@@ -2548,6 +2548,39 @@ NUMERO_COMMANDE|AUCUNE
         if ($commandes -notcontains $bc) { continue }
 
         Write-Log "INFO  Date de livraison confirmee pour BC $bc : $dateTxt (source: $adresseExp)"
+
+        # Amorce le cache local des lignes du PO (necessaire a SyncDTW.ps1 pour
+        # savoir sur quelles lignes SAP appliquer la date) s'il n'existe pas
+        # deja -- retrouve le BC envoye a l'origine dans les Elements envoyes
+        # et l'extrait via Claude, exactement comme le fait deja le flux de
+        # confirmation normal (Get-ItemsCommandeGromec).
+        $fichierCachePO = Join-Path $DossierCachePO "$bc.json"
+        if (-not (Test-Path $fichierCachePO)) {
+            try {
+                $mailEnvoye = Find-CourrielEnvoyeCorrespondant $Namespace $MailItem $bc
+                if ($mailEnvoye) {
+                    $cheminPOTemp = $null
+                    foreach ($piece in $mailEnvoye.Attachments) {
+                        if ($piece.FileName -like "*.pdf") {
+                            $cheminPOTemp = Join-Path $env:TEMP "po_$([guid]::NewGuid().ToString('N').Substring(0,8))_$($piece.FileName)"
+                            $piece.SaveAsFile($cheminPOTemp)
+                            break
+                        }
+                    }
+                    if ($cheminPOTemp) {
+                        Get-ItemsCommandeGromec $cheminPOTemp $bc | Out-Null
+                        Remove-Item $cheminPOTemp -Force -ErrorAction SilentlyContinue
+                        Write-Log "INFO  Cache PO amorce pour BC $bc a partir du courriel envoye retrouve."
+                    } else {
+                        Write-Log "WARN  BC $bc : courriel envoye retrouve mais sans PJ PDF -- cache PO non amorce."
+                    }
+                } else {
+                    Write-Log "WARN  BC $bc : courriel envoye introuvable -- cache PO non amorce, SyncDTW.ps1 ne pourra pas appliquer la date."
+                }
+            } catch {
+                Write-Log "WARN  Amorce du cache PO pour BC $bc a echoue : $($_.Exception.Message)"
+            }
+        }
 
         try {
             $bodyConfirm = @{
@@ -2604,7 +2637,7 @@ function Invoke-TraiterNouveauCourriel {
     # une confirmation de commande, inutile d'y depenser un appel Claude Haiku
     # ni de risquer une mauvaise classification.
     if (Test-EstReponseRelance $MailItem) {
-        Invoke-TraiterReponseRelance $MailItem
+        Invoke-TraiterReponseRelance $Namespace $MailItem
         if (-not $ForcerTraitement) { Set-ConversationTraitee $convID }
         return
     }
