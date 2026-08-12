@@ -1,0 +1,43 @@
+name: Mise à jour de l'horodatage du site
+
+# Met à jour automatiquement DERNIERE_MAJ_CODE dans index.html à chaque push
+# sur main, pour que le dashboard affiche la vraie date/heure du dernier
+# déploiement plutôt qu'une valeur codée en dur oubliée.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  maj-horodatage:
+    runs-on: ubuntu-latest
+    # Ne pas se redéclencher soi-même sur le commit d'horodatage
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip-timestamp]')
+    permissions:
+      contents: write
+    steps:
+      - name: Récupérer le contenu du repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Calculer l'horodatage (heure de Québec)
+        id: horodatage
+        run: |
+          echo "valeur=$(TZ='America/Toronto' date '+%Y-%m-%d %H:%M')" >> "$GITHUB_OUTPUT"
+
+      - name: Mettre à jour index.html
+        run: |
+          sed -i -E "s/const DERNIERE_MAJ_CODE = \"[^\"]*\";/const DERNIERE_MAJ_CODE = \"${{ steps.horodatage.outputs.valeur }}\";/" index.html
+
+      - name: Commit et push si changement
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet index.html; then
+            echo "Aucun changement (horodatage déjà à jour)."
+            exit 0
+          fi
+          git add index.html
+          git commit -m "Mise à jour automatique de l'horodatage du site [skip-timestamp]"
+          git push
