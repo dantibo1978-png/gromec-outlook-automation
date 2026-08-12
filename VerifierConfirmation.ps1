@@ -2943,7 +2943,8 @@ try {
         $compte = 0
         foreach ($item in $items) {
             if ($item.Class -ne 43) { continue }
-            if ($item.Attachments.Count -eq 0) { continue }
+            # PJ requise SAUF pour une reponse de relance (texte seul, pas de PDF)
+            if ($item.Attachments.Count -eq 0 -and -not (Test-EstReponseRelance $item)) { continue }
             $liste += [PSCustomObject]@{
                 Sujet       = $item.Subject
                 Expediteur  = $item.SenderName
@@ -2955,7 +2956,7 @@ try {
             if ($compte -ge $Nombre) { break }
         }
 
-        $choix = $liste | Out-GridView -Title "Choisissez un courriel a traiter (PJ requise) -- $Nombre derniers" -OutputMode Single
+        $choix = $liste | Out-GridView -Title "Choisissez un courriel a traiter (PJ requise, sauf reponses de relance) -- $Nombre derniers" -OutputMode Single
         if ($null -eq $choix) { exit 0 }
 
         $mail = $namespace.GetItemFromID($choix.EntryID, $choix.StoreID)
