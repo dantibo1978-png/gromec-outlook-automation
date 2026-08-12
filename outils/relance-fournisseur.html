@@ -361,6 +361,21 @@ document.getElementById("filtresEtat").addEventListener("click",e=>{
 });
 document.getElementById("resultsSearch").addEventListener("input",e=>{ rechercheTexte=norm(e.target.value); renderResults(); });
 
+/* ---- Dates de livraison réellement confirmées (par courriel, via VerifierConfirmation.ps1) ----
+   Seule source fiable pour "date obtenue" -- la colonne "Date livr." du PDF
+   lui-même est une estimation SAP, pas une confirmation, et ne doit jamais
+   servir à ça (voir historique : faux positifs sur 13 fournisseurs). ---- */
+let datesConfirmees=load("relance_dates_confirmees_v1",{}); // { "9004168": {date,source,...}, ... }
+async function loadDatesConfirmees(){
+  try{
+    const r=await fetch(`${FIREBASE_URL}/gromec_vba/relance_dates_confirmees.json`);
+    const d=await r.json();
+    datesConfirmees=d&&typeof d==="object"?d:{};
+    save("relance_dates_confirmees_v1",datesConfirmees);
+  }catch(e){/* hors-ligne : cache local conservé */}
+  if(groups.length){ groups.forEach(g=>{ const actifs=activeOrders(g); g.dateObtenue = actifs.length>0 && actifs.every(o=>!!datesConfirmees[o]); }); renderResults(); }
+}
+
 /* ---- Commandes exclues des relances (clic sur un n° de commande dans la carte) ---- */
 let exclusions=load("relance_exclusions_v1",{}); // { "9005472": true, ... }
 
@@ -521,17 +536,7 @@ function parsePage(lines, text){
     for(const c of carnet){ let hit=null;
       if(c._full.length>=4&&nt.includes(c._full))hit=c._full; else if(c._core.length>=5&&nt.includes(c._core))hit=c._core;
       if(hit&&hit.length>bl){byName=c.name;bl=hit.length;} } }
-  // lignes d'article = terminent par une quantité "1.00" / "12,00" ; on repère si la colonne Date livr. est déjà remplie
-  const ITEM_QTY_RE=/\d+[.,]\d{2}\s*$/;
-  const DATE_RE=/\b20\d{2}\/\d{2}\/\d{2}\b/;
-  let itemsTotal=0, itemsWithDate=0;
-  lines.forEach(l=>{
-    if(!ITEM_QTY_RE.test(l)) return;
-    if(/Qt[eé]$/i.test(l)) return; // ligne d'en-tête
-    itemsTotal++;
-    if(DATE_RE.test(l)) itemsWithDate++;
-  });
-  return {fcode, name:name||byName||null, email, orders, itemsTotal, itemsWithDate};
+  return {fcode, name:name||byName||null, email, orders};
 }
 function emailForGroup(g){
   if(g.pageEmail) return g.pageEmail;
@@ -658,17 +663,16 @@ function buildGroups(pages){
     const key=p.fcode||(p.name?("NOM:"+norm(p.name)):null);
     if(key){
       if(cur && cur.key===key){ cur.pages.push(p.index); }
-      else{ if(cur)groups.push(cur); cur={key, fcode:p.fcode||null, supplier:p.name||p.fcode||"(fournisseur)", pages:[p.index], orders:[], pageEmail:p.email||"", known:true, itemsTotal:0, itemsWithDate:0}; }
+      else{ if(cur)groups.push(cur); cur={key, fcode:p.fcode||null, supplier:p.name||p.fcode||"(fournisseur)", pages:[p.index], orders:[], pageEmail:p.email||"", known:true}; }
     }else{
       if(cur){ cur.pages.push(p.index); }
-      else cur={key:null, fcode:null, supplier:"(fournisseur non reconnu)", pages:[p.index], orders:[], pageEmail:"", known:false, itemsTotal:0, itemsWithDate:0};
+      else cur={key:null, fcode:null, supplier:"(fournisseur non reconnu)", pages:[p.index], orders:[], pageEmail:"", known:false};
     }
     (p.orders||[]).forEach(o=>{if(!cur.orders.includes(o))cur.orders.push(o);});
     if(!cur.pageEmail && p.email) cur.pageEmail=p.email;
-    cur.itemsTotal+=(p.itemsTotal||0); cur.itemsWithDate+=(p.itemsWithDate||0);
   });
   if(cur)groups.push(cur);
-  groups.forEach(g=>{ g.dateObtenue = g.itemsTotal>0 && g.itemsWithDate>=g.itemsTotal; });
+  groups.forEach(g=>{ const actifs=activeOrders(g); g.dateObtenue = actifs.length>0 && actifs.every(o=>!!datesConfirmees[o]); });
   groups.forEach(g=>g.email=emailForGroup(g));
   groups.forEach(g=>{
     if(g.fcode){
@@ -685,7 +689,7 @@ function buildGroups(pages){
   setStatus("pdfStatus",`${groups.length} fournisseur(s) détecté(s) — ${known} par code SAP.`,"ok");
 }
 function rebuild(){if(pdfBytes)readPdf(pdfBytes.slice(0));}
-function saveSession(){ save(LS_SESSION, groups.map(g=>({key:g.key,fcode:g.fcode,supplier:g.supplier,pages:g.pages,orders:g.orders,known:g.known,pageEmail:g.pageEmail,email:g.email,done:!!g.done,itemsTotal:g.itemsTotal||0,itemsWithDate:g.itemsWithDate||0,dateObtenue:!!g.dateObtenue}))); }
+function saveSession(){ save(LS_SESSION, groups.map(g=>({key:g.key,fcode:g.fcode,supplier:g.supplier,pages:g.pages,orders:g.orders,known:g.known,pageEmail:g.pageEmail,email:g.email,done:!!g.done,dateObtenue:!!g.dateObtenue}))); }
 function restoreSession(){
   const s=load(LS_SESSION,null);
   if(Array.isArray(s)&&s.length){ groups=s.map(g=>({...g})); renderResults(); updateDoneCount();
@@ -869,7 +873,7 @@ loadActiverEnvoiRelance();
 // "oubliée" un instant après un rafraîchissement, le temps que son fetch
 // Firebase termine après le premier rendu).
 (async()=>{
-  await Promise.all([loadParametres(), loadRelanceLog(), loadRelanceQueue(), loadExclusions(), loadFournisseurExclusions()]);
+  await Promise.all([loadParametres(), loadRelanceLog(), loadRelanceQueue(), loadExclusions(), loadFournisseurExclusions(), loadDatesConfirmees()]);
   const rechargeOK=await loadPdfDepuisFirebase();
   if(!rechargeOK) restoreSession();
 })();
