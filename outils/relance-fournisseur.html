@@ -173,6 +173,7 @@
     </details>
     <div class="toolbar" id="globalActions" style="display:none">
       <button class="btn sm" id="downloadAll">Télécharger tous les PDF (zip)</button>
+      <button class="btn sm" id="queueSelected" title="Met en file d'envoi auto tous les fournisseurs cochés ci-dessous (l'envoi réel se fait par RelanceFournisseur.ps1)">📤 Mettre en file les fournisseurs cochés (<span id="selCount">0</span>)</button>
       <span class="pill-count" id="doneCount"></span>
       <span style="flex:1"></span>
       <button class="btn ghost sm" id="resetSession" title="Effacer la session en cours">RESET — tout effacer</button>
@@ -295,6 +296,11 @@ const FILTRES_DEF=[
 const FILTRES_DEFAUT=["escalade","pret","nouveau","attente"];
 let filtresActifs=new Set(load("relance_filtres_v1",FILTRES_DEFAUT));
 let rechercheTexte="";
+let selectedKeys=new Set();
+function updateSelCount(){
+  const el=document.getElementById("selCount"); if(el) el.textContent=selectedKeys.size;
+  const btn=document.getElementById("queueSelected"); if(btn) btn.disabled=selectedKeys.size===0;
+}
 function categorieGroupe(g){ return g.done?"traite":etatRelance(g).code; }
 function saveFiltres(){ save("relance_filtres_v1",[...filtresActifs]); }
 function renderFiltres(){
@@ -605,7 +611,7 @@ async function loadPdfDepuisFirebase(){
   return false;
 }
 function buildGroups(pages){
-  groups=[];let cur=null;
+  groups=[];let cur=null; selectedKeys.clear();
   pages.forEach(p=>{
     // clé de regroupement : le code fournisseur (fiable), sinon le nom
     const key=p.fcode||(p.name?("NOM:"+norm(p.name)):null);
@@ -679,7 +685,8 @@ function renderResults(){
     const cmdsHtml=g.orders.length
       ? g.orders.map(o=>`<span class="tag ${exclusions[o]?'miss':'ok'} po-chip" data-po="${esc(o)}" style="cursor:pointer" title="${exclusions[o]?'Cliquer pour réactiver les relances pour cette commande':'Cliquer pour ne plus jamais relancer cette commande'}">${exclusions[o]?'🚫 ':''}${esc(o)}</span>`).join(" ")
       : "aucun n° détecté";
-    card.innerHTML=`<h3>${esc(g.supplier)} ${etatTag} ${doneTag} ${emailTag} ${queueTag}</h3>
+    const coche=selectedKeys.has(logKey(g));
+    card.innerHTML=`<h3><input type="checkbox" data-select="${gi}" ${coche?"checked":""} title="Sélectionner pour l'envoi en lot" style="margin-right:2px"> ${esc(g.supplier)} ${etatTag} ${doneTag} ${emailTag} ${queueTag}</h3>
       <div class="meta">Page(s) ${g.pages.map(p=>p+1).join(", ")} · Commande(s) : ${cmdsHtml}</div>
       <div class="grid2">
         <div class="field"><label>Nom fournisseur</label><input class="box" data-gi="${gi}" data-f="supplier" value="${esc(g.supplier)}"></div>
@@ -697,6 +704,7 @@ function renderResults(){
       </div>`;
     results.appendChild(card);
   });
+  updateSelCount();
 }
 function inCarnet(n){return carnet.some(c=>norm(c.name)===norm(n));}
 results.addEventListener("input",e=>{const t=e.target,gi=t.dataset.gi;if(gi===undefined||!t.dataset.f)return;groups[+gi][t.dataset.f]=t.value;saveSession();});
@@ -711,11 +719,27 @@ results.addEventListener("click",async e=>{const t=e.target;
     else if(t.dataset.fournExcl!==undefined){await toggleFournisseurExclusion(+t.dataset.fournExcl);}
     else if(t.dataset.po!==undefined){await toggleExclusion(t.dataset.po);}
     else if(t.dataset.save!==undefined){const g=groups[+t.dataset.save];if(!inCarnet(g.supplier)){carnet.push({name:g.supplier,email:g.email||""});carnet.sort((a,b)=>a.name.localeCompare(b.name));save(LS_CARNET,carnet);renderCarnet();renderResults();}}
+    else if(t.dataset.select!==undefined){const gi=+t.dataset.select;const k=logKey(groups[gi]);if(t.checked)selectedKeys.add(k);else selectedKeys.delete(k);updateSelCount();}
   }catch(err){
     console.error(err);
     alert((err&&err.message)?err.message:"Une erreur inattendue est survenue. Regarde la console (F12) pour les détails.");
   }
 });
+document.getElementById("queueSelected").onclick=async()=>{
+  const cibles=groups.map((g,gi)=>({g,gi})).filter(o=>selectedKeys.has(logKey(o.g)));
+  if(!cibles.length) return;
+  const btn=document.getElementById("queueSelected"); btn.disabled=true;
+  let ok=0, ignores=0;
+  for(const {g,gi} of cibles){
+    const etat=etatRelance(g);
+    const canRelancer=etat.code!=="attente" && etat.code!=="obtenu" && etat.code!=="exclu" && etat.code!=="exclu_fournisseur";
+    if(!canRelancer || !g.email){ ignores++; continue; }
+    try{ await queueForAutoSend(gi); ok++; }catch(e){ ignores++; }
+  }
+  selectedKeys.clear();
+  setStatus("pdfStatus",`${ok} fournisseur(s) mis en file d'envoi auto${ignores?`, ${ignores} ignoré(s) (courriel manquant ou pas encore relançable)`:""}.`,"ok");
+  renderResults();
+};
 document.getElementById("resetSession").onclick=()=>{
   if(confirm("RESET — effacer la session de relance en cours (fournisseurs détectés et progression) ? Le carnet n'est pas touché.")){
     groups=[]; pdfBytes=null; localStorage.removeItem(LS_SESSION);
