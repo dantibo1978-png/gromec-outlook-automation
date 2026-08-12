@@ -259,6 +259,49 @@ function etatRelance(g){
 }
 const ETAT_ORDRE={escalade:0, pret:1, nouveau:2, attente:3, obtenu:4};
 let showDone=false;
+
+/* ---- File d'envoi automatique (RelanceFournisseur.ps1 lit cette file côté Outlook) ---- */
+let relanceQueue=load("relance_queue_v1",{}); // cache local, miroir de gromec_vba/relance_auto
+async function loadRelanceQueue(){
+  try{
+    const r=await fetch(`${FIREBASE_URL}/gromec_vba/relance_auto.json`);
+    const d=await r.json();
+    relanceQueue=d&&typeof d==="object"?d:{};
+    save("relance_queue_v1",relanceQueue);
+  }catch(e){/* hors-ligne : cache local conservé */}
+  if(groups.length) renderResults();
+}
+function queueStatut(g){ const e=relanceQueue[logKey(g)]; return e?e.statut:null; }
+function arrayBufferToBase64(buf){
+  let binary=""; const bytes=new Uint8Array(buf); const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk){ binary+=String.fromCharCode.apply(null, bytes.subarray(i,i+chunk)); }
+  return btoa(binary);
+}
+async function buildGroupPdfBytes(g){
+  const src=await PDFDocument.load(pdfBytes.slice(0)); const out=await PDFDocument.create();
+  (await out.copyPages(src,g.pages)).forEach(p=>out.addPage(p));
+  return await out.save();
+}
+async function queueForAutoSend(gi){
+  const g=groups[gi];
+  if(!g.email){ alert("Pas de courriel destinataire pour ce fournisseur — impossible de mettre en file."); return; }
+  const cle=logKey(g);
+  const date=new Date().toLocaleDateString("fr-CA");
+  const cmds=g.orders.length?g.orders.join(", "):"(voir pièce jointe)";
+  const bytes=await buildGroupPdfBytes(g);
+  const job={
+    cle, fournisseur:g.supplier||"", email:g.email, orders:g.orders||[],
+    subject:fill(tmpl.subject,g,cmds,date), body:fill(tmpl.body,g,cmds,date),
+    pdfBase64:arrayBufferToBase64(bytes), pdfNom:fileName(g),
+    statut:"attente", dateAjout:new Date().toISOString()
+  };
+  try{
+    await fetch(`${FIREBASE_URL}/gromec_vba/relance_auto/${encodeURIComponent(cle)}.json`,{method:"PUT",body:JSON.stringify(job)});
+    relanceQueue[cle]=job; save("relance_queue_v1",relanceQueue);
+    setStatus("pdfStatus",`${g.supplier} ajouté à la file d'envoi automatique (en attente que le script Outlook soit activé).`,"ok");
+    renderResults();
+  }catch(e){ alert("Échec de la mise en file (connexion Firebase) : "+e.message); }
+}
 const DEFAULT_TMPL={subject:"Relance – Commande {commandes}",
 body:`Bonjour,
 
@@ -486,7 +529,10 @@ function renderResults(){
     const etatTag=`<span class="tag ${etat.cls}" title="Délai actuel : ${relanceParams.delaiJours} j · max ${relanceParams.maxRelances} relance(s)">${etat.label}</span>`;
     const resetBtn=etat.code==="escalade"?`<button class="btn ghost sm" data-reset="${gi}" title="Remettre à zéro le compteur de relances">↺ Réinitialiser</button>`:"";
     const canRelancer=etat.code!=="attente" && etat.code!=="obtenu";
-    card.innerHTML=`<h3>${esc(g.supplier)} ${etatTag} ${doneTag} ${emailTag}</h3>
+    const qs=queueStatut(g);
+    const queueTag=qs==="attente"?`<span class="tag warn">📤 en file d'envoi auto</span>`:qs==="envoye"?`<span class="tag ok">📤 envoyé automatiquement</span>`:qs==="erreur"?`<span class="tag miss">📤 erreur d'envoi</span>`:"";
+    const queueBtn=(canRelancer&&g.email&&qs!=="attente")?`<button class="btn sec sm" data-queue="${gi}" title="Ajoute ce fournisseur à la file que RelanceFournisseur.ps1 traitera (aucun envoi tant que le script n'est pas activé)">📤 Mettre en file d'envoi auto</button>`:"";
+    card.innerHTML=`<h3>${esc(g.supplier)} ${etatTag} ${doneTag} ${emailTag} ${queueTag}</h3>
       <div class="meta">Page(s) ${g.pages.map(p=>p+1).join(", ")} · ${g.orders.length?("Commande(s) : "+g.orders.join(", ")):"aucun n° détecté"}</div>
       <div class="grid2">
         <div class="field"><label>Nom fournisseur</label><input class="box" data-gi="${gi}" data-f="supplier" value="${esc(g.supplier)}"></div>
@@ -495,6 +541,7 @@ function renderResults(){
       <div class="row-actions" style="margin-top:6px">
         <button class="btn ${g.done?'doneb':''} sm" data-open="${gi}" ${canRelancer?"":"disabled title=\"Pas encore relançable (délai ou déjà obtenu)\""}>${g.done?'✓ Refaire — PDF + Outlook':'✉️ Télécharger PDF + ouvrir Outlook'}</button>
         <button class="btn sec sm" data-pdf="${gi}">PDF seulement</button>
+        ${queueBtn}
         <button class="btn sec sm" data-toggle="${gi}">${g.done?'Marquer à faire':'Marquer traité'}</button>
         ${resetBtn}
         ${g.known&&!inCarnet(g.supplier)?`<button class="btn sec sm" data-save="${gi}">Ajouter au carnet</button>`:""}
@@ -509,6 +556,7 @@ results.addEventListener("click",async e=>{const t=e.target;
   else if(t.dataset.open!==undefined){const gi=+t.dataset.open;await downloadGroupPdf(gi);openMail(gi);groups[gi].done=true;markRelance(groups[gi]);saveSession();renderResults();updateDoneCount();}
   else if(t.dataset.toggle!==undefined){const gi=+t.dataset.toggle;groups[gi].done=!groups[gi].done;saveSession();renderResults();updateDoneCount();}
   else if(t.dataset.reset!==undefined){const gi=+t.dataset.reset;resetEscalade(groups[gi]);}
+  else if(t.dataset.queue!==undefined){await queueForAutoSend(+t.dataset.queue);}
   else if(t.dataset.save!==undefined){const g=groups[+t.dataset.save];if(!inCarnet(g.supplier)){carnet.push({name:g.supplier,email:g.email||""});carnet.sort((a,b)=>a.name.localeCompare(b.name));save(LS_CARNET,carnet);renderCarnet();renderResults();}}
 });
 document.getElementById("resetSession").onclick=()=>{
@@ -521,14 +569,12 @@ document.getElementById("resetSession").onclick=()=>{
 
 /* ---- Découpe PDF ---- */
 async function downloadGroupPdf(gi){
-  const g=groups[gi]; const src=await PDFDocument.load(pdfBytes.slice(0)); const out=await PDFDocument.create();
-  (await out.copyPages(src,g.pages)).forEach(p=>out.addPage(p));
-  dl(new Blob([await out.save()],{type:"application/pdf"}),fileName(g));
+  const g=groups[gi]; dl(new Blob([await buildGroupPdfBytes(g)],{type:"application/pdf"}),fileName(g));
 }
 function fileName(g){const b=(g.supplier||"fournisseur").replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"_").slice(0,50)||"fournisseur";return "Relance_"+b+".pdf";}
 document.getElementById("downloadAll").onclick=async()=>{
   const zip=new JSZip();
-  for(const g of groups){const src=await PDFDocument.load(pdfBytes.slice(0));const out=await PDFDocument.create();(await out.copyPages(src,g.pages)).forEach(p=>out.addPage(p));zip.file(fileName(g),await out.save());}
+  for(const g of groups){zip.file(fileName(g),await buildGroupPdfBytes(g));}
   dl(await zip.generateAsync({type:"blob"}),"Relances_fournisseurs.zip");
 };
 
@@ -566,7 +612,7 @@ document.getElementById("showDone").addEventListener("change",e=>{showDone=e.tar
 applyParamsToUI();
 document.getElementById("paramDelai").addEventListener("change",e=>{relanceParams.delaiJours=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.delaiJours);saveParametres();if(groups.length)renderResults();});
 document.getElementById("paramMax").addEventListener("change",e=>{relanceParams.maxRelances=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.maxRelances);saveParametres();if(groups.length)renderResults();});
-loadParametres(); loadRelanceLog();
+loadParametres(); loadRelanceLog(); loadRelanceQueue();
 </script>
 </body>
 </html>
