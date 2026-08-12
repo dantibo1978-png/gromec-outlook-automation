@@ -282,9 +282,10 @@ function etatRelance(g){
   }
   return {code:"pret", label:`🔁 Prêt à relancer (dernière relance il y a ${jours} j)`, cls:"miss", jours};
 }
-const ETAT_ORDRE={escalade:0, pret:1, nouveau:2, attente:3, obtenu:4, exclu:5, exclu_fournisseur:6, traite:7};
+const ETAT_ORDRE={escalade:0, en_file:1, pret:2, nouveau:3, attente:4, obtenu:5, exclu:6, exclu_fournisseur:7, traite:8};
 const FILTRES_DEF=[
   {code:"escalade", label:"🚨 À escalader"},
+  {code:"en_file", label:"📤 En file d'envoi auto"},
   {code:"pret", label:"🔁 Prêt à relancer"},
   {code:"nouveau", label:"🆕 Jamais relancé"},
   {code:"attente", label:"⏳ En attente de réponse"},
@@ -293,7 +294,7 @@ const FILTRES_DEF=[
   {code:"exclu_fournisseur", label:"🚫 Fournisseur exclu"},
   {code:"traite", label:"✓ Traité manuellement"}
 ];
-const FILTRES_DEFAUT=["escalade","pret","nouveau","attente"];
+const FILTRES_DEFAUT=["escalade","en_file","pret","nouveau","attente"];
 let filtresActifs=new Set(load("relance_filtres_v1",FILTRES_DEFAUT));
 let rechercheTexte="";
 let selectedKeys=new Set();
@@ -301,7 +302,13 @@ function updateSelCount(){
   const el=document.getElementById("selCount"); if(el) el.textContent=selectedKeys.size;
   const btn=document.getElementById("queueSelected"); if(btn) btn.disabled=selectedKeys.size===0;
 }
-function categorieGroupe(g){ return g.done?"traite":etatRelance(g).code; }
+function categorieGroupe(g){
+  if(g.done) return "traite";
+  const etat=etatRelance(g);
+  if(etat.code==="exclu_fournisseur"||etat.code==="obtenu"||etat.code==="exclu") return etat.code;
+  if(queueStatut(g)==="attente") return "en_file";
+  return etat.code;
+}
 function saveFiltres(){ save("relance_filtres_v1",[...filtresActifs]); }
 function renderFiltres(){
   const bar=document.getElementById("filtresEtat");
@@ -670,16 +677,18 @@ function renderResults(){
     .filter(o=>!rechercheTexte || norm(o.g.supplier).includes(rechercheTexte) || (o.g.orders||[]).some(ord=>ord.includes(rechercheTexte)));
   visibles.sort((a,b)=>(ETAT_ORDRE[a.cat]-ETAT_ORDRE[b.cat])||(a.g.supplier||"").localeCompare(b.g.supplier||""));
   if(!visibles.length){ results.innerHTML=`<div class="empty">Aucun fournisseur ne correspond aux filtres actifs.<br><span style="font-size:.85rem">Coche d'autres états ci-dessus, ou efface la recherche.</span></div>`; updateSelCount(); return; }
-  visibles.forEach(({g,gi,etat})=>{
+  visibles.forEach(({g,gi,etat,cat})=>{
     const card=document.createElement("div"); card.className="card"+(g.known?"":" unknown")+(g.done?" done":"");
     const emailTag=g.known?(g.email?"":`<span class="tag miss">courriel manquant</span>`):`<span class="tag miss">nom à assigner</span>`;
     const doneTag=g.done?`<span class="tag ok">✓ traité manuellement</span>`:"";
-    const etatTag=`<span class="tag ${etat.cls}" title="Délai actuel : ${relanceParams.delaiJours} j · max ${relanceParams.maxRelances} relance(s)">${etat.label}</span>`;
+    const qs=queueStatut(g);
+    const etatTag=cat==="en_file"
+      ? `<span class="tag warn" title="En attente d'envoi par RelanceFournisseur.ps1 -Envoyer">📤 En file d'envoi automatique</span>`
+      : `<span class="tag ${etat.cls}" title="Délai actuel : ${relanceParams.delaiJours} j · max ${relanceParams.maxRelances} relance(s)">${etat.label}</span>`;
     const resetBtn=etat.code==="escalade"?`<button class="btn ghost sm" data-reset="${gi}" title="Remettre à zéro le compteur de relances">↺ Réinitialiser</button>`:"";
     const canRelancer=etat.code!=="attente" && etat.code!=="obtenu" && etat.code!=="exclu" && etat.code!=="exclu_fournisseur";
     const fournBtn=`<button class="btn ghost sm" data-fourn-excl="${gi}" title="${etat.code==='exclu_fournisseur'?'Réactiver les relances pour ce fournisseur':'Exclure définitivement ce fournisseur des relances'}">${etat.code==='exclu_fournisseur'?'↺ Réactiver ce fournisseur':'🚫 Ne plus jamais relancer'}</button>`;
-    const qs=queueStatut(g);
-    const queueTag=qs==="attente"?`<span class="tag warn">📤 en file d'envoi auto</span>`:qs==="envoye"?`<span class="tag ok">📤 envoyé automatiquement</span>`:qs==="erreur"?`<span class="tag miss">📤 erreur d'envoi</span>`:"";
+    const queueTag=qs==="envoye"?`<span class="tag ok">📤 envoyé automatiquement</span>`:qs==="erreur"?`<span class="tag miss">📤 erreur d'envoi</span>`:"";
     const queueBtn=(canRelancer&&g.email&&qs!=="attente")?`<button class="btn sec sm" data-queue="${gi}" title="Ajoute ce fournisseur à la file que RelanceFournisseur.ps1 traitera (aucun envoi tant que le script n'est pas activé)">📤 Mettre en file d'envoi auto</button>`:"";
     const unqueueBtn=(qs==="attente")?`<button class="btn ghost sm" data-unqueue="${gi}" title="Retire ce fournisseur de la file d'envoi automatique">✕ Retirer de la file</button>`:"";
     const cmdsHtml=g.orders.length
