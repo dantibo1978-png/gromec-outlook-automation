@@ -159,6 +159,9 @@
       <p style="font-size:.82rem;color:var(--ink-soft);margin-top:6px">Les pages consécutives d'un même fournisseur sont regroupées automatiquement.</p>
     </div>
     <input type="file" id="filePdf" accept=".pdf,application/pdf" style="display:none">
+    <div class="toolbar" id="envoyerTousWrap" style="display:none;margin-top:10px">
+      <button class="btn" id="envoyerTous" title="Met en file d'envoi auto tous les fournisseurs relançables détectés dans le PDF (l'envoi réel se fait par RelanceFournisseur.ps1)">📤 Envoyer les relances aux fournisseurs (<span id="envoyerTousCount">0</span> prêts)</button>
+    </div>
     <div class="status" id="pdfStatus"></div>
   </section>
 
@@ -300,6 +303,20 @@ let selectedKeys=new Set();
 function updateSelCount(){
   const el=document.getElementById("selCount"); if(el) el.textContent=selectedKeys.size;
   const btn=document.getElementById("queueSelected"); if(btn) btn.disabled=selectedKeys.size===0;
+}
+function fournisseursPrets(){
+  return groups.map((g,gi)=>({g,gi})).filter(({g})=>{
+    const etat=etatRelance(g);
+    const canRelancer=etat.code!=="attente" && etat.code!=="obtenu" && etat.code!=="exclu" && etat.code!=="exclu_fournisseur";
+    return canRelancer && g.email && queueStatut(g)!=="attente";
+  });
+}
+function updateEnvoyerTousButton(){
+  const wrap=document.getElementById("envoyerTousWrap"); if(!wrap) return;
+  const prets=groups.length?fournisseursPrets():[];
+  wrap.style.display=groups.length?"flex":"none";
+  document.getElementById("envoyerTousCount").textContent=prets.length;
+  document.getElementById("envoyerTous").disabled=prets.length===0;
 }
 function categorieGroupe(g){ return g.done?"traite":etatRelance(g).code; }
 function saveFiltres(){ save("relance_filtres_v1",[...filtresActifs]); }
@@ -659,7 +676,7 @@ function updateDoneCount(){
 /* ---- Résultats UI ---- */
 const results=document.getElementById("results");
 function renderResults(){
-  if(!groups.length){results.innerHTML=`<div class="empty">Aucun résultat.</div>`;document.getElementById("globalActions").style.display="none";document.getElementById("resultsSearch").style.display="none";document.getElementById("filtresEtat").style.display="none";return;}
+  if(!groups.length){results.innerHTML=`<div class="empty">Aucun résultat.</div>`;document.getElementById("globalActions").style.display="none";document.getElementById("resultsSearch").style.display="none";document.getElementById("filtresEtat").style.display="none";updateEnvoyerTousButton();return;}
   document.getElementById("globalActions").style.display="flex";
   document.getElementById("resultsSearch").style.display="block";
   document.getElementById("filtresEtat").style.display="flex";
@@ -669,7 +686,7 @@ function renderResults(){
     .filter(o=>filtresActifs.has(o.cat))
     .filter(o=>!rechercheTexte || norm(o.g.supplier).includes(rechercheTexte) || (o.g.orders||[]).some(ord=>ord.includes(rechercheTexte)));
   visibles.sort((a,b)=>(ETAT_ORDRE[a.cat]-ETAT_ORDRE[b.cat])||(a.g.supplier||"").localeCompare(b.g.supplier||""));
-  if(!visibles.length){ results.innerHTML=`<div class="empty">Aucun fournisseur ne correspond aux filtres actifs.<br><span style="font-size:.85rem">Coche d'autres états ci-dessus, ou efface la recherche.</span></div>`; return; }
+  if(!visibles.length){ results.innerHTML=`<div class="empty">Aucun fournisseur ne correspond aux filtres actifs.<br><span style="font-size:.85rem">Coche d'autres états ci-dessus, ou efface la recherche.</span></div>`; updateSelCount(); updateEnvoyerTousButton(); return; }
   visibles.forEach(({g,gi,etat})=>{
     const card=document.createElement("div"); card.className="card"+(g.known?"":" unknown")+(g.done?" done":"");
     const emailTag=g.known?(g.email?"":`<span class="tag miss">courriel manquant</span>`):`<span class="tag miss">nom à assigner</span>`;
@@ -705,6 +722,7 @@ function renderResults(){
     results.appendChild(card);
   });
   updateSelCount();
+  updateEnvoyerTousButton();
 }
 function inCarnet(n){return carnet.some(c=>norm(c.name)===norm(n));}
 results.addEventListener("input",e=>{const t=e.target,gi=t.dataset.gi;if(gi===undefined||!t.dataset.f)return;groups[+gi][t.dataset.f]=t.value;saveSession();});
@@ -738,6 +756,16 @@ document.getElementById("queueSelected").onclick=async()=>{
   }
   selectedKeys.clear();
   setStatus("pdfStatus",`${ok} fournisseur(s) mis en file d'envoi auto${ignores?`, ${ignores} ignoré(s) (courriel manquant ou pas encore relançable)`:""}.`,"ok");
+  renderResults();
+};
+document.getElementById("envoyerTous").onclick=async()=>{
+  const cibles=fournisseursPrets();
+  if(!cibles.length) return;
+  if(!confirm(`Mettre en file d'envoi automatique ${cibles.length} fournisseur(s) prêt(s) ? L'envoi réel se fera par RelanceFournisseur.ps1 -Envoyer.`)) return;
+  const btn=document.getElementById("envoyerTous"); btn.disabled=true;
+  let ok=0;
+  for(const {gi} of cibles){ try{ await queueForAutoSend(gi); ok++; }catch(e){} }
+  setStatus("pdfStatus",`${ok} fournisseur(s) mis en file d'envoi automatique.`,"ok");
   renderResults();
 };
 document.getElementById("resetSession").onclick=()=>{
