@@ -142,6 +142,13 @@
       <div class="field"><label>Jours minimum entre deux relances</label><input class="box" type="number" min="1" id="paramDelai"></div>
       <div class="field"><label>Nombre de relances avant escalade</label><input class="box" type="number" min="1" id="paramMax"></div>
     </div>
+    <div class="field" style="margin-top:14px;padding:10px;border:1px solid var(--warn);border-radius:8px;background:var(--warn-bg)">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:normal;font-size:.9rem;color:var(--ink)">
+        <input type="checkbox" id="paramActiverShipDate">
+        <span>⚠ Activer l'écriture des dates de livraison confirmées dans SAP (via SyncDTW.ps1 / DTW)</span>
+      </label>
+      <p class="hint" style="margin:6px 0 0">Quand une réponse de relance contient une date précise, elle est appliquée à <strong>toutes les lignes</strong> de la commande dans SAP. Laisse désactivé tant que tu n'as pas validé le format de date avec un test réel.</p>
+    </div>
   </section>
 
   <!-- ÉTAPE 2 : PDF -->
@@ -210,6 +217,21 @@ function applyParamsToUI(){
   const d=document.getElementById("paramDelai"), m=document.getElementById("paramMax");
   if(d) d.value=relanceParams.delaiJours;
   if(m) m.value=relanceParams.maxRelances;
+}
+
+/* ---- Activation de l'écriture ShipDate dans SAP (gromec_vba/parametres/valeurs,
+   noeud partagé avec SyncDTW.ps1 / VerifierConfirmation.ps1 -- on ne fait que
+   PATCH ce champ précis, jamais PUT, pour ne pas écraser les autres réglages). ---- */
+async function loadActiverShipDate(){
+  try{
+    const r=await fetch(`${FIREBASE_URL}/gromec_vba/parametres/valeurs.json`);
+    const d=await r.json();
+    const cb=document.getElementById("paramActiverShipDate");
+    if(cb) cb.checked=!!(d && d.activer_sync_shipdate);
+  }catch(e){}
+}
+async function saveActiverShipDate(val){
+  try{ await fetch(`${FIREBASE_URL}/gromec_vba/parametres/valeurs.json`,{method:"PATCH",body:JSON.stringify({activer_sync_shipdate:!!val})}); }catch(e){}
 }
 
 /* ---- Journal des relances (Firebase = source de vérité, cache local pour rendu immédiat) ---- */
@@ -753,6 +775,14 @@ buildKeys(); renderCarnet();
 applyParamsToUI();
 document.getElementById("paramDelai").addEventListener("change",e=>{relanceParams.delaiJours=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.delaiJours);saveParametres();if(groups.length)renderResults();});
 document.getElementById("paramMax").addEventListener("change",e=>{relanceParams.maxRelances=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.maxRelances);saveParametres();if(groups.length)renderResults();});
+document.getElementById("paramActiverShipDate").addEventListener("change",e=>{
+  const on=e.target.checked;
+  if(on && !confirm("Activer l'écriture réelle des dates de livraison dans SAP ?\n\nChaque date confirmée par un fournisseur (via réponse à une relance) sera appliquée à TOUTES les lignes de la commande correspondante dans SAP, via SyncDTW.ps1. Assure-toi d'avoir validé le format de date avant de continuer.")){
+    e.target.checked=false; return;
+  }
+  saveActiverShipDate(on);
+});
+loadActiverShipDate();
 loadParametres(); loadRelanceLog(); loadRelanceQueue(); loadExclusions(); loadFournisseurExclusions();
 </script>
 </body>
