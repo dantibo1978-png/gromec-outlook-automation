@@ -543,7 +543,7 @@ function ingestJson(text){
 }
 
 /* ---- Lecture PDF ---- */
-async function readPdf(bytes){
+async function readPdf(bytes, upload=true, nom="relance.pdf"){
   pdfBytes=bytes; setStatus("pdfStatus","Lecture du PDF…","");
   const pdf=await pdfjsLib.getDocument({data:bytes.slice(0)}).promise;
   const pages=[];
@@ -559,6 +559,28 @@ async function readPdf(bytes){
     setStatus("pdfStatus",`Lecture… page ${i}/${pdf.numPages}`,"");
   }
   buildGroups(pages);
+  if(upload) uploadPdfToFirebase(bytes, nom);
+}
+async function uploadPdfToFirebase(bytes, nom){
+  try{
+    const job={ base64:arrayBufferToBase64(bytes), nom:nom||"relance.pdf", dateAjout:new Date().toISOString() };
+    await fetch(`${FIREBASE_URL}/gromec_vba/relance_pdf_actuel.json`,{method:"PUT",body:JSON.stringify(job)});
+  }catch(e){ console.error("Echec sauvegarde du PDF sur Firebase :",e); }
+}
+async function loadPdfDepuisFirebase(){
+  try{
+    const r=await fetch(`${FIREBASE_URL}/gromec_vba/relance_pdf_actuel.json`);
+    const d=await r.json();
+    if(d && d.base64){
+      const bin=atob(d.base64);
+      const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      await readPdf(bytes, false, d.nom);
+      setStatus("pdfStatus",`PDF rechargé automatiquement depuis le serveur (${d.nom||"relance.pdf"}, ajouté le ${fmtDate(d.dateAjout)||""}). Glisse un nouveau PDF pour le remplacer.`,"ok");
+      return true;
+    }
+  }catch(e){ console.error("Echec rechargement du PDF depuis Firebase :",e); }
+  return false;
 }
 function buildGroups(pages){
   groups=[];let cur=null;
@@ -711,7 +733,7 @@ tSub.oninput=()=>{tmpl.subject=tSub.value;save(LS_TMPL,tmpl);};
 tBody.oninput=()=>{tmpl.body=tBody.value;save(LS_TMPL,tmpl);};
 
 /* ---- Zones de dépôt ---- */
-wireDrop("dropPdf","filePdf",f=>f.arrayBuffer().then(b=>readPdf(new Uint8Array(b))));
+wireDrop("dropPdf","filePdf",f=>f.arrayBuffer().then(b=>readPdf(new Uint8Array(b), true, f.name)));
 wireDrop("dropJson","fileJson",f=>f.text().then(ingestJson));
 function wireDrop(dropId,inputId,handler){
   const d=document.getElementById(dropId),inp=document.getElementById(inputId);
@@ -726,7 +748,8 @@ function esc(s){return (s||"").toString().replace(/[&<>"]/g,c=>({"&":"&amp;","<"
 function dl(blob,name){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),4000);}
 function setStatus(id,msg,kind){const el=document.getElementById(id);el.textContent=msg;el.style.color=kind==="ok"?"var(--ok)":kind==="warn"?"var(--warn)":kind==="miss"?"var(--miss)":"var(--ink-soft)";}
 
-buildKeys(); renderCarnet(); restoreSession();
+buildKeys(); renderCarnet();
+(async()=>{ const rechargeOK=await loadPdfDepuisFirebase(); if(!rechargeOK) restoreSession(); })();
 applyParamsToUI();
 document.getElementById("paramDelai").addEventListener("change",e=>{relanceParams.delaiJours=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.delaiJours);saveParametres();if(groups.length)renderResults();});
 document.getElementById("paramMax").addEventListener("change",e=>{relanceParams.maxRelances=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.maxRelances);saveParametres();if(groups.length)renderResults();});
