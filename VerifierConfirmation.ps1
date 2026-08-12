@@ -2466,6 +2466,106 @@ SOURCE: PDF/CORPS
     }
 }
 
+# =====================================================================
+# FONCTIONS - Reponses aux relances de date de livraison
+# (onglet outils/relance-fournisseur.html -> file gromec_vba/relance_auto)
+# =====================================================================
+
+function Test-EstReponseRelance {
+    <#
+    Detecte si un courriel entrant est une reponse a une relance de date de
+    livraison (sujet "Relance - Commande ..." ou reponse Outlook
+    "RE: Relance - Commande ..."). Independant du classifieur Claude
+    (Invoke-ClassifierCourriel) : ce n'est pas une confirmation de commande,
+    pas la peine d'y depenser un appel API ni de risquer une mauvaise
+    classification.
+    #>
+    param($MailItem)
+    return [bool]($MailItem.Subject -match "(?i)relance")
+}
+
+function Invoke-TraiterReponseRelance {
+    <#
+    Extrait, via Claude, la date de livraison confirmee par le fournisseur
+    pour chaque commande mentionnee dans le sujet/corps, puis :
+      - ecrit gromec_vba/relance_dates_confirmees/{BC} pour que l'onglet web
+        marque automatiquement la commande "date obtenue" (etatRelance) ;
+      - met en file gromec_vba/sap_shipdate_a_synchroniser/{BC} pour que
+        SyncDTW.ps1 pousse la date dans SAP (ShipDate) via DTW.
+    Ne modifie jamais SAP directement -- se contente d'ecrire dans Firebase,
+    exactement comme le reste du pipeline (SyncDTW.ps1 fait l'ecriture SAP).
+    #>
+    param($MailItem)
+
+    $adresseExp = Get-AdresseSMTP $MailItem
+    $sujet = $MailItem.Subject
+    $corps = $MailItem.Body
+
+    $commandes = @(([regex]::Matches("$sujet `n $corps", '\b9\d{6}\b') | ForEach-Object { $_.Value }) | Select-Object -Unique)
+
+    if ($commandes.Count -eq 0) {
+        Write-Log "INFO  Reponse de relance sans no de commande detecte dans le sujet/corps ($adresseExp) -- ignoree."
+        return
+    }
+
+    Write-Log "INFO  Reponse de relance detectee de $adresseExp pour commande(s) $($commandes -join ', ')."
+
+    $prompt = @"
+Voici un courriel recu d'un fournisseur, en reponse a une demande de date de
+livraison envoyee par Gromec pour la ou les commandes suivantes : $($commandes -join ', ').
+
+Corps du courriel :
+---
+$corps
+---
+
+Pour CHAQUE commande listee ci-dessus, indique la date de livraison que le
+fournisseur confirme dans ce courriel, si elle est mentionnee explicitement
+avec une date calendaire precise (une formulation vague comme "la semaine
+prochaine" ou "bientot" NE COMPTE PAS). Si le fournisseur ne donne pas de
+date precise pour une commande, ecris AUCUNE.
+
+Format de reponse STRICT, une ligne par commande, rien d'autre :
+NUMERO_COMMANDE|AAAA-MM-JJ
+ou
+NUMERO_COMMANDE|AUCUNE
+"@
+
+    $reponse = Invoke-ClaudeMessage "" $prompt
+    if ($reponse -like "ERREUR:*") {
+        Write-Log "ERREUR  Extraction de date de relance (Claude) : $reponse"
+        return
+    }
+
+    $dateRe = '^\d{4}-\d{2}-\d{2}$'
+    foreach ($ligne in ($reponse -split "`r?`n")) {
+        $ligne = $ligne.Trim()
+        if ($ligne -notmatch '^\d{7}\|') { continue }
+        $parts = $ligne -split '\|', 2
+        $bc = $parts[0].Trim()
+        $dateTxt = $parts[1].Trim()
+        if ($dateTxt -eq "AUCUNE" -or $dateTxt -notmatch $dateRe) { continue }
+        if ($commandes -notcontains $bc) { continue }
+
+        Write-Log "INFO  Date de livraison confirmee pour BC $bc : $dateTxt (source: $adresseExp)"
+
+        try {
+            $bodyConfirm = @{
+                docNum = $bc; date = $dateTxt; source = "email"; expediteur = $adresseExp
+                sujet = $sujet; recuLe = (Get-Date).ToString("o")
+            } | ConvertTo-Json -Compress
+            Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/relance_dates_confirmees/$bc.json" -Method Put -Body $bodyConfirm -ContentType "application/json" -TimeoutSec 15 | Out-Null
+
+            $bodyDtw = @{
+                docNum = $bc; date = $dateTxt; statut = "attente"; dateAjout = (Get-Date).ToString("o")
+            } | ConvertTo-Json -Compress
+            Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/sap_shipdate_a_synchroniser/$bc.json" -Method Put -Body $bodyDtw -ContentType "application/json" -TimeoutSec 15 | Out-Null
+        } catch {
+            Write-Log "ERREUR  Ecriture Firebase pour date de relance BC $bc : $($_.Exception.Message)"
+        }
+    }
+}
+
 function Invoke-TraiterNouveauCourriel {
     param($Namespace, $MailItem, [bool]$ForcerTraitement = $false)
 
@@ -2497,6 +2597,16 @@ function Invoke-TraiterNouveauCourriel {
             Write-Log "INFO  Sujet exclu ($motif) -- courriel ignore : $($MailItem.Subject)"
             return
         }
+    }
+
+    # Reponse a une relance de date de livraison (onglet relance-fournisseur) :
+    # traitement dedie, avant le classifieur de confirmation -- ce n'est pas
+    # une confirmation de commande, inutile d'y depenser un appel Claude Haiku
+    # ni de risquer une mauvaise classification.
+    if (Test-EstReponseRelance $MailItem) {
+        Invoke-TraiterReponseRelance $MailItem
+        if (-not $ForcerTraitement) { Set-ConversationTraitee $convID }
+        return
     }
 
     # Claude Haiku analyse le courriel avec PJ incluses
