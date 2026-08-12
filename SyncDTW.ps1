@@ -74,6 +74,7 @@ $IntervalleSecondes = 30
 $DTW_TimeoutSecondes = 600  # DTW.exe est tue si bloque plus de 10 min (ex: dialogue SAP cache)
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
+$DossierCachePO     = "U:\GromecOutlook\cache_po"  # meme cache que VerifierConfirmation.ps1 (Get-ItemsCommandeGromec)
 
 # Parametres configurables charges depuis Firebase
 $Script:ParamPurgeLogsJours       = 3
@@ -84,6 +85,7 @@ $Script:ParamAdresse2             = "Chicoutimi QC G7K 1C3"
 $Script:ParamCourrielContact      = "DTHIBAULT@GROMEC.COM"
 $Script:ParamTPS                  = 0.05
 $Script:ParamTVQ                  = 0.09975
+$Script:ParamActiverSyncShipDate  = $false  # SECURITE : desactive tant que le format de date DTW n'est pas valide manuellement
 try {
     $repValeurs = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/valeurs.json" -Method Get -TimeoutSec 10
     if ($repValeurs) {
@@ -95,6 +97,7 @@ try {
         if ($repValeurs.courriel_contact)          { $Script:ParamCourrielContact      = [string]$repValeurs.courriel_contact }
         if ($repValeurs.tps)                       { $Script:ParamTPS                  = [double]$repValeurs.tps / 100.0 }
         if ($repValeurs.tvq)                       { $Script:ParamTVQ                  = [double]$repValeurs.tvq / 100.0 }
+        if ($null -ne $repValeurs.activer_sync_shipdate) { $Script:ParamActiverSyncShipDate = [bool]$repValeurs.activer_sync_shipdate }
     }
 } catch {}
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1154,6 +1157,90 @@ while ($true) {
         }
     } catch {
         Write-Log "WARN  Erreur lecture noeud leadtime_dtw : $($_.Exception.Message)"
+    }
+
+    # ── Sync ShipDate (dates de livraison confirmees par relance) ──────────────
+    # Alimente par VerifierConfirmation.ps1 (Invoke-TraiterReponseRelance) quand
+    # un fournisseur repond a une relance avec une date precise.
+    # SECURITE : desactive par defaut (parametres.activer_sync_shipdate) tant
+    # que le format de date attendu par le scenario DTW n'a pas ete valide
+    # manuellement -- une mauvaise correspondance ecrirait une mauvaise date
+    # de livraison dans des bons de commande SAP reels.
+    try {
+        $jobsShipDate = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser.json" -Method Get -TimeoutSec 10
+        if ($null -ne $jobsShipDate -and $jobsShipDate -ne "null") {
+            $clesEnAttente = @($jobsShipDate.PSObject.Properties | Where-Object { $_.Value.statut -eq 'attente' })
+
+            if ($clesEnAttente.Count -gt 0 -and -not $Script:ParamActiverSyncShipDate) {
+                Write-Log "AVERT $($clesEnAttente.Count) date(s) de livraison en attente de synchronisation SAP, mais activer_sync_shipdate est desactive (parametres) -- aucune ecriture SAP."
+            } elseif ($clesEnAttente.Count -gt 0) {
+                foreach ($jobProp in $clesEnAttente) {
+                    $cleSD = $jobProp.Name
+                    $job = $jobProp.Value
+                    $docNum = $job.docNum
+                    $dateLivr = $job.date
+
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
+
+                    $fichierCachePO = Join-Path $DossierCachePO "$docNum.json"
+                    if (-not (Test-Path $fichierCachePO)) {
+                        Write-Log "WARN  Sync ShipDate BC $docNum : PO non retrouve dans le cache local ($fichierCachePO) -- maj SAP manuelle requise." "" $docNum
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
+                            -Method Patch -Body (@{ statut = 'erreur'; erreur = 'PO non retrouve dans le cache local -- mise a jour manuelle requise dans SAP' } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                        continue
+                    }
+
+                    try {
+                        $cachePO = Get-Content $fichierCachePO -Raw | ConvertFrom-Json
+                        $lignesPO = @($cachePO.Items | ForEach-Object { [int]$_.LineNbr })
+                        if ($lignesPO.Count -eq 0) { throw "Aucune ligne dans le cache local." }
+
+                        $Tab = "`t"
+                        $Header = "ParentKey${Tab}LineNum${Tab}ItemCode${Tab}ItemDescription${Tab}Quantity${Tab}ShipDate${Tab}UnitPrice"
+                        $LignesSD = @($Header, $Header)
+                        foreach ($ln in $lignesPO) {
+                            $lineNum = $ln - 1  # 0-indexed, meme convention que Write-FichierLignesDTW
+                            $LignesSD += "${docNum}${Tab}${lineNum}${Tab}${Tab}${Tab}${Tab}${dateLivr}${Tab}"
+                        }
+                        $ContenuSD = ($LignesSD -join "`r`n") + "`r`n"
+
+                        for ($iRetry = 1; $iRetry -le 8; $iRetry++) {
+                            try {
+                                [System.IO.File]::WriteAllText($DTW_FichierLignes, $ContenuSD, [System.Text.Encoding]::Unicode)
+                                break
+                            } catch {
+                                if ($iRetry -eq 8) { throw }
+                                Start-Sleep -Seconds 3
+                            }
+                        }
+
+                        $resSD = Invoke-DTW -ScenarioXml $DTW_ScenarioLignes
+                        $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+
+                        if ($resSD.Succes) {
+                            Write-Log "INFO  Sync ShipDate BC $docNum : $dateLivr applique sur $($lignesPO.Count) ligne(s)." "" $docNum
+                            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
+                                -Method Patch -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                                -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                        } else {
+                            Write-Log "WARN  Sync ShipDate BC $docNum : echec DTW : $($resSD.Erreur)" "" $docNum
+                            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
+                                -Method Patch -Body (@{ statut = 'erreur'; erreur = $resSD.Erreur; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                                -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                        }
+                    } catch {
+                        Write-Log "ERREUR Sync ShipDate BC ${docNum} : $($_.Exception.Message)" "" $docNum
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
+                            -Method Patch -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Log "WARN  Erreur lecture noeud sap_shipdate_a_synchroniser : $($_.Exception.Message)"
     }
 
     # ── Import Fullbox (PurPackUn + QryGroup26) depuis le dashboard ────────────
