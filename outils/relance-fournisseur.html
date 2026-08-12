@@ -159,6 +159,9 @@
       <p style="font-size:.82rem;color:var(--ink-soft);margin-top:6px">Les pages consécutives d'un même fournisseur sont regroupées automatiquement.</p>
     </div>
     <input type="file" id="filePdf" accept=".pdf,application/pdf" style="display:none">
+    <div class="toolbar" id="envoyerTousWrap" style="display:none;margin-top:10px">
+      <button class="btn" id="envoyerTous" title="Ces fournisseurs sont déjà dans la file d'envoi auto (mis un par un ou en lot) — le clic ne fait qu'en confirmer le nombre, l'envoi réel se fait par RelanceFournisseur.ps1 -Envoyer qui doit tourner sur le poste Windows.">📤 Envoyer les relances en file (<span id="envoyerTousCount">0</span>)</button>
+    </div>
     <div class="status" id="pdfStatus"></div>
   </section>
 
@@ -308,6 +311,16 @@ function categorieGroupe(g){
   if(etat.code==="exclu_fournisseur"||etat.code==="obtenu"||etat.code==="exclu") return etat.code;
   if(queueStatut(g)==="attente") return "en_file";
   return etat.code;
+}
+function fournisseursDejaEnFile(){
+  return groups.map((g,gi)=>({g,gi})).filter(({g})=>queueStatut(g)==="attente");
+}
+function updateEnvoyerTousButton(){
+  const wrap=document.getElementById("envoyerTousWrap"); if(!wrap) return;
+  const enFile=groups.length?fournisseursDejaEnFile():[];
+  wrap.style.display=groups.length?"flex":"none";
+  document.getElementById("envoyerTousCount").textContent=enFile.length;
+  document.getElementById("envoyerTous").disabled=enFile.length===0;
 }
 function saveFiltres(){ save("relance_filtres_v1",[...filtresActifs]); }
 function renderFiltres(){
@@ -666,7 +679,7 @@ function updateDoneCount(){
 /* ---- Résultats UI ---- */
 const results=document.getElementById("results");
 function renderResults(){
-  if(!groups.length){results.innerHTML=`<div class="empty">Aucun résultat.</div>`;document.getElementById("globalActions").style.display="none";document.getElementById("resultsSearch").style.display="none";document.getElementById("filtresEtat").style.display="none";return;}
+  if(!groups.length){results.innerHTML=`<div class="empty">Aucun résultat.</div>`;document.getElementById("globalActions").style.display="none";document.getElementById("resultsSearch").style.display="none";document.getElementById("filtresEtat").style.display="none";updateEnvoyerTousButton();return;}
   document.getElementById("globalActions").style.display="flex";
   document.getElementById("resultsSearch").style.display="block";
   document.getElementById("filtresEtat").style.display="flex";
@@ -676,7 +689,7 @@ function renderResults(){
     .filter(o=>filtresActifs.has(o.cat))
     .filter(o=>!rechercheTexte || norm(o.g.supplier).includes(rechercheTexte) || (o.g.orders||[]).some(ord=>ord.includes(rechercheTexte)));
   visibles.sort((a,b)=>(ETAT_ORDRE[a.cat]-ETAT_ORDRE[b.cat])||(a.g.supplier||"").localeCompare(b.g.supplier||""));
-  if(!visibles.length){ results.innerHTML=`<div class="empty">Aucun fournisseur ne correspond aux filtres actifs.<br><span style="font-size:.85rem">Coche d'autres états ci-dessus, ou efface la recherche.</span></div>`; updateSelCount(); return; }
+  if(!visibles.length){ results.innerHTML=`<div class="empty">Aucun fournisseur ne correspond aux filtres actifs.<br><span style="font-size:.85rem">Coche d'autres états ci-dessus, ou efface la recherche.</span></div>`; updateSelCount(); updateEnvoyerTousButton(); return; }
   visibles.forEach(({g,gi,etat,cat})=>{
     const card=document.createElement("div"); card.className="card"+(g.known?"":" unknown")+(g.done?" done":"");
     const emailTag=g.known?(g.email?"":`<span class="tag miss">courriel manquant</span>`):`<span class="tag miss">nom à assigner</span>`;
@@ -714,6 +727,7 @@ function renderResults(){
     results.appendChild(card);
   });
   updateSelCount();
+  updateEnvoyerTousButton();
 }
 function inCarnet(n){return carnet.some(c=>norm(c.name)===norm(n));}
 results.addEventListener("input",e=>{const t=e.target,gi=t.dataset.gi;if(gi===undefined||!t.dataset.f)return;groups[+gi][t.dataset.f]=t.value;saveSession();});
@@ -748,6 +762,11 @@ document.getElementById("queueSelected").onclick=async()=>{
   selectedKeys.clear();
   setStatus("pdfStatus",`${ok} fournisseur(s) mis en file d'envoi auto${ignores?`, ${ignores} ignoré(s) (courriel manquant ou pas encore relançable)`:""}.`,"ok");
   renderResults();
+};
+document.getElementById("envoyerTous").onclick=()=>{
+  const cibles=fournisseursDejaEnFile();
+  if(!cibles.length) return;
+  setStatus("pdfStatus",`${cibles.length} fournisseur(s) en file d'envoi automatique (${cibles.map(c=>c.g.supplier).join(", ")}). Ils partiront au prochain passage de RelanceFournisseur.ps1 -Envoyer sur le poste Windows — le navigateur ne peut pas envoyer de courriel lui-même.`,"ok");
 };
 document.getElementById("resetSession").onclick=()=>{
   if(confirm("RESET — effacer la session de relance en cours (fournisseurs détectés et progression) ? Le carnet n'est pas touché.")){
@@ -804,7 +823,6 @@ function dl(blob,name){const u=URL.createObjectURL(blob);const a=document.create
 function setStatus(id,msg,kind){const el=document.getElementById(id);el.textContent=msg;el.style.color=kind==="ok"?"var(--ok)":kind==="warn"?"var(--warn)":kind==="miss"?"var(--miss)":"var(--ink-soft)";}
 
 buildKeys(); renderCarnet();
-(async()=>{ const rechargeOK=await loadPdfDepuisFirebase(); if(!rechargeOK) restoreSession(); })();
 applyParamsToUI();
 document.getElementById("paramDelai").addEventListener("change",e=>{relanceParams.delaiJours=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.delaiJours);saveParametres();if(groups.length)renderResults();});
 document.getElementById("paramMax").addEventListener("change",e=>{relanceParams.maxRelances=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.maxRelances);saveParametres();if(groups.length)renderResults();});
@@ -816,7 +834,16 @@ document.getElementById("paramActiverShipDate").addEventListener("change",e=>{
   saveActiverShipDate(on);
 });
 loadActiverShipDate();
-loadParametres(); loadRelanceLog(); loadRelanceQueue(); loadExclusions(); loadFournisseurExclusions();
+// Charger tout l'état (délais, historique, file d'envoi, exclusions) AVANT
+// de charger/analyser le PDF, pour que le tout premier rendu des cartes ait
+// déjà les bonnes données (sinon la file d'envoi auto pouvait sembler
+// "oubliée" un instant après un rafraîchissement, le temps que son fetch
+// Firebase termine après le premier rendu).
+(async()=>{
+  await Promise.all([loadParametres(), loadRelanceLog(), loadRelanceQueue(), loadExclusions(), loadFournisseurExclusions()]);
+  const rechargeOK=await loadPdfDepuisFirebase();
+  if(!rechargeOK) restoreSession();
+})();
 </script>
 </body>
 </html>
