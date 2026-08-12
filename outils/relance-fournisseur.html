@@ -167,11 +167,11 @@
     <div class="toolbar" id="globalActions" style="display:none">
       <button class="btn sm" id="downloadAll">Télécharger tous les PDF (zip)</button>
       <span class="pill-count" id="doneCount"></span>
-      <label style="font-size:.84rem;color:var(--ink-soft);display:inline-flex;align-items:center;gap:5px;cursor:pointer">
-        <input type="checkbox" id="showDone"> Afficher les traités</label>
       <span style="flex:1"></span>
       <button class="btn ghost sm" id="resetSession" title="Effacer la session en cours">RESET — tout effacer</button>
     </div>
+    <input class="search" id="resultsSearch" placeholder="Filtrer par nom de fournisseur ou n° de commande…" style="display:none">
+    <div class="toolbar" id="filtresEtat" style="display:none;margin-bottom:4px"></div>
     <div id="results"><div class="empty">Charge un PDF à l'étape 2 pour voir les fournisseurs ici.</div></div>
   </section>
 
@@ -259,8 +259,38 @@ function etatRelance(g){
   }
   return {code:"pret", label:`🔁 Prêt à relancer (dernière relance il y a ${jours} j)`, cls:"miss", jours};
 }
-const ETAT_ORDRE={escalade:0, pret:1, nouveau:2, attente:3, obtenu:4, exclu:5, exclu_fournisseur:6};
-let showDone=false;
+const ETAT_ORDRE={escalade:0, pret:1, nouveau:2, attente:3, obtenu:4, exclu:5, exclu_fournisseur:6, traite:7};
+const FILTRES_DEF=[
+  {code:"escalade", label:"🚨 À escalader"},
+  {code:"pret", label:"🔁 Prêt à relancer"},
+  {code:"nouveau", label:"🆕 Jamais relancé"},
+  {code:"attente", label:"⏳ En attente de réponse"},
+  {code:"obtenu", label:"✅ Date obtenue"},
+  {code:"exclu", label:"🚫 Commande exclue"},
+  {code:"exclu_fournisseur", label:"🚫 Fournisseur exclu"},
+  {code:"traite", label:"✓ Traité manuellement"}
+];
+const FILTRES_DEFAUT=["escalade","pret","nouveau","attente"];
+let filtresActifs=new Set(load("relance_filtres_v1",FILTRES_DEFAUT));
+let rechercheTexte="";
+function categorieGroupe(g){ return g.done?"traite":etatRelance(g).code; }
+function saveFiltres(){ save("relance_filtres_v1",[...filtresActifs]); }
+function renderFiltres(){
+  const bar=document.getElementById("filtresEtat");
+  const compte={}; groups.forEach(g=>{ const c=categorieGroupe(g); compte[c]=(compte[c]||0)+1; });
+  bar.innerHTML=FILTRES_DEF.map(f=>{
+    const actif=filtresActifs.has(f.code);
+    const n=compte[f.code]||0;
+    return `<button type="button" class="btn ${actif?'':'sec'} sm" data-filtre="${f.code}" style="${actif?'':'opacity:.55'}">${f.label} <span class="pill-count" style="margin-left:4px">${n}</span></button>`;
+  }).join("");
+}
+document.getElementById("filtresEtat").addEventListener("click",e=>{
+  const btn=e.target.closest("[data-filtre]"); if(!btn) return;
+  const c=btn.dataset.filtre;
+  if(filtresActifs.has(c)) filtresActifs.delete(c); else filtresActifs.add(c);
+  saveFiltres(); renderResults();
+});
+document.getElementById("resultsSearch").addEventListener("input",e=>{ rechercheTexte=norm(e.target.value); renderResults(); });
 
 /* ---- Commandes exclues des relances (clic sur un n° de commande dans la carte) ---- */
 let exclusions=load("relance_exclusions_v1",{}); // { "9005472": true, ... }
@@ -579,11 +609,17 @@ function updateDoneCount(){
 /* ---- Résultats UI ---- */
 const results=document.getElementById("results");
 function renderResults(){
-  if(!groups.length){results.innerHTML=`<div class="empty">Aucun résultat.</div>`;document.getElementById("globalActions").style.display="none";return;}
-  document.getElementById("globalActions").style.display="flex"; results.innerHTML="";
-  let visibles=groups.map((g,gi)=>({g,gi,etat:etatRelance(g)})).filter(o=>showDone||(!o.g.done && o.etat.code!=="obtenu" && o.etat.code!=="exclu" && o.etat.code!=="exclu_fournisseur"));
-  visibles.sort((a,b)=>(ETAT_ORDRE[a.etat.code]-ETAT_ORDRE[b.etat.code])||(a.g.supplier||"").localeCompare(b.g.supplier||""));
-  if(!visibles.length){ results.innerHTML=`<div class="empty">Tous les fournisseurs sont traités, ont une date de livraison, ou n'ont plus de commande active. ✓<br><span style="font-size:.85rem">Coche « Afficher les traités » pour les revoir.</span></div>`; return; }
+  if(!groups.length){results.innerHTML=`<div class="empty">Aucun résultat.</div>`;document.getElementById("globalActions").style.display="none";document.getElementById("resultsSearch").style.display="none";document.getElementById("filtresEtat").style.display="none";return;}
+  document.getElementById("globalActions").style.display="flex";
+  document.getElementById("resultsSearch").style.display="block";
+  document.getElementById("filtresEtat").style.display="flex";
+  renderFiltres();
+  results.innerHTML="";
+  let visibles=groups.map((g,gi)=>({g,gi,etat:etatRelance(g),cat:categorieGroupe(g)}))
+    .filter(o=>filtresActifs.has(o.cat))
+    .filter(o=>!rechercheTexte || norm(o.g.supplier).includes(rechercheTexte) || (o.g.orders||[]).some(ord=>ord.includes(rechercheTexte)));
+  visibles.sort((a,b)=>(ETAT_ORDRE[a.cat]-ETAT_ORDRE[b.cat])||(a.g.supplier||"").localeCompare(b.g.supplier||""));
+  if(!visibles.length){ results.innerHTML=`<div class="empty">Aucun fournisseur ne correspond aux filtres actifs.<br><span style="font-size:.85rem">Coche d'autres états ci-dessus, ou efface la recherche.</span></div>`; return; }
   visibles.forEach(({g,gi,etat})=>{
     const card=document.createElement("div"); card.className="card"+(g.known?"":" unknown")+(g.done?" done":"");
     const emailTag=g.known?(g.email?"":`<span class="tag miss">courriel manquant</span>`):`<span class="tag miss">nom à assigner</span>`;
@@ -623,7 +659,7 @@ results.addEventListener("input",e=>{const t=e.target,gi=t.dataset.gi;if(gi===un
 results.addEventListener("click",async e=>{const t=e.target;
   try{
     if(t.dataset.pdf!==undefined)await downloadGroupPdf(+t.dataset.pdf);
-    else if(t.dataset.open!==undefined){const gi=+t.dataset.open;await downloadGroupPdf(gi);openMail(gi);groups[gi].done=true;markRelance(groups[gi]);saveSession();renderResults();updateDoneCount();}
+    else if(t.dataset.open!==undefined){const gi=+t.dataset.open;await downloadGroupPdf(gi);openMail(gi);markRelance(groups[gi]);saveSession();renderResults();updateDoneCount();}
     else if(t.dataset.toggle!==undefined){const gi=+t.dataset.toggle;groups[gi].done=!groups[gi].done;saveSession();renderResults();updateDoneCount();}
     else if(t.dataset.reset!==undefined){const gi=+t.dataset.reset;resetEscalade(groups[gi]);}
     else if(t.dataset.queue!==undefined){await queueForAutoSend(+t.dataset.queue);}
@@ -691,7 +727,6 @@ function dl(blob,name){const u=URL.createObjectURL(blob);const a=document.create
 function setStatus(id,msg,kind){const el=document.getElementById(id);el.textContent=msg;el.style.color=kind==="ok"?"var(--ok)":kind==="warn"?"var(--warn)":kind==="miss"?"var(--miss)":"var(--ink-soft)";}
 
 buildKeys(); renderCarnet(); restoreSession();
-document.getElementById("showDone").addEventListener("change",e=>{showDone=e.target.checked;renderResults();});
 applyParamsToUI();
 document.getElementById("paramDelai").addEventListener("change",e=>{relanceParams.delaiJours=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.delaiJours);saveParametres();if(groups.length)renderResults();});
 document.getElementById("paramMax").addEventListener("change",e=>{relanceParams.maxRelances=Math.max(1,parseInt(e.target.value)||DEFAULT_PARAMS.maxRelances);saveParametres();if(groups.length)renderResults();});
