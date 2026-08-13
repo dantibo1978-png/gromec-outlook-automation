@@ -167,7 +167,7 @@
     </div>
     <input type="file" id="filePdf" accept=".pdf,application/pdf" style="display:none">
     <div class="toolbar" id="envoyerTousWrap" style="display:none;margin-top:10px">
-      <button class="btn" id="envoyerTous" title="Ces fournisseurs sont déjà dans la file d'envoi auto (mis un par un ou en lot) — le clic ne fait qu'en confirmer le nombre, l'envoi réel se fait par RelanceFournisseur.ps1 -Envoyer qui doit tourner sur le poste Windows.">📤 Envoyer les relances en file (<span id="envoyerTousCount">0</span>)</button>
+      <button class="btn" id="envoyerTous" title="Ces fournisseurs sont déjà dans la file d'envoi auto (mis un par un ou en lot) — le clic ne fait qu'en confirmer le nombre, l'envoi réel se fait par SyncDTW.ps1 (ou RelanceFournisseur.ps1 -Envoyer) qui doit tourner sur le poste Windows.">📤 Envoyer les relances en file (<span id="envoyerTousCount">0</span>)</button>
     </div>
     <div class="status" id="pdfStatus"></div>
   </section>
@@ -183,7 +183,7 @@
     </details>
     <div class="toolbar" id="globalActions" style="display:none">
       <button class="btn sm" id="downloadAll">Télécharger tous les PDF (zip)</button>
-      <button class="btn sm" id="queueSelected" title="Met en file d'envoi auto tous les fournisseurs cochés ci-dessous (l'envoi réel se fait par RelanceFournisseur.ps1)">📤 Mettre en file les fournisseurs cochés (<span id="selCount">0</span>)</button>
+      <button class="btn sm" id="queueSelected" title="Met en file d'envoi auto tous les fournisseurs cochés ci-dessous (l'envoi réel se fait par SyncDTW.ps1 ou RelanceFournisseur.ps1)">📤 Mettre en file les fournisseurs cochés (<span id="selCount">0</span>)</button>
       <span class="pill-count" id="doneCount"></span>
       <span style="flex:1"></span>
       <button class="btn ghost sm" id="resetSession" title="Effacer la session en cours">RESET — tout effacer</button>
@@ -721,13 +721,13 @@ function renderResults(){
     const doneTag=g.done?`<span class="tag ok">✓ traité manuellement</span>`:"";
     const qs=queueStatut(g);
     const etatTag=cat==="en_file"
-      ? `<span class="tag warn" title="En attente d'envoi par RelanceFournisseur.ps1 -Envoyer">📤 En file d'envoi automatique</span>`
+      ? `<span class="tag warn" title="En attente d'envoi par SyncDTW.ps1 ou RelanceFournisseur.ps1">📤 En file d'envoi automatique</span>`
       : `<span class="tag ${etat.cls}" title="Délai actuel : ${relanceParams.delaiJours} j · max ${relanceParams.maxRelances} relance(s)">${etat.label}</span>`;
     const resetBtn=etat.code==="escalade"?`<button class="btn ghost sm" data-reset="${gi}" title="Remettre à zéro le compteur de relances">↺ Réinitialiser</button>`:"";
     const canRelancer=etat.code!=="attente" && etat.code!=="obtenu" && etat.code!=="exclu" && etat.code!=="exclu_fournisseur";
     const fournBtn=`<button class="btn ghost sm" data-fourn-excl="${gi}" title="${etat.code==='exclu_fournisseur'?'Réactiver les relances pour ce fournisseur':'Exclure définitivement ce fournisseur des relances'}">${etat.code==='exclu_fournisseur'?'↺ Réactiver ce fournisseur':'🚫 Ne plus jamais relancer'}</button>`;
     const queueTag=qs==="envoye"?`<span class="tag ok">📤 envoyé automatiquement</span>`:qs==="erreur"?`<span class="tag miss">📤 erreur d'envoi</span>`:"";
-    const queueBtn=(canRelancer&&g.email&&qs!=="attente")?`<button class="btn sec sm" data-queue="${gi}" title="Ajoute ce fournisseur à la file que RelanceFournisseur.ps1 traitera (aucun envoi tant que le script n'est pas activé)">📤 Mettre en file d'envoi auto</button>`:"";
+    const queueBtn=(canRelancer&&g.email&&qs!=="attente")?`<button class="btn sec sm" data-queue="${gi}" title="Ajoute ce fournisseur à la file que SyncDTW.ps1 ou RelanceFournisseur.ps1 traitera (aucun envoi tant que l'un des deux n'est pas activé)">📤 Mettre en file d'envoi auto</button>`:"";
     const unqueueBtn=(qs==="attente")?`<button class="btn ghost sm" data-unqueue="${gi}" title="Retire ce fournisseur de la file d'envoi automatique">✕ Retirer de la file</button>`:"";
     const cmdsHtml=g.orders.length
       ? g.orders.map(o=>`<span class="tag ${exclusions[o]?'miss':'ok'} po-chip" data-po="${esc(o)}" style="cursor:pointer" title="${exclusions[o]?'Cliquer pour réactiver les relances pour cette commande':'Cliquer pour ne plus jamais relancer cette commande'}">${exclusions[o]?'🚫 ':''}${esc(o)}</span>`).join(" ")
@@ -791,7 +791,7 @@ document.getElementById("queueSelected").onclick=async()=>{
 document.getElementById("envoyerTous").onclick=()=>{
   const cibles=fournisseursDejaEnFile();
   if(!cibles.length) return;
-  setStatus("pdfStatus",`${cibles.length} fournisseur(s) en file d'envoi automatique (${cibles.map(c=>c.g.supplier).join(", ")}). Ils partiront au prochain passage de RelanceFournisseur.ps1 -Envoyer sur le poste Windows — le navigateur ne peut pas envoyer de courriel lui-même.`,"ok");
+  setStatus("pdfStatus",`${cibles.length} fournisseur(s) en file d'envoi automatique (${cibles.map(c=>c.g.supplier).join(", ")}). Ils partiront au prochain passage de SyncDTW.ps1 (ou de RelanceFournisseur.ps1 -Envoyer, si tu utilises ce script séparément) sur le poste Windows — le navigateur ne peut pas envoyer de courriel lui-même.`,"ok");
 };
 document.getElementById("resetSession").onclick=()=>{
   if(confirm("RESET — effacer la session de relance en cours (fournisseurs détectés et progression) ? Le carnet n'est pas touché.")){
