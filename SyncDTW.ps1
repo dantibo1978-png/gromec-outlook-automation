@@ -918,6 +918,26 @@ function Invoke-TraiterReclassification {
             Write-Log "INFO  Retraitement termine pour : $sujet"
         }
 
+        # Enregistrer comme correction pour le few-shot learning
+        $correction = @{
+            type = if ($estConfirmation) { "faux_ecart" } else { "faux_ok" }
+            raison = "Reclassification manuelle Outlook : $classification"
+            date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
+            fournisseur = $expediteur
+            sujet = ($sujet -replace '"','\"').Substring(0, [Math]::Min(100, $sujet.Length))
+            source = "outlook_reclassification"
+        }
+        try {
+            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/corrections.json" `
+                -Method Post `
+                -Body ($correction | ConvertTo-Json -Compress) `
+                -ContentType "application/json" `
+                -TimeoutSec 10 | Out-Null
+            Write-Log "INFO  Correction enregistree pour apprentissage : $expediteur -> $classification"
+        } catch {
+            Write-Log "WARN  Impossible d'enregistrer la correction : $($_.Exception.Message)"
+        }
+
         # Effacer cette entree specifique dans Firebase (pas toute la liste)
         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassifications/$CleFirebase.json" `
             -Method Delete `
