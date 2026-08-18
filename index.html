@@ -101,6 +101,10 @@
   .dot-ecart{background:var(--ecart);}
   .dot-total{background:var(--accent);}
   .dot-attente{background:var(--warn);}
+  .dot-dtw-attente{background:var(--accent);}
+  .dot-dtw-bloque{background:var(--ecart); animation:pulse-dot 1.2s infinite;}
+  .stat-pill-alerte{border-color:var(--ecart); color:var(--ecart); font-weight:600;}
+  @keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:0.3;}}
 
   /* ---------- TOOLBAR ---------- */
   .toolbar{
@@ -924,7 +928,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-08-18 09:51";
+const DERNIERE_MAJ_CODE = "2026-08-18 09:52";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1068,11 +1072,19 @@ function rendreStats(){
   const comparables = donnees.filter(d => d.statut !== 'NON_APPARIE' || d.resolu);
   const ok = comparables.filter(d => estEffectivementOK(d)).length;
   const ecarts = comparables.length - ok;
+  const dtwEnAttente = donnees.filter(d => d.dtw_statut === 'en_attente').length;
+  const dtwBloquees = donnees.filter(d => {
+    if (d.dtw_statut !== 'en_attente' || !d.dtw_demandeLe) return false;
+    return (Date.now() - new Date(d.dtw_demandeLe).getTime()) > 7200000;
+  }).length;
+
   document.getElementById('statRow').innerHTML = `
     <div class="stat-pill"><span class="dot dot-total"></span>${total} vérification${total!==1?'s':''}</div>
     <div class="stat-pill"><span class="dot dot-ok"></span>${ok} conforme${ok!==1?'s':''}</div>
     <div class="stat-pill"><span class="dot dot-ecart"></span>${ecarts} avec écart${ecarts!==1?'s':''}</div>
     ${nonApparies > 0 ? `<div class="stat-pill"><span class="dot dot-attente"></span>${nonApparies} non trouvé${nonApparies!==1?'s':''}</div>` : ''}
+    ${dtwEnAttente > 0 ? `<div class="stat-pill"><span class="dot dot-dtw-attente"></span>${dtwEnAttente} DTW en cours</div>` : ''}
+    ${dtwBloquees > 0 ? `<div class="stat-pill stat-pill-alerte"><span class="dot dot-dtw-bloque"></span>${dtwBloquees} DTW bloquée${dtwBloquees!==1?'s':''}</div>` : ''}
   `;
 }
 
