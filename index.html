@@ -539,6 +539,8 @@
   .dtw-statut-msg.ok{ border-left-color:var(--ok); color:var(--ok); }
   .dtw-statut-msg.warn{ border-left-color:var(--warn); color:var(--warn); }
   .dtw-statut-msg.erreur{ border-left-color:var(--ecart); color:var(--ecart); }
+  .btn-annuler-dtw{ margin-left:10px; padding:3px 10px; border:1px solid var(--ecart); border-radius:4px; background:rgba(229,78,78,0.15); color:var(--ecart); cursor:pointer; font-size:13px; }
+  .btn-annuler-dtw:hover{ background:rgba(229,78,78,0.3); }
 
   table{width:100%; border-collapse:collapse; font-size:14px;}
   th{
@@ -922,7 +924,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-08-17 10:27";
+const DERNIERE_MAJ_CODE = "2026-08-18 09:45";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1079,6 +1081,21 @@ function articlesTriesParLigne(articles){
 }
 
 // ── DTW : écrire flag dans Firebase ──────────────────────────────────────────
+
+async function annulerDemandeDTW(id){
+  if (!confirm('Annuler cette demande DTW bloquée ?')) return;
+  try {
+    await fetch(FIREBASE_URL + 'gromec_vba/historique/' + id + '.json', {
+      method: 'PATCH',
+      body: JSON.stringify({ dtw_statut: null, dtw_copierPrix: null, dtw_copierQty: null, dtw_lignesCochees: null, dtw_demandeLe: null, actionRequise: false }),
+      headers: {'Content-Type':'application/json'}
+    });
+    logConsole('Demande DTW annulée pour ' + id, 'warn');
+    chargerHistorique();
+  } catch(e) {
+    logConsole('Erreur annulation DTW : ' + e.message, 'erreur');
+  }
+}
 
 async function declencherDTW(id, copierPrix, copierQty, btnEl){
   event.stopPropagation();
@@ -1332,7 +1349,16 @@ function rendreFiche(d){
 
   let msgStatutHtml = '';
   if (dtwStatut === 'en_attente'){
-    msgStatutHtml = `<div class="dtw-statut-msg visible warn">⏳ Demande envoyée — en attente de traitement par le script local…</div>`;
+    const demandeLe = d.dtw_demandeLe ? new Date(d.dtw_demandeLe) : null;
+    const heuresEcoulees = demandeLe ? ((Date.now() - demandeLe.getTime()) / 3600000) : 0;
+    if (heuresEcoulees > 2){
+      const jours = Math.floor(heuresEcoulees / 24);
+      const heures = Math.floor(heuresEcoulees % 24);
+      const duree = jours > 0 ? `${jours}j ${heures}h` : `${heures}h`;
+      msgStatutHtml = `<div class="dtw-statut-msg visible erreur">⚠️ Demande bloquée depuis ${duree} — le script local n'a jamais traité cette demande. <button class="btn-annuler-dtw" onclick="event.stopPropagation(); annulerDemandeDTW('${d.id}')">✗ Annuler la demande</button></div>`;
+    } else {
+      msgStatutHtml = `<div class="dtw-statut-msg visible warn">⏳ Demande envoyée — en attente de traitement par le script local…</div>`;
+    }
   } else if (dtwStatut === 'ok'){
     msgStatutHtml = `<div class="dtw-statut-msg visible ok">✓ Dernier import DTW complété avec succès — ${d.dtw_traiteLe ? fmtDate(d.dtw_traiteLe) : ''}.</div>`;
   } else if (dtwStatut === 'erreur'){
