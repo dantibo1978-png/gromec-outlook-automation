@@ -1307,18 +1307,48 @@ while ($true) {
                         -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
 
                     $fichierCachePO = Join-Path $DossierCachePO "$docNum.json"
-                    if (-not (Test-Path $fichierCachePO)) {
-                        Write-Log "WARN  Sync ShipDate BC $docNum : PO non retrouve dans le cache local ($fichierCachePO) -- maj SAP manuelle requise." "" $docNum
+                    $lignesPO = @()
+
+                    if (Test-Path $fichierCachePO) {
+                        try {
+                            $cachePO = Get-Content $fichierCachePO -Raw | ConvertFrom-Json
+                            $lignesPO = @($cachePO.Items | ForEach-Object { [int]$_.LineNbr })
+                        } catch {}
+                    }
+
+                    if ($lignesPO.Count -eq 0) {
+                        # Fallback : chercher les lignes dans l'historique Firebase
+                        try {
+                            $histBC = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json?orderBy=%22numeroCommande%22&equalTo=%22$docNum%22" -Method Get -TimeoutSec 10
+                            if ($null -ne $histBC) {
+                                foreach ($clH in $histBC.PSObject.Properties.Name) {
+                                    $entreeH = $histBC.$clH
+                                    if ($entreeH.articles) {
+                                        foreach ($art in $entreeH.articles) {
+                                            if ($null -ne $art.sapLigne -and $art.sapLigne -gt 0 -and $lignesPO -notcontains [int]$art.sapLigne) {
+                                                $lignesPO += [int]$art.sapLigne
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if ($lignesPO.Count -gt 0) {
+                                Write-Log "INFO  Sync ShipDate BC $docNum : cache local absent, $($lignesPO.Count) ligne(s) recuperee(s) depuis l'historique Firebase." "" $docNum
+                            }
+                        } catch {
+                            Write-Log "WARN  Sync ShipDate BC $docNum : echec lecture historique Firebase : $($_.Exception.Message)" "" $docNum
+                        }
+                    }
+
+                    if ($lignesPO.Count -eq 0) {
+                        Write-Log "WARN  Sync ShipDate BC $docNum : aucune ligne trouvee (cache local absent et historique Firebase vide) -- maj SAP manuelle requise." "" $docNum
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
-                            -Method Patch -Body (@{ statut = 'erreur'; erreur = 'PO non retrouve dans le cache local -- mise a jour manuelle requise dans SAP' } | ConvertTo-Json -Compress) `
+                            -Method Patch -Body (@{ statut = 'erreur'; erreur = 'Aucune ligne trouvee (cache local et historique Firebase vides) -- mise a jour manuelle requise dans SAP' } | ConvertTo-Json -Compress) `
                             -ContentType "application/json" -TimeoutSec 5 | Out-Null
                         continue
                     }
 
                     try {
-                        $cachePO = Get-Content $fichierCachePO -Raw | ConvertFrom-Json
-                        $lignesPO = @($cachePO.Items | ForEach-Object { [int]$_.LineNbr })
-                        if ($lignesPO.Count -eq 0) { throw "Aucune ligne dans le cache local." }
 
                         $Tab = "`t"
                         $Header = "ParentKey${Tab}LineNum${Tab}ItemCode${Tab}ItemDescription${Tab}Quantity${Tab}ShipDate${Tab}UnitPrice"
