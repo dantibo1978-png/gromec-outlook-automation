@@ -120,6 +120,16 @@
   .panneau-dtw-actions button{padding:4px 10px; border:1px solid var(--border); border-radius:4px; background:var(--bg); color:var(--fg); cursor:pointer; font-size:13px; white-space:nowrap;}
   .panneau-dtw-actions button:hover{background:rgba(255,255,255,0.08);}
 
+  /* ---------- TOGGLE PROGRAMME ---------- */
+  .toggle-programme{display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; margin-right:12px; flex-shrink:0;}
+  .toggle-track{width:44px; height:24px; border-radius:12px; background:var(--ecart); position:relative; transition:background 0.2s;}
+  .toggle-thumb{width:20px; height:20px; border-radius:50%; background:#fff; position:absolute; top:2px; left:2px; transition:left 0.2s, box-shadow 0.2s; box-shadow:0 1px 3px rgba(0,0,0,0.3);}
+  .toggle-programme.actif .toggle-track{background:var(--ok);}
+  .toggle-programme.actif .toggle-thumb{left:22px;}
+  .toggle-label{font-size:13px; font-weight:600; white-space:nowrap;}
+  .toggle-programme.actif .toggle-label{color:var(--ok);}
+  .toggle-programme:not(.actif) .toggle-label{color:var(--ecart);}
+
   /* ---------- TOOLBAR ---------- */
   .toolbar{
     max-width:1400px;
@@ -839,6 +849,10 @@
 </header>
 
 <div class="toolbar">
+  <div class="toggle-programme" id="toggleProgramme" onclick="basculerProgramme()" title="Activer/désactiver le traitement automatique Outlook">
+    <div class="toggle-track"><div class="toggle-thumb"></div></div>
+    <span class="toggle-label">Chargement…</span>
+  </div>
   <input type="text" class="search-box" id="searchBox" placeholder="Filtrer par fournisseur ou sujet…">
   <button class="filter-chip active" data-filter="tous">Tous</button>
   <button class="filter-chip" data-filter="ecart">Écarts</button>
@@ -943,7 +957,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-08-24 13:40";
+const DERNIERE_MAJ_CODE = "2026-08-25 10:15";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -1139,6 +1153,44 @@ function articlesTriesParLigne(articles){
 }
 
 // ── DTW : écrire flag dans Firebase ──────────────────────────────────────────
+
+let programmeActif = true;
+
+async function chargerEtatProgramme(){
+  try {
+    const rep = await fetch(FIREBASE_URL + 'gromec_vba/parametres/valeurs/programme_actif.json');
+    const val = await rep.json();
+    programmeActif = val !== false;
+  } catch(e) { programmeActif = true; }
+  majToggleProgramme();
+}
+
+function majToggleProgramme(){
+  const el = document.getElementById('toggleProgramme');
+  if (!el) return;
+  if (programmeActif) {
+    el.classList.add('actif');
+    el.querySelector('.toggle-label').textContent = 'Outlook actif';
+  } else {
+    el.classList.remove('actif');
+    el.querySelector('.toggle-label').textContent = 'Outlook en pause';
+  }
+}
+
+async function basculerProgramme(){
+  programmeActif = !programmeActif;
+  majToggleProgramme();
+  try {
+    await fetch(FIREBASE_URL + 'gromec_vba/parametres/valeurs.json', {
+      method: 'PATCH',
+      body: JSON.stringify({ programme_actif: programmeActif }),
+      headers: {'Content-Type':'application/json'}
+    });
+    logConsole(programmeActif ? 'Programme Outlook activé' : 'Programme Outlook mis en pause', programmeActif ? 'ok' : 'warn');
+  } catch(e) {
+    logConsole('Erreur bascule programme : ' + e.message, 'erreur');
+  }
+}
 
 function togglePanneauDTW(){
   const el = document.getElementById('panneauDTW');
@@ -1813,6 +1865,7 @@ document.querySelectorAll('.filter-chip').forEach(chip => {
 });
 
 demarrerSSEHistorique();
+chargerEtatProgramme();
 
 async function declencherConfirmationFournisseur(id, btnEl){
   if (btnEl.classList.contains('confirmer-envoye') || btnEl.classList.contains('confirmer-attente')) return;

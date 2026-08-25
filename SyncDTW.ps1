@@ -1036,8 +1036,25 @@ if ($Script:ParamActiverEnvoiRelance) {
     }
 }
 
+$Script:ProgrammeActif = $true
+$Script:DernierCheckActif = [datetime]::MinValue
+
 while ($true) {
   try {
+    # Verifier le flag programme_actif toutes les 30s
+    if (((Get-Date) - $Script:DernierCheckActif).TotalSeconds -ge 30) {
+        try {
+            $valActif = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/valeurs/programme_actif.json" -Method Get -TimeoutSec 5
+            $Script:ProgrammeActif = ($valActif -ne $false)
+        } catch {}
+        $Script:DernierCheckActif = Get-Date
+    }
+
+    if (-not $Script:ProgrammeActif) {
+        Start-Sleep -Seconds $IntervalleSecondes
+        continue
+    }
+
     $historique = Get-HistoriqueActif
 
     if (((Get-Date) - $DerniereePurgeLogs).TotalHours -ge 1) {

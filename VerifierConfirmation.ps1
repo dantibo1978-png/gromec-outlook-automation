@@ -131,6 +131,14 @@ $FirebaseUrl    = $Config.FirebaseUrl
 $JoursRecherche = $Config.JoursRechercheEnvoyes
 $SeuilConfiance = $Config.SeuilConfiance
 
+# Verifier si le programme est en pause (sauf reclassification manuelle -Force)
+if (-not $Force.IsPresent) {
+    try {
+        $valActif = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/valeurs/programme_actif.json" -Method Get -TimeoutSec 5
+        if ($valActif -eq $false) { exit 0 }
+    } catch {}
+}
+
 $FichierFournisseurs  = Join-Path $DataFolder "fournisseurs_appris.csv"
 $FichierConversations = Join-Path $DataFolder "conversations_traitees.csv"
 $FichierJournal       = Join-Path $DataFolder "journal_confirmations.csv"
