@@ -1274,12 +1274,17 @@ function Find-MatchesDeterministe {
             }
         }
 
-        # 5. Numero de ligne (le PDF fournisseur indique le meme numero de
-        #    ligne que le PO Gromec, ex: rapports d'ecarts Masco)
+        # 5. Numero de ligne -- SEULEMENT si le prix est aussi proche (tolerance 20%)
+        #    pour eviter les faux positifs quand le fournisseur utilise ses propres
+        #    numeros de ligne qui ne correspondent pas au PO Gromec.
         if ($matchIdx -eq -1 -and $sap.LineNbr -gt 0) {
             for ($j = 0; $j -lt $PdfItems.Count; $j++) {
                 if ($pdfUtilises.ContainsKey($j)) { continue }
-                if ($PdfItems[$j].LineNbr -eq $sap.LineNbr) { $matchIdx = $j; break }
+                if ($PdfItems[$j].LineNbr -eq $sap.LineNbr) {
+                    $prixProche = ($sap.Price -gt 0 -and $PdfItems[$j].NetUnit -gt 0 -and
+                        [Math]::Abs($PdfItems[$j].NetUnit - $sap.Price) / $sap.Price -le 0.20)
+                    if ($prixProche) { $matchIdx = $j; break }
+                }
             }
         }
 
