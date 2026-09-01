@@ -2971,6 +2971,14 @@ demarrerSSELogs();
   document.getElementById('btnPrixFournisseur').addEventListener('click', () => {
     overlay.classList.add('open');
     resetPLF();
+    try {
+      const saved = localStorage.getItem('plf_sap_data');
+      if (saved && saved.length > 10) {
+        sapZone.value = saved;
+        detecterFournisseurs();
+        majBtnAnalyser();
+      }
+    } catch(e){}
   });
   btnFermer.addEventListener('click', () => overlay.classList.remove('open'));
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
@@ -2988,7 +2996,10 @@ demarrerSSELogs();
   const stepFourn = document.getElementById('plfStepFourn');
   let fournisseursMap = new Map(); // nom -> count
 
-  sapZone.addEventListener('input', () => { detecterFournisseurs(); majBtnAnalyser(); });
+  sapZone.addEventListener('input', () => {
+    try { localStorage.setItem('plf_sap_data', sapZone.value); } catch(e){}
+    detecterFournisseurs(); majBtnAnalyser();
+  });
   fournZone.addEventListener('input', () => { fichierFournContenu = null; majBtnAnalyser(); });
 
   fournSelect.addEventListener('change', () => {
@@ -3114,7 +3125,7 @@ demarrerSSELogs();
   }
 
   function resetPLF(){
-    sapZone.value = ''; fournZone.value = ''; fichierFournContenu = null;
+    fournZone.value = ''; fichierFournContenu = null;
     dropLabel.textContent = 'Glissez un fichier Excel (.xlsx), PDF ou texte ici — ou cliquez pour parcourir';
     dropLabel.style.color = 'var(--muted)';
     statusEl.style.display = 'none'; footerStatus.style.display = 'none';
