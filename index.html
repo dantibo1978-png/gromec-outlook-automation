@@ -1117,7 +1117,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-01 13:22";
+const DERNIERE_MAJ_CODE = "2026-09-01 13:24";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -3209,10 +3209,6 @@ demarrerSSELogs();
       escompteStatus.style.display = 'none';
     }
 
-    const colCode = 0;
-    const colPrix = 1;
-    const colDesc = 2;
-
     // --- Parser le tableau SAP ---
     const lignesSap = sapZone.value.split(/\r?\n/).filter(l => l.trim() !== '');
     if (lignesSap.length < 2){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Tableau SAP vide ou trop court.'; return; }
@@ -3255,31 +3251,105 @@ demarrerSSELogs();
       return;
     }
 
-    // --- Parser les données fournisseur ---
+    // --- Parser les données fournisseur (détection intelligente des colonnes) ---
     const texteFourn = fournZone.value;
     const lignesFourn = texteFourn.split(/\r?\n/).filter(l => l.trim() !== '');
     if (lignesFourn.length < 1){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Aucune donnée fournisseur détectée.'; return; }
 
     const sep = lignesFourn[0].includes('\t') ? '\t' : lignesFourn[0].includes(';') ? ';' : ',';
-    const premierChamps = lignesFourn[0].split(sep);
-    const aEntete = premierChamps.some(h => /code|item|article|desc|prix|price|part|numéro|catalog/i.test(h.trim()));
+    const premierChamps = lignesFourn[0].split(sep).map(h => h.trim());
+    const aEntete = premierChamps.some(h => /code|item|article|desc|prix|price|part|num[eé]ro|catalog|product|list|net|uom|unit|size|model/i.test(h));
     const startIdx = aEntete ? 1 : 0;
+
+    // Détection des colonnes par en-tête
+    let colCode = -1, colPrix = -1, colDesc = -1;
+    if (aEntete) {
+      for (let ci = 0; ci < premierChamps.length; ci++) {
+        const h = premierChamps[ci].toLowerCase();
+        if (colCode === -1 && /^(item|code|part|cat|sku|prod|model|no\.|n[°ºo]|num|#|mfr|mfg|stock)/.test(h)) colCode = ci;
+        else if (colCode === -1 && /item\s*#|part\s*#|cat\s*(no|#|num)|code\s*(art|prod|manuf)|product\s*(code|num|#)|stock\s*#|sku|catalog/i.test(h)) colCode = ci;
+        if (colPrix === -1 && /prix|price|list|net|msrp|co[uû]t|cost|each|\$|tarif/i.test(h) && !/desc/i.test(h)) colPrix = ci;
+        if (colDesc === -1 && /desc|name|désig|libel|product(?!.*code)|article(?!.*#)/i.test(h) && !/price|prix/i.test(h)) colDesc = ci;
+      }
+    }
+
+    // Détection par analyse des données si les en-têtes n'ont pas suffi
+    if (colCode === -1 || colPrix === -1) {
+      const echantillon = lignesFourn.slice(startIdx, Math.min(startIdx + 20, lignesFourn.length));
+      const nbCols = premierChamps.length;
+      const stats = Array.from({length: nbCols}, () => ({ nbNum: 0, nbAlpha: 0, nbMixed: 0, total: 0 }));
+      for (const ligne of echantillon) {
+        const cols = ligne.split(sep).map(v => v.trim());
+        for (let ci = 0; ci < Math.min(cols.length, nbCols); ci++) {
+          const v = cols[ci].replace(/[\$,\s]/g, '');
+          if (!v) continue;
+          stats[ci].total++;
+          if (/^-?\d+\.?\d*$/.test(v)) stats[ci].nbNum++;
+          else if (/^[a-zA-Z\s]+$/.test(v)) stats[ci].nbAlpha++;
+          else stats[ci].nbMixed++;
+        }
+      }
+      // Prix = colonne avec le plus de valeurs purement numériques
+      if (colPrix === -1) {
+        let bestPrix = -1, bestPrixScore = 0;
+        for (let ci = 0; ci < nbCols; ci++) {
+          if (ci === colCode || ci === colDesc) continue;
+          const score = stats[ci].total > 0 ? stats[ci].nbNum / stats[ci].total : 0;
+          if (score > bestPrixScore && score >= 0.5) { bestPrixScore = score; bestPrix = ci; }
+        }
+        colPrix = bestPrix;
+      }
+      // Code = colonne avec le plus de valeurs mixtes (alphanum) avant le prix
+      if (colCode === -1) {
+        let bestCode = -1, bestCodeScore = 0;
+        for (let ci = 0; ci < nbCols; ci++) {
+          if (ci === colPrix || ci === colDesc) continue;
+          const mixScore = stats[ci].total > 0 ? (stats[ci].nbMixed + stats[ci].nbNum * 0.3) / stats[ci].total : 0;
+          if (mixScore > bestCodeScore) { bestCodeScore = mixScore; bestCode = ci; }
+        }
+        colCode = bestCode;
+      }
+      // Description = colonne avec le plus de texte (alpha + mixed longs)
+      if (colDesc === -1) {
+        let bestDesc = -1, bestDescScore = 0;
+        for (let ci = 0; ci < nbCols; ci++) {
+          if (ci === colPrix || ci === colCode) continue;
+          const score = stats[ci].total > 0 ? (stats[ci].nbAlpha + stats[ci].nbMixed * 0.5) / stats[ci].total : 0;
+          if (score > bestDescScore) { bestDescScore = score; bestDesc = ci; }
+        }
+        colDesc = bestDesc;
+      }
+    }
+
+    if (colCode === -1 || colPrix === -1) {
+      statusEl.style.color = 'var(--ecart)';
+      statusEl.textContent = 'Impossible de détecter les colonnes code et prix dans les données fournisseur. En-têtes : ' + premierChamps.join(', ');
+      return;
+    }
+
+    const detectInfo = 'Colonnes détectées → Code: ' + (aEntete ? premierChamps[colCode] : 'col ' + (colCode+1)) +
+      ', Prix: ' + (aEntete ? premierChamps[colPrix] : 'col ' + (colPrix+1)) +
+      (colDesc >= 0 ? ', Desc: ' + (aEntete ? premierChamps[colDesc] : 'col ' + (colDesc+1)) : '');
+
+    function parsePrix(txt) {
+      txt = (txt || '').trim().replace(/[\$\s]/g, '').replace(/[^0-9.,\-]/g, '');
+      if (txt.indexOf(',') > -1 && txt.indexOf('.') > -1) txt = txt.replace(/,/g, '');
+      else if (txt.indexOf(',') > -1 && txt.split(',').length === 2 && txt.split(',')[1].length <= 2) txt = txt.replace(',', '.');
+      else txt = txt.replace(/,/g, '');
+      return parseFloat(txt);
+    }
 
     const itemsFourn = [];
     for (let i = startIdx; i < lignesFourn.length; i++){
       const c = lignesFourn[i].split(sep).map(v => v.trim());
       const code = (c[colCode] || '').trim();
-      let prixTxt = (c[colPrix] || '').trim().replace(/[^0-9.,\-]/g, '');
-      if (prixTxt.indexOf(',') > -1 && prixTxt.indexOf('.') > -1) prixTxt = prixTxt.replace(/,/g, '');
-      else if (prixTxt.indexOf(',') > -1 && prixTxt.split(',').length === 2 && prixTxt.split(',')[1].length <= 2) prixTxt = prixTxt.replace(',', '.');
-      else prixTxt = prixTxt.replace(/,/g, '');
-      const prix = parseFloat(prixTxt);
+      const prix = parsePrix(c[colPrix]);
       const desc = colDesc >= 0 && c[colDesc] ? c[colDesc].trim() : '';
       if (!code || isNaN(prix)) continue;
       itemsFourn.push({ code, codeNorm: normaliserCode(code), desc, descLow: desc.toLowerCase(), prix });
     }
 
-    if (itemsFourn.length === 0){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Aucun article valide trouvé dans les données fournisseur. Vérifiez les numéros de colonnes.'; return; }
+    if (itemsFourn.length === 0){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Aucun article valide trouvé dans les données fournisseur. ' + detectInfo; return; }
 
     // --- Détecter le Price Sheet # dans les données fournisseur (header) ---
     let priceSheetDetecte = null;
@@ -3391,7 +3461,7 @@ demarrerSSELogs();
     const nbEcartPrix = lignesResultat.filter(r => r.type !== 'none' && Math.abs(r.ecart) > 0.005).length;
 
     statusEl.style.color = 'var(--ok)';
-    statusEl.textContent = 'Analyse terminée.';
+    statusEl.innerHTML = 'Analyse terminée — ' + itemsSap.length + ' articles SAP' + (filtreFourn ? ' (' + filtreFourn + ')' : '') + ' vs ' + itemsFourn.length + ' articles fournisseur.<br><span style="font-size:11px;color:var(--muted);">' + detectInfo + '</span>';
 
     const multInfo = multiplicateurDetecte
       ? `<span style="color:var(--accent);">Multiplicateur ${multiplicateurDetecte} appliqué${priceSheetDetecte ? ' ('+priceSheetDetecte+')' : ''}</span>`
