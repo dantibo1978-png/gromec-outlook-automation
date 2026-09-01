@@ -1031,18 +1031,15 @@
       <div class="plf-step" id="plfStepFourn" style="display:none;">
         <div class="plf-step-label">1b. Fournisseur à traiter</div>
         <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
-          <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
-            Fournisseur :
-            <select id="plfFournSelect" style="background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 10px;font-family:'IBM Plex Mono',monospace;font-size:13px;min-width:200px;"></select>
-          </label>
-          <button id="plfMasquerFourn" style="padding:4px 10px;border-radius:5px;border:1px solid var(--rule);background:var(--panel-2);color:var(--muted);cursor:pointer;font-size:12px;" title="Masquer ce fournisseur de la liste">✕ Masquer</button>
+          <span style="font-size:13px;color:var(--text);">Fournisseur :</span>
+          <div style="position:relative;min-width:280px;">
+            <div id="plfFournBtn" style="background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+              <span id="plfFournBtnLabel">— Choisir —</span>
+              <span style="font-size:10px;">▼</span>
+            </div>
+            <div id="plfFournDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:10;background:var(--panel);border:1px solid var(--rule);border-radius:0 0 5px 5px;max-height:260px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+          </div>
           <span id="plfFournCount" style="font-size:12px;color:var(--muted);"></span>
-        </div>
-        <div id="plfMasquesWrap" style="display:none;margin-top:8px;">
-          <details style="font-size:12px;color:var(--muted);">
-            <summary style="cursor:pointer;user-select:none;">Fournisseurs masqués (<span id="plfMasquesCount">0</span>)</summary>
-            <div id="plfMasquesList" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;"></div>
-          </details>
         </div>
       </div>
       <div class="plf-step">
@@ -1124,7 +1121,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-01 13:34";
+const DERNIERE_MAJ_CODE = "2026-09-01 13:41";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -2998,13 +2995,11 @@ demarrerSSELogs();
 
   const chkEnLigne = document.getElementById('plfEnLigne');
   const enLigneStatus = document.getElementById('plfEnLigneStatus');
-  const fournSelect = document.getElementById('plfFournSelect');
+  const fournBtn = document.getElementById('plfFournBtn');
+  const fournBtnLabel = document.getElementById('plfFournBtnLabel');
+  const fournDropdown = document.getElementById('plfFournDropdown');
   const fournCount = document.getElementById('plfFournCount');
   const stepFourn = document.getElementById('plfStepFourn');
-  const btnMasquer = document.getElementById('plfMasquerFourn');
-  const masquesWrap = document.getElementById('plfMasquesWrap');
-  const masquesList = document.getElementById('plfMasquesList');
-  const masquesCountEl = document.getElementById('plfMasquesCount');
   let fournisseursMap = new Map();
   let fournMasques = new Set();
   try { const s = localStorage.getItem('plf_fourn_masques'); if (s) fournMasques = new Set(JSON.parse(s)); } catch(e){}
@@ -3015,51 +3010,57 @@ demarrerSSELogs();
   });
   fournZone.addEventListener('input', () => { fichierFournContenu = null; majBtnAnalyser(); });
 
-  fournSelect.addEventListener('change', () => {
-    fournisseurDetecte = fournSelect.value;
-    const nb = fournisseursMap.get(fournisseurDetecte) || 0;
-    fournCount.textContent = nb + ' article' + (nb > 1 ? 's' : '') + ' pour ce fournisseur';
-    if (chkEnLigne.checked && fournisseurDetecte) {
-      chercherPrixEnLigne(fournisseurDetecte);
-    }
-    majBtnAnalyser();
+  fournBtn.addEventListener('click', () => {
+    fournDropdown.style.display = fournDropdown.style.display === 'none' ? 'block' : 'none';
+  });
+  document.addEventListener('click', e => {
+    if (!fournBtn.parentElement.contains(e.target)) fournDropdown.style.display = 'none';
   });
 
-  btnMasquer.addEventListener('click', () => {
-    if (!fournisseurDetecte) return;
-    fournMasques.add(fournisseurDetecte);
+  function onFournCheckChange(nom, checked) {
+    if (checked) {
+      fournMasques.delete(nom);
+    } else {
+      fournMasques.add(nom);
+    }
     try { localStorage.setItem('plf_fourn_masques', JSON.stringify([...fournMasques])); } catch(e){}
-    fournisseurDetecte = null;
-    remplirDropdownFourn();
+    majFournLabel();
+  }
+
+  function majFournLabel() {
+    const visibles = [...fournisseursMap.keys()].filter(n => !fournMasques.has(n));
+    if (visibles.length === 1) {
+      fournisseurDetecte = visibles[0];
+      fournBtnLabel.textContent = fournisseurDetecte;
+      const nb = fournisseursMap.get(fournisseurDetecte) || 0;
+      fournCount.textContent = nb + ' article' + (nb > 1 ? 's' : '');
+      if (chkEnLigne.checked) chercherPrixEnLigne(fournisseurDetecte);
+    } else if (visibles.length === 0) {
+      fournisseurDetecte = null;
+      fournBtnLabel.textContent = 'Aucun fournisseur coché';
+      fournCount.textContent = '';
+    } else {
+      fournisseurDetecte = null;
+      fournBtnLabel.textContent = visibles.length + ' fournisseurs cochés — choisir 1 seul';
+      fournCount.textContent = '';
+    }
     majBtnAnalyser();
-  });
+  }
 
   function remplirDropdownFourn() {
-    const sorted = [...fournisseursMap.entries()]
-      .filter(([nom]) => !fournMasques.has(nom))
-      .sort((a, b) => b[1] - a[1]);
-    fournSelect.innerHTML = '<option value="">— Choisir un fournisseur —</option>' +
-      sorted.map(([nom, nb]) => '<option value="' + nom.replace(/"/g, '&quot;') + '">' + nom + ' (' + nb + ' articles)</option>').join('');
-    fournCount.textContent = sorted.length + ' fournisseur' + (sorted.length > 1 ? 's' : '');
-
-    const masquesVisible = [...fournMasques].filter(nom => fournisseursMap.has(nom));
-    if (masquesVisible.length > 0) {
-      masquesWrap.style.display = 'block';
-      masquesCountEl.textContent = masquesVisible.length;
-      masquesList.innerHTML = masquesVisible.map(nom =>
-        '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;background:var(--panel-2);border:1px solid var(--rule);font-size:12px;color:var(--text);">' +
-        nom + ' <button class="plf-restaurer-fourn" data-nom="' + nom.replace(/"/g, '&quot;') + '" style="border:none;background:none;color:var(--accent);cursor:pointer;font-size:11px;padding:0 2px;" title="Remettre dans la liste">↩</button></span>'
-      ).join('');
-      masquesList.querySelectorAll('.plf-restaurer-fourn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          fournMasques.delete(btn.dataset.nom);
-          try { localStorage.setItem('plf_fourn_masques', JSON.stringify([...fournMasques])); } catch(e){}
-          remplirDropdownFourn();
-        });
-      });
-    } else {
-      masquesWrap.style.display = 'none';
-    }
+    const sorted = [...fournisseursMap.entries()].sort((a, b) => b[1] - a[1]);
+    fournDropdown.innerHTML = sorted.map(([nom, nb]) => {
+      const checked = !fournMasques.has(nom) ? 'checked' : '';
+      return '<label style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;font-size:12px;color:var(--text);border-bottom:1px solid var(--rule);" data-nom="' + nom.replace(/"/g, '&quot;') + '">' +
+        '<input type="checkbox" class="plf-fourn-chk" data-nom="' + nom.replace(/"/g, '&quot;') + '" ' + checked + ' style="accent-color:var(--accent);width:14px;height:14px;">' +
+        '<span style="flex:1;">' + nom + '</span>' +
+        '<span style="color:var(--muted);font-size:11px;">' + nb + '</span>' +
+        '</label>';
+    }).join('');
+    fournDropdown.querySelectorAll('.plf-fourn-chk').forEach(chk => {
+      chk.addEventListener('change', () => onFournCheckChange(chk.dataset.nom, chk.checked));
+    });
+    majFournLabel();
   }
 
   chkEnLigne.addEventListener('change', () => {
