@@ -1011,10 +1011,15 @@
         <div class="plf-cols">
           <div>
             <label style="font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px;">Tableau SAP actuel (Ctrl+V depuis SAP)</label>
-            <textarea class="plf-textarea" id="plfSapZone" placeholder="Collez ici le tableau SAP avec les colonnes :&#10;Numéro d'article | Description | Code fabricant | Prix (liste courante)&#10;&#10;Colonnes tab-separated, copié-collé depuis SAP."></textarea>
+            <textarea class="plf-textarea" id="plfSapZone" placeholder="Collez ici le tableau SAP (Ctrl+V depuis SAP).&#10;Colonnes attendues : Numéro d'article, Description, Nom du partenaire, Nº catalogue fournisseur, Prix fournisseur…&#10;Le fournisseur sera détecté automatiquement depuis « Nom du partenaire »."></textarea>
           </div>
           <div>
             <label style="font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px;">Liste de prix du fournisseur (fichier ou collé)</label>
+            <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="plfEnLigne" style="accent-color:var(--accent);width:16px;height:16px;">
+              <span style="font-size:13px;color:var(--accent);font-weight:600;">Chercher les prix en ligne automatiquement</span>
+            </label>
+            <div id="plfEnLigneStatus" style="display:none;font-family:'IBM Plex Mono',monospace;font-size:12px;margin-bottom:8px;padding:8px 10px;border-radius:6px;background:var(--panel-2);border:1px solid var(--rule);"></div>
             <div class="plf-drop" id="plfDrop">
               <p id="plfDropLabel">Glissez un fichier Excel (.xlsx), PDF ou texte ici — ou cliquez pour parcourir</p>
               <input type="file" id="plfFileInput" accept=".xlsx,.xls,.csv,.txt,.pdf" style="display:none;">
@@ -1052,6 +1057,12 @@
           </label>
         </div>
       </div>
+      <div class="plf-step">
+        <div class="plf-step-label">3. Escomptes par catégorie (optionnel)</div>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 6px;">Collez ici la grille d'escomptes du fournisseur (ex: CB Supplies Discount Structure). Le module détectera le Price Sheet # de chaque article et appliquera le multiplicateur automatiquement.</p>
+        <textarea class="plf-textarea" id="plfEscompteZone" style="height:100px;" placeholder="Collez la grille d'escomptes ici (tab-separated ou copié depuis PDF).&#10;CAT #    Description    Price Sheet #    Discount    Multiplier&#10;010      Copper Fittings    CF 1-25      96.38%      0.0362&#10;&#10;Le module cherche les colonnes Price Sheet # et Multiplier automatiquement."></textarea>
+        <div id="plfEscompteStatus" style="font-family:'IBM Plex Mono',monospace;font-size:12px;margin-top:4px;display:none;"></div>
+      </div>
       <div class="plf-actions">
         <button class="plf-btn plf-btn-primary" id="plfBtnAnalyser" disabled>Analyser et comparer</button>
         <span class="plf-selectall" id="plfSelectAll" style="display:none;">Tout cocher</span>
@@ -1073,7 +1084,9 @@
               <th>Match</th>
               <th>Code manuf fourn.</th>
               <th>Description fourn.</th>
-              <th>Nouveau prix</th>
+              <th>Prix liste</th>
+              <th>Mult.</th>
+              <th>Prix net</th>
               <th>Code Gromec</th>
               <th>Description SAP</th>
               <th>Prix actuel</th>
@@ -1107,7 +1120,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-01 11:05";
+const DERNIERE_MAJ_CODE = "2026-09-01 11:46";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -2955,6 +2968,8 @@ demarrerSSELogs();
 
   let lignesResultat = [];
   let fichierFournContenu = null;
+  let escompteMap = new Map();
+  let fournisseurDetecte = null;
 
   document.getElementById('btnPrixFournisseur').addEventListener('click', () => {
     overlay.classList.add('open');
@@ -2969,8 +2984,117 @@ demarrerSSELogs();
   drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) lireFichier(e.dataTransfer.files[0]); });
   fileInput.addEventListener('change', () => { if (fileInput.files.length > 0) lireFichier(fileInput.files[0]); });
 
-  sapZone.addEventListener('input', majBtnAnalyser);
+  const chkEnLigne = document.getElementById('plfEnLigne');
+  const enLigneStatus = document.getElementById('plfEnLigneStatus');
+
+  sapZone.addEventListener('input', () => { detecterFournisseur(); majBtnAnalyser(); });
   fournZone.addEventListener('input', () => { fichierFournContenu = null; majBtnAnalyser(); });
+
+  chkEnLigne.addEventListener('change', () => {
+    if (chkEnLigne.checked) {
+      detecterFournisseur();
+      if (fournisseurDetecte) {
+        chercherPrixEnLigne(fournisseurDetecte);
+      } else {
+        enLigneStatus.style.display = 'block';
+        enLigneStatus.style.color = 'var(--warn)';
+        enLigneStatus.textContent = 'Collez d\'abord les données SAP pour détecter le fournisseur (colonne « Nom du partenaire »).';
+      }
+    } else {
+      enLigneStatus.style.display = 'none';
+    }
+    majBtnAnalyser();
+  });
+
+  function detecterFournisseur() {
+    fournisseurDetecte = null;
+    const texte = sapZone.value.trim();
+    if (!texte) return;
+    const lignes = texte.split(/\r?\n/);
+    if (lignes.length < 2) return;
+    const entetes = lignes[0].split('\t').map(h => h.trim());
+    const idxNom = entetes.findIndex(h => /nom.*partenaire|partner.*name|vendor.*name|fournisseur.*nom/i.test(h));
+    if (idxNom === -1) return;
+    for (let i = 1; i < lignes.length; i++) {
+      const cols = lignes[i].split('\t');
+      const nom = (cols[idxNom] || '').trim();
+      if (nom) { fournisseurDetecte = nom; return; }
+    }
+  }
+
+  async function chercherPrixEnLigne(fournisseur) {
+    enLigneStatus.style.display = 'block';
+    enLigneStatus.style.color = 'var(--muted)';
+    enLigneStatus.innerHTML = 'Fournisseur détecté : <b>' + fournisseur + '</b> — Recherche des listes de prix en ligne…';
+
+    try {
+      const resp = await fetch('/api/fetch-pricelist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fournisseur })
+      });
+      const data = await resp.json();
+
+      if (data.error) {
+        enLigneStatus.style.color = 'var(--warn)';
+        enLigneStatus.innerHTML = '<b>' + fournisseur + '</b> — ' + data.error + '. Collez la liste manuellement.';
+        return;
+      }
+
+      if (data.contenu) {
+        fournZone.value = data.contenu;
+        fichierFournContenu = data.contenu;
+        enLigneStatus.style.color = 'var(--ok)';
+        enLigneStatus.innerHTML = '✓ Liste <b>' + data.fichier + '</b> récupérée automatiquement (' + data.contenu.split(/\r?\n/).filter(l => l.trim()).length + ' lignes)';
+        majBtnAnalyser();
+        return;
+      }
+
+      if (data.fichiers && data.fichiers.length > 0) {
+        enLigneStatus.style.color = 'var(--accent)';
+        const listeHtml = data.fichiers.slice(0, 20).map(f =>
+          '<span class="plf-fichier-en-ligne" data-url="' + f.url + '" data-nom="' + f.nom + '" style="cursor:pointer;text-decoration:underline;display:block;margin:2px 0;font-size:12px;color:var(--accent);">' + f.nom + '</span>'
+        ).join('');
+        enLigneStatus.innerHTML = '<b>' + fournisseur + '</b> — ' + data.fichiers.length + ' fichier(s) trouvé(s). Cliquez sur celui à charger :<br>' + listeHtml;
+        enLigneStatus.querySelectorAll('.plf-fichier-en-ligne').forEach(el => {
+          el.addEventListener('click', () => telechargerFichierEnLigne(el.dataset.url, el.dataset.nom));
+        });
+        return;
+      }
+
+      enLigneStatus.style.color = 'var(--warn)';
+      enLigneStatus.innerHTML = '<b>' + fournisseur + '</b> — Aucun fichier trouvé en ligne.';
+    } catch (e) {
+      enLigneStatus.style.color = 'var(--ecart)';
+      enLigneStatus.innerHTML = 'Erreur de connexion : ' + e.message;
+    }
+  }
+
+  async function telechargerFichierEnLigne(url, nom) {
+    enLigneStatus.style.color = 'var(--muted)';
+    enLigneStatus.innerHTML = 'Téléchargement de <b>' + nom + '</b>…';
+    try {
+      const resp = await fetch('/api/fetch-pricelist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fournisseur: fournisseurDetecte, categorie: nom })
+      });
+      const data = await resp.json();
+      if (data.contenu) {
+        fournZone.value = data.contenu;
+        fichierFournContenu = data.contenu;
+        enLigneStatus.style.color = 'var(--ok)';
+        enLigneStatus.innerHTML = '✓ <b>' + nom + '</b> chargé (' + data.contenu.split(/\r?\n/).filter(l => l.trim()).length + ' lignes)';
+        majBtnAnalyser();
+      } else {
+        enLigneStatus.style.color = 'var(--warn)';
+        enLigneStatus.innerHTML = '<b>' + nom + '</b> — format binaire (PDF/Excel). <a href="' + url + '" target="_blank" style="color:var(--accent);">Ouvrir dans un nouvel onglet</a> puis collez le contenu.';
+      }
+    } catch (e) {
+      enLigneStatus.style.color = 'var(--ecart)';
+      enLigneStatus.innerHTML = 'Erreur : ' + e.message;
+    }
+  }
 
   function resetPLF(){
     sapZone.value = ''; fournZone.value = ''; fichierFournContenu = null;
@@ -2981,6 +3105,12 @@ demarrerSSELogs();
     btnAnalyser.disabled = true; btnDTW.disabled = true; btnExport.disabled = true;
     selectAll.style.display = 'none'; deselectAll.style.display = 'none';
     lignesResultat = []; fileInput.value = '';
+    document.getElementById('plfEscompteZone').value = '';
+    document.getElementById('plfEscompteStatus').style.display = 'none';
+    escompteMap = new Map();
+    chkEnLigne.checked = false;
+    enLigneStatus.style.display = 'none';
+    fournisseurDetecte = null;
   }
 
   function majBtnAnalyser(){
@@ -2988,6 +3118,9 @@ demarrerSSELogs();
     const aFourn = fournZone.value.trim().length > 5 || fichierFournContenu;
     btnAnalyser.disabled = !(aSap && aFourn);
   }
+
+  // Also update SAP columns detection to include the new supplier-name columns
+  const SAP_COLUMNS_AIDE = 'Numéro d\'article, Description, Fournisseur standard, Nom du partenaire, Nº catalogue fournisseur, Prix fournisseur, Prix détail, etc.';
 
   function lireFichier(file){
     const ext = file.name.toLowerCase().split('.').pop();
@@ -3026,6 +3159,37 @@ demarrerSSELogs();
     statusEl.textContent = 'Analyse en cours…';
     resultat.style.display = 'none';
 
+    // --- Parser les escomptes (optionnel) ---
+    escompteMap = new Map();
+    const escompteZone = document.getElementById('plfEscompteZone');
+    const escompteStatus = document.getElementById('plfEscompteStatus');
+    const texteEscompte = escompteZone.value.trim();
+    if (texteEscompte) {
+      const lignesEsc = texteEscompte.split(/\r?\n/).filter(l => l.trim() !== '');
+      for (const ligne of lignesEsc) {
+        const multMatch = ligne.match(/(\d+\.\d{2,4})\s*$/);
+        const sheetMatch = ligne.match(/([A-Z]{1,10}\s*\d{1,2}-\d{2,4})/i);
+        if (multMatch && sheetMatch) {
+          const mult = parseFloat(multMatch[1]);
+          const sheet = sheetMatch[1].replace(/\s+/g, ' ').trim().toUpperCase();
+          if (mult > 0 && mult <= 1) {
+            escompteMap.set(sheet, mult);
+          }
+        }
+      }
+      if (escompteMap.size > 0) {
+        escompteStatus.style.display = 'block';
+        escompteStatus.style.color = 'var(--ok)';
+        escompteStatus.textContent = escompteMap.size + ' catégorie(s) d\'escompte détectée(s) — les multiplicateurs seront appliqués automatiquement.';
+      } else {
+        escompteStatus.style.display = 'block';
+        escompteStatus.style.color = 'var(--warn)';
+        escompteStatus.textContent = 'Aucune catégorie d\'escompte détectée. Format attendu : lignes avec un Price Sheet # (ex: CF 1-25) et un multiplicateur (ex: 0.0362).';
+      }
+    } else {
+      escompteStatus.style.display = 'none';
+    }
+
     const colCode = parseInt(document.getElementById('plfColCode').value) - 1;
     const colPrix = parseInt(document.getElementById('plfColPrix').value) - 1;
     const colDesc = parseInt(document.getElementById('plfColDesc').value) - 1;
@@ -3037,8 +3201,9 @@ demarrerSSELogs();
     const entetesSap = lignesSap[0].split('\t').map(h => h.trim());
     const idxArticleSap = entetesSap.findIndex(h => /num.*article/i.test(h));
     const idxDescSap = entetesSap.findIndex(h => /description/i.test(h));
-    const idxManufSap = entetesSap.findIndex(h => /fabr|manuf|mfr|code.?fab/i.test(h));
-    const idxPrixSap = entetesSap.findIndex(h => /prix|price|co[uû]t/i.test(h));
+    const idxManufSap = entetesSap.findIndex(h => /fabr|manuf|mfr|code.?fab|catalogue.*fourn|n..?catalogue/i.test(h));
+    const idxPrixSap = entetesSap.findIndex(h => /prix.*fourn|prix.*détail|prix|price|co[uû]t/i.test(h));
+    const idxNomFourn = entetesSap.findIndex(h => /nom.*partenaire|partner.*name/i.test(h));
 
     if (idxArticleSap === -1){
       statusEl.style.color = 'var(--ecart)';
@@ -3085,9 +3250,48 @@ demarrerSSELogs();
 
     if (itemsFourn.length === 0){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Aucun article valide trouvé dans les données fournisseur. Vérifiez les numéros de colonnes.'; return; }
 
+    // --- Détecter le Price Sheet # dans les données fournisseur (header) ---
+    let priceSheetDetecte = null;
+    let multiplicateurDetecte = null;
+    if (escompteMap.size > 0) {
+      const headerFourn = lignesFourn.slice(0, Math.min(5, lignesFourn.length)).join(' ').toUpperCase();
+      for (const [sheet, mult] of escompteMap) {
+        const sheetNorm = sheet.replace(/\s+/g, '\\s*');
+        if (new RegExp(sheetNorm).test(headerFourn)) {
+          priceSheetDetecte = sheet;
+          multiplicateurDetecte = mult;
+          break;
+        }
+      }
+      if (!priceSheetDetecte) {
+        for (const [sheet, mult] of escompteMap) {
+          const prefix = sheet.split(/\s/)[0];
+          if (prefix.length >= 2 && headerFourn.includes(prefix)) {
+            priceSheetDetecte = sheet;
+            multiplicateurDetecte = mult;
+            break;
+          }
+        }
+      }
+    }
+
     // --- Matching ---
     lignesResultat = [];
     const sapUtilises = new Set();
+
+    function creerLigneResultat(type, fourn, sap, opts = {}){
+      const mult = multiplicateurDetecte || null;
+      const prixNet = mult ? +(fourn.prix * mult).toFixed(4) : fourn.prix;
+      const ecart = sap ? prixNet - sap.prix : 0;
+      const ecartPct = sap && sap.prix !== 0 ? (ecart / sap.prix * 100) : 0;
+      return {
+        type, coche: type === 'none' ? false : (opts.coche !== undefined ? opts.coche : Math.abs(ecart) > 0.005),
+        fournCode: fourn.code, fournDesc: fourn.desc, fournPrix: fourn.prix,
+        multiplicateur: mult, prixNet,
+        sapArticle: sap ? sap.article : '', sapDesc: sap ? sap.desc : '', sapPrix: sap ? sap.prix : 0,
+        ecart, ecartPct, score: opts.score || 0
+      };
+    }
 
     // Étape 1 : match exact par code manufacturier
     for (const fourn of itemsFourn){
@@ -3100,15 +3304,7 @@ demarrerSSELogs();
       }
       if (bestIdx !== -1){
         sapUtilises.add(bestIdx);
-        const sap = itemsSap[bestIdx];
-        const ecart = fourn.prix - sap.prix;
-        const ecartPct = sap.prix !== 0 ? (ecart / sap.prix * 100) : 0;
-        lignesResultat.push({
-          type: 'auto', coche: ecart !== 0,
-          fournCode: fourn.code, fournDesc: fourn.desc, fournPrix: fourn.prix,
-          sapArticle: sap.article, sapDesc: sap.desc, sapPrix: sap.prix,
-          ecart, ecartPct
-        });
+        lignesResultat.push(creerLigneResultat('auto', fourn, itemsSap[bestIdx]));
       }
     }
 
@@ -3126,15 +3322,7 @@ demarrerSSELogs();
       }
       if (bestIdx !== -1){
         sapUtilises.add(bestIdx);
-        const sap = itemsSap[bestIdx];
-        const ecart = fourn.prix - sap.prix;
-        const ecartPct = sap.prix !== 0 ? (ecart / sap.prix * 100) : 0;
-        lignesResultat.push({
-          type: 'auto', coche: ecart !== 0,
-          fournCode: fourn.code, fournDesc: fourn.desc, fournPrix: fourn.prix,
-          sapArticle: sap.article, sapDesc: sap.desc, sapPrix: sap.prix,
-          ecart, ecartPct
-        });
+        lignesResultat.push(creerLigneResultat('auto', fourn, itemsSap[bestIdx]));
       }
     }
 
@@ -3155,27 +3343,14 @@ demarrerSSELogs();
       }
       if (bestIdx !== -1){
         sapUtilises.add(bestIdx);
-        const sap = itemsSap[bestIdx];
-        const ecart = fourn.prix - sap.prix;
-        const ecartPct = sap.prix !== 0 ? (ecart / sap.prix * 100) : 0;
-        lignesResultat.push({
-          type: 'desc', coche: false,
-          fournCode: fourn.code, fournDesc: fourn.desc, fournPrix: fourn.prix,
-          sapArticle: sap.article, sapDesc: sap.desc, sapPrix: sap.prix,
-          ecart, ecartPct, score: bestScore
-        });
+        lignesResultat.push(creerLigneResultat('desc', fourn, itemsSap[bestIdx], { coche: false, score: bestScore }));
       }
     }
 
     // Étape 4 : non trouvés
     for (const fourn of itemsFourn){
       if (lignesResultat.some(r => r.fournCode === fourn.code)) continue;
-      lignesResultat.push({
-        type: 'none', coche: false,
-        fournCode: fourn.code, fournDesc: fourn.desc, fournPrix: fourn.prix,
-        sapArticle: '', sapDesc: '', sapPrix: 0,
-        ecart: 0, ecartPct: 0
-      });
+      lignesResultat.push(creerLigneResultat('none', fourn, null));
     }
 
     // --- Afficher le résultat ---
@@ -3187,11 +3362,15 @@ demarrerSSELogs();
     statusEl.style.color = 'var(--ok)';
     statusEl.textContent = 'Analyse terminée.';
 
+    const multInfo = multiplicateurDetecte
+      ? `<span style="color:var(--accent);">Multiplicateur ${multiplicateurDetecte} appliqué${priceSheetDetecte ? ' ('+priceSheetDetecte+')' : ''}</span>`
+      : '<span style="color:var(--muted-2);">Pas d\'escompte</span>';
     summary.innerHTML = `
       <span style="color:var(--ok);">${nbAuto} match${nbAuto !== 1 ? 's' : ''} code manuf</span>
       <span style="color:var(--warn);">${nbDesc} match${nbDesc !== 1 ? 's' : ''} par description</span>
       <span style="color:var(--ecart);">${nbNone} non trouvé${nbNone !== 1 ? 's' : ''}</span>
       <span style="color:var(--text);">${nbEcartPrix} avec écart de prix</span>
+      ${multInfo}
     `;
 
     rendreTableau();
@@ -3207,12 +3386,16 @@ demarrerSSELogs();
       const matchColor = r.type === 'auto' ? 'var(--ok)' : r.type === 'desc' ? 'var(--warn)' : 'var(--ecart)';
       const ecartClass = Math.abs(r.ecart) > 0.005 ? 'plf-ecart' : 'plf-egal';
       const disabled = r.type === 'none' ? 'disabled' : '';
+      const multTxt = r.multiplicateur ? ('×' + r.multiplicateur) : '—';
+      const prixNetTxt = r.prixNet.toFixed(4);
       return `<tr class="${rowClass}">
         <td><input type="checkbox" class="plf-check plf-row-check" data-idx="${i}" ${r.coche ? 'checked' : ''} ${disabled}></td>
         <td style="color:${matchColor};font-weight:600;font-size:12px;">${matchLabel}</td>
         <td>${r.fournCode}</td>
         <td class="plf-desc">${r.fournDesc}</td>
         <td>${r.fournPrix.toFixed(4)}</td>
+        <td style="color:${r.multiplicateur ? 'var(--accent)' : 'var(--muted-2)'};font-size:12px;">${multTxt}</td>
+        <td style="font-weight:${r.multiplicateur ? '600' : '400'};">${prixNetTxt}</td>
         <td>${r.sapArticle}</td>
         <td class="plf-desc">${r.sapDesc}</td>
         <td>${r.sapPrix ? r.sapPrix.toFixed(4) : '—'}</td>
@@ -3254,10 +3437,11 @@ demarrerSSELogs();
 
   btnExport.addEventListener('click', () => {
     const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
-    const header = 'Match,Code Manuf Fourn,Desc Fourn,Nouveau Prix,Code Gromec,Desc SAP,Prix Actuel,Ecart,Ecart %,Approuvé';
+    const header = 'Match,Code Manuf Fourn,Desc Fourn,Prix Liste,Multiplicateur,Prix Net,Code Gromec,Desc SAP,Prix Actuel,Ecart,Ecart %,Approuvé';
     const rows = lignesResultat.map(r =>
       [r.type === 'auto' ? 'Code manuf' : r.type === 'desc' ? 'Description' : 'Non trouvé',
        esc(r.fournCode), esc(r.fournDesc), r.fournPrix.toFixed(4),
+       r.multiplicateur || '', r.prixNet.toFixed(4),
        esc(r.sapArticle), esc(r.sapDesc), r.sapPrix.toFixed(4),
        r.ecart.toFixed(4), r.ecartPct.toFixed(2) + '%', r.coche ? 'Oui' : 'Non'
       ].join(',')
@@ -3282,7 +3466,7 @@ demarrerSSELogs();
       'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
     ];
     for (const r of cochees){
-      sortie.push(`${r.sapArticle}\t${lineNum}\t${listeNum}\t${r.fournPrix}\t\t\t\t\t`);
+      sortie.push(`${r.sapArticle}\t${lineNum}\t${listeNum}\t${r.prixNet}\t\t\t\t\t`);
     }
 
     btnDTW.disabled = true; btnDTW.textContent = 'Envoi…';
