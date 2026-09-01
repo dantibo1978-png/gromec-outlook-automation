@@ -1133,7 +1133,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-01 14:18";
+const DERNIERE_MAJ_CODE = "2026-09-01 14:08";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -2987,14 +2987,16 @@ demarrerSSELogs();
   document.getElementById('btnPrixFournisseur').addEventListener('click', () => {
     overlay.classList.add('open');
     resetPLF();
-    try {
-      const saved = localStorage.getItem('plf_sap_data');
-      if (saved && saved.length > 10) {
-        sapZone.value = saved;
-        detecterFournisseurs();
-        majBtnAnalyser();
-      }
-    } catch(e){}
+    if (!sapZone.value.trim()) {
+      try {
+        const saved = localStorage.getItem('plf_sap_data');
+        if (saved && saved.length > 10) sapZone.value = saved;
+      } catch(e){}
+    }
+    if (sapZone.value.trim().length > 10 && fournisseursMap.size === 0) {
+      detecterFournisseurs();
+    }
+    majBtnAnalyser();
   });
   btnFermer.addEventListener('click', () => overlay.classList.remove('open'));
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
@@ -3208,9 +3210,7 @@ demarrerSSELogs();
     chkEnLigne.checked = false;
     enLigneStatus.style.display = 'none';
     fournisseurDetecte = null;
-    fournisseursMap = new Map();
-    stepFourn.style.display = 'none';
-    fournSelect.innerHTML = '';
+    fournSelect.value = '';
     fournCount.textContent = '';
   }
 
