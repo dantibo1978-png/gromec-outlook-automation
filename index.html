@@ -1121,7 +1121,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-01 13:42";
+const DERNIERE_MAJ_CODE = "2026-09-01 13:44";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -3004,9 +3004,13 @@ demarrerSSELogs();
   let fournMasques = new Set();
   try { const s = localStorage.getItem('plf_fourn_masques'); if (s) fournMasques = new Set(JSON.parse(s)); } catch(e){}
 
+  let sapDebounce = null;
   sapZone.addEventListener('input', () => {
-    try { localStorage.setItem('plf_sap_data', sapZone.value); } catch(e){}
-    detecterFournisseurs(); majBtnAnalyser();
+    clearTimeout(sapDebounce);
+    sapDebounce = setTimeout(() => {
+      try { localStorage.setItem('plf_sap_data', sapZone.value); } catch(e){}
+      detecterFournisseurs(); majBtnAnalyser();
+    }, 500);
   });
   fournZone.addEventListener('input', () => { fichierFournContenu = null; majBtnAnalyser(); });
 
@@ -3017,15 +3021,15 @@ demarrerSSELogs();
     if (!fournBtn.parentElement.contains(e.target)) fournDropdown.style.display = 'none';
   });
 
-  function onFournCheckChange(nom, checked) {
-    if (checked) {
-      fournMasques.delete(nom);
-    } else {
-      fournMasques.add(nom);
-    }
+  // Event delegation — un seul listener pour toutes les checkboxes
+  fournDropdown.addEventListener('change', e => {
+    const chk = e.target;
+    if (!chk.dataset || !chk.dataset.nom) return;
+    if (chk.checked) fournMasques.delete(chk.dataset.nom);
+    else fournMasques.add(chk.dataset.nom);
     try { localStorage.setItem('plf_fourn_masques', JSON.stringify([...fournMasques])); } catch(e){}
     majFournLabel();
-  }
+  });
 
   function majFournLabel() {
     const visibles = [...fournisseursMap.keys()].filter(n => !fournMasques.has(n));
@@ -3034,14 +3038,13 @@ demarrerSSELogs();
       fournBtnLabel.textContent = fournisseurDetecte;
       const nb = fournisseursMap.get(fournisseurDetecte) || 0;
       fournCount.textContent = nb + ' article' + (nb > 1 ? 's' : '');
-      if (chkEnLigne.checked) chercherPrixEnLigne(fournisseurDetecte);
     } else if (visibles.length === 0) {
       fournisseurDetecte = null;
-      fournBtnLabel.textContent = 'Aucun fournisseur coché';
+      fournBtnLabel.textContent = 'Aucun coché';
       fournCount.textContent = '';
     } else {
       fournisseurDetecte = null;
-      fournBtnLabel.textContent = visibles.length + ' fournisseurs cochés — choisir 1 seul';
+      fournBtnLabel.textContent = visibles.length + ' cochés — garder 1 seul';
       fournCount.textContent = '';
     }
     majBtnAnalyser();
@@ -3049,17 +3052,26 @@ demarrerSSELogs();
 
   function remplirDropdownFourn() {
     const sorted = [...fournisseursMap.entries()].sort((a, b) => b[1] - a[1]);
-    fournDropdown.innerHTML = sorted.map(([nom, nb]) => {
-      const checked = !fournMasques.has(nom) ? 'checked' : '';
-      return '<label style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;font-size:12px;color:var(--text);border-bottom:1px solid var(--rule);" data-nom="' + nom.replace(/"/g, '&quot;') + '">' +
-        '<input type="checkbox" class="plf-fourn-chk" data-nom="' + nom.replace(/"/g, '&quot;') + '" ' + checked + ' style="accent-color:var(--accent);width:14px;height:14px;">' +
-        '<span style="flex:1;">' + nom + '</span>' +
-        '<span style="color:var(--muted);font-size:11px;">' + nb + '</span>' +
-        '</label>';
-    }).join('');
-    fournDropdown.querySelectorAll('.plf-fourn-chk').forEach(chk => {
-      chk.addEventListener('change', () => onFournCheckChange(chk.dataset.nom, chk.checked));
-    });
+    const frag = document.createDocumentFragment();
+    for (const [nom, nb] of sorted) {
+      const lbl = document.createElement('label');
+      lbl.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;font-size:12px;color:var(--text);border-bottom:1px solid var(--rule);';
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.dataset.nom = nom;
+      chk.checked = !fournMasques.has(nom);
+      chk.style.cssText = 'accent-color:var(--accent);width:14px;height:14px;';
+      const sp = document.createElement('span');
+      sp.style.flex = '1';
+      sp.textContent = nom;
+      const ct = document.createElement('span');
+      ct.style.cssText = 'color:var(--muted);font-size:11px;';
+      ct.textContent = nb;
+      lbl.append(chk, sp, ct);
+      frag.appendChild(lbl);
+    }
+    fournDropdown.textContent = '';
+    fournDropdown.appendChild(frag);
     majFournLabel();
   }
 
