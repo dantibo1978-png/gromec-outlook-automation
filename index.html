@@ -826,6 +826,56 @@
     font-size:13px; box-sizing:border-box;
   }
   .param-text-input::placeholder{ color:var(--muted-2); }
+
+  /* ---------- MODULE LISTE DE PRIX FOURNISSEUR ---------- */
+  .plf-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.7);}
+  .plf-overlay.open{display:flex;align-items:flex-start;justify-content:center;padding-top:40px;}
+  .plf-container{background:var(--panel);border:1px solid var(--rule);border-radius:12px;width:96%;max-width:1300px;max-height:calc(100vh - 80px);display:flex;flex-direction:column;overflow:hidden;}
+  .plf-header{padding:24px 28px 18px;border-bottom:1px solid var(--rule);flex-shrink:0;}
+  .plf-header h3{font-family:'Space Grotesk',sans-serif;margin:0 0 4px;font-size:22px;}
+  .plf-header p{color:var(--muted);font-size:13px;margin:0;}
+  .plf-body{flex:1;overflow-y:auto;padding:20px 28px 28px;}
+  .plf-step{margin-bottom:22px;}
+  .plf-step-label{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;font-weight:600;margin-bottom:6px;}
+  .plf-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:800px){.plf-cols{grid-template-columns:1fr;}}
+  .plf-textarea{width:100%;height:140px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:10px;resize:vertical;}
+  .plf-textarea::placeholder{color:var(--muted-2);}
+  .plf-drop{border:2px dashed var(--rule);border-radius:8px;padding:24px 20px;text-align:center;cursor:pointer;transition:border-color 0.2s;}
+  .plf-drop:hover,.plf-drop.dragover{border-color:var(--accent);background:rgba(94,168,255,0.04);}
+  .plf-drop p{margin:0;color:var(--muted);font-size:13px;}
+  .plf-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .plf-btn{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;padding:10px 22px;border-radius:7px;border:none;cursor:pointer;transition:opacity .15s;}
+  .plf-btn:disabled{opacity:0.4;cursor:default;}
+  .plf-btn-primary{background:#10b981;color:#fff;}
+  .plf-btn-primary:hover:not(:disabled){background:#059669;}
+  .plf-btn-secondary{background:var(--panel-2);color:var(--text);border:1px solid var(--rule);}
+  .plf-btn-secondary:hover:not(:disabled){border-color:var(--accent);color:var(--accent);}
+  .plf-btn-dtw{background:var(--accent);color:#fff;}
+  .plf-btn-dtw:hover:not(:disabled){opacity:0.85;}
+  .plf-status{font-family:'IBM Plex Mono',monospace;font-size:13px;margin-top:10px;}
+  .plf-resultat{margin-top:18px;}
+  .plf-legende{display:flex;gap:16px;margin-bottom:10px;font-size:12px;font-family:'IBM Plex Mono',monospace;}
+  .plf-legende span{display:flex;align-items:center;gap:5px;}
+  .plf-dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  .plf-dot-auto{background:var(--ok);}
+  .plf-dot-desc{background:var(--warn);}
+  .plf-dot-none{background:var(--ecart);}
+  .plf-table-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:8px;max-height:50vh;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--rule) transparent;}
+  .plf-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .plf-table th{position:sticky;top:0;background:var(--panel);z-index:2;text-align:left;font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:12px;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted-2);padding:8px 10px;border-bottom:1px solid var(--rule);white-space:nowrap;}
+  .plf-table td{padding:7px 10px;border-bottom:1px solid #1E2733;font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
+  .plf-table td.plf-desc{white-space:normal;font-family:'Inter',sans-serif;color:var(--muted);max-width:200px;font-size:12px;}
+  .plf-table tr.plf-row-auto{background:rgba(63,182,127,0.06);}
+  .plf-table tr.plf-row-desc{background:rgba(224,169,62,0.06);}
+  .plf-table tr.plf-row-none{background:rgba(226,85,63,0.06);}
+  .plf-check{width:16px;height:16px;cursor:pointer;accent-color:#10b981;}
+  .plf-ecart{color:var(--ecart);font-weight:600;}
+  .plf-egal{color:var(--muted-2);}
+  .plf-selectall{font-size:12px;color:var(--accent);cursor:pointer;margin-left:auto;font-family:'IBM Plex Mono',monospace;}
+  .plf-selectall:hover{text-decoration:underline;}
+  .plf-summary{display:flex;gap:16px;margin:12px 0;font-family:'IBM Plex Mono',monospace;font-size:13px;flex-wrap:wrap;}
+  .plf-footer{padding:16px 28px;border-top:1px solid var(--rule);display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -873,6 +923,10 @@
   <button class="filter-chip" id="btnFullbox" style="border-color:#f59e0b;color:#f59e0b;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
     Import fullbox
+  </button>
+  <button class="filter-chip" id="btnPrixFournisseur" style="border-color:#10b981;color:#10b981;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+    Liste de prix fournisseur
   </button>
 </div>
 
@@ -944,6 +998,102 @@
   </div>
 </div>
 
+<!-- Modal Liste de prix fournisseur -->
+<div class="plf-overlay" id="plfOverlay">
+  <div class="plf-container">
+    <div class="plf-header">
+      <h3>Liste de prix fournisseur</h3>
+      <p>Comparez une liste de prix du manufacturier avec vos prix SAP actuels. Les articles matchés par code manufacturier sont auto-approuvés. Les matchs par description nécessitent votre approbation.</p>
+    </div>
+    <div class="plf-body">
+      <div class="plf-step">
+        <div class="plf-step-label">1. Données d'entrée</div>
+        <div class="plf-cols">
+          <div>
+            <label style="font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px;">Tableau SAP actuel (Ctrl+V depuis SAP)</label>
+            <textarea class="plf-textarea" id="plfSapZone" placeholder="Collez ici le tableau SAP avec les colonnes :&#10;Numéro d'article | Description | Code fabricant | Prix (liste courante)&#10;&#10;Colonnes tab-separated, copié-collé depuis SAP."></textarea>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px;">Liste de prix du fournisseur (fichier ou collé)</label>
+            <div class="plf-drop" id="plfDrop">
+              <p id="plfDropLabel">Glissez un fichier Excel (.xlsx), PDF ou texte ici — ou cliquez pour parcourir</p>
+              <input type="file" id="plfFileInput" accept=".xlsx,.xls,.csv,.txt,.pdf" style="display:none;">
+            </div>
+            <textarea class="plf-textarea" id="plfFournZone" style="margin-top:8px;height:100px;" placeholder="OU collez directement le tableau du fournisseur ici (tab ou virgule-separated).&#10;Code manuf | Description | Prix"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="plf-step">
+        <div class="plf-step-label">2. Configuration</div>
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+          <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
+            Liste de prix SAP :
+            <select id="plfListeNum" style="background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 10px;font-family:'IBM Plex Mono',monospace;font-size:13px;">
+              <option value="1">Liste 01 (Détail)</option>
+              <option value="2">Liste 02 (Coûtant)</option>
+              <option value="3">Liste 03</option>
+              <option value="4">Liste 04</option>
+              <option value="5">Liste 05</option>
+              <option value="10">Liste 10</option>
+            </select>
+          </label>
+          <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
+            Colonne code manuf (fournisseur) :
+            <input type="number" id="plfColCode" value="1" min="1" max="20" style="width:50px;background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 8px;font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:center;">
+          </label>
+          <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
+            Colonne prix :
+            <input type="number" id="plfColPrix" value="2" min="1" max="20" style="width:50px;background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 8px;font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:center;">
+          </label>
+          <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
+            Colonne description :
+            <input type="number" id="plfColDesc" value="3" min="0" max="20" style="width:50px;background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 8px;font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:center;">
+            <span style="font-size:11px;color:var(--muted-2);">(0 = aucune)</span>
+          </label>
+        </div>
+      </div>
+      <div class="plf-actions">
+        <button class="plf-btn plf-btn-primary" id="plfBtnAnalyser" disabled>Analyser et comparer</button>
+        <span class="plf-selectall" id="plfSelectAll" style="display:none;">Tout cocher</span>
+        <span class="plf-selectall" id="plfDeselectAll" style="display:none;">Tout décocher</span>
+      </div>
+      <div class="plf-status" id="plfStatus" style="display:none;"></div>
+
+      <div class="plf-resultat" id="plfResultat" style="display:none;">
+        <div class="plf-legende">
+          <span><span class="plf-dot plf-dot-auto"></span> Code manuf exact (auto)</span>
+          <span><span class="plf-dot plf-dot-desc"></span> Match description (à approuver)</span>
+          <span><span class="plf-dot plf-dot-none"></span> Aucun match</span>
+        </div>
+        <div class="plf-summary" id="plfSummary"></div>
+        <div class="plf-table-wrap">
+          <table class="plf-table">
+            <thead><tr>
+              <th><input type="checkbox" id="plfCheckAll" class="plf-check" title="Tout cocher/décocher"></th>
+              <th>Match</th>
+              <th>Code manuf fourn.</th>
+              <th>Description fourn.</th>
+              <th>Nouveau prix</th>
+              <th>Code Gromec</th>
+              <th>Description SAP</th>
+              <th>Prix actuel</th>
+              <th>Écart</th>
+              <th>Écart %</th>
+            </tr></thead>
+            <tbody id="plfTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="plf-footer">
+      <span class="plf-status" id="plfFooterStatus" style="display:none;"></span>
+      <button class="plf-btn plf-btn-secondary" id="plfBtnExport" disabled>Exporter CSV</button>
+      <button class="plf-btn plf-btn-dtw" id="plfBtnDTW" disabled>Envoyer à DTW</button>
+      <button class="plf-btn plf-btn-secondary" id="plfBtnFermer">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <main id="mainList">
   <div class="empty-state">
     <div class="icon">⏳</div>
@@ -957,7 +1107,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-08-31 13:51";
+const DERNIERE_MAJ_CODE = "2026-09-01 10:15";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -2776,6 +2926,392 @@ demarrerSSELogs();
       status.style.display = 'block'; status.style.color = 'var(--ecart)';
       status.textContent = 'Erreur : ' + e.message;
       btnSend.disabled = false; btnSend.textContent = 'Réessayer';
+    }
+  });
+})();
+</script>
+
+<script>
+// ── Liste de prix fournisseur ───────────────────────────────────────────────
+(function(){
+  const overlay = document.getElementById('plfOverlay');
+  const sapZone = document.getElementById('plfSapZone');
+  const fournZone = document.getElementById('plfFournZone');
+  const drop = document.getElementById('plfDrop');
+  const dropLabel = document.getElementById('plfDropLabel');
+  const fileInput = document.getElementById('plfFileInput');
+  const btnAnalyser = document.getElementById('plfBtnAnalyser');
+  const btnDTW = document.getElementById('plfBtnDTW');
+  const btnExport = document.getElementById('plfBtnExport');
+  const btnFermer = document.getElementById('plfBtnFermer');
+  const statusEl = document.getElementById('plfStatus');
+  const footerStatus = document.getElementById('plfFooterStatus');
+  const resultat = document.getElementById('plfResultat');
+  const tbody = document.getElementById('plfTableBody');
+  const summary = document.getElementById('plfSummary');
+  const checkAll = document.getElementById('plfCheckAll');
+  const selectAll = document.getElementById('plfSelectAll');
+  const deselectAll = document.getElementById('plfDeselectAll');
+
+  let lignesResultat = [];
+  let fichierFournContenu = null;
+
+  document.getElementById('btnPrixFournisseur').addEventListener('click', () => {
+    overlay.classList.add('open');
+    resetPLF();
+  });
+  btnFermer.addEventListener('click', () => overlay.classList.remove('open'));
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
+
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) lireFichier(e.dataTransfer.files[0]); });
+  fileInput.addEventListener('change', () => { if (fileInput.files.length > 0) lireFichier(fileInput.files[0]); });
+
+  sapZone.addEventListener('input', majBtnAnalyser);
+  fournZone.addEventListener('input', () => { fichierFournContenu = null; majBtnAnalyser(); });
+
+  function resetPLF(){
+    sapZone.value = ''; fournZone.value = ''; fichierFournContenu = null;
+    dropLabel.textContent = 'Glissez un fichier Excel (.xlsx), PDF ou texte ici — ou cliquez pour parcourir';
+    dropLabel.style.color = 'var(--muted)';
+    statusEl.style.display = 'none'; footerStatus.style.display = 'none';
+    resultat.style.display = 'none'; tbody.innerHTML = '';
+    btnAnalyser.disabled = true; btnDTW.disabled = true; btnExport.disabled = true;
+    selectAll.style.display = 'none'; deselectAll.style.display = 'none';
+    lignesResultat = []; fileInput.value = '';
+  }
+
+  function majBtnAnalyser(){
+    const aSap = sapZone.value.trim().length > 10;
+    const aFourn = fournZone.value.trim().length > 5 || fichierFournContenu;
+    btnAnalyser.disabled = !(aSap && aFourn);
+  }
+
+  function lireFichier(file){
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (!['xlsx','xls','csv','txt','pdf'].includes(ext)){
+      dropLabel.textContent = 'Format non supporté — .xlsx, .csv, .txt ou .pdf';
+      dropLabel.style.color = 'var(--ecart)';
+      return;
+    }
+    if (ext === 'pdf'){
+      dropLabel.innerHTML = '<span style="color:var(--warn);">' + file.name + '</span><br><span style="font-size:11px;color:var(--muted);">PDF détecté — collez le contenu manuellement dans la zone texte ci-dessous</span>';
+      return;
+    }
+    if (ext === 'xlsx' || ext === 'xls'){
+      dropLabel.innerHTML = '<span style="color:var(--warn);">' + file.name + '</span><br><span style="font-size:11px;color:var(--muted);">Excel détecté — ouvrez dans Excel, sélectionnez tout (Ctrl+A), copiez (Ctrl+C), et collez dans la zone texte ci-dessous</span>';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const buf = new Uint8Array(e.target.result);
+      const text = (buf[0] === 0xFF && buf[1] === 0xFE) ? new TextDecoder('utf-16le').decode(buf) : new TextDecoder('utf-8').decode(buf);
+      fichierFournContenu = text;
+      fournZone.value = text;
+      const nb = text.split(/\r?\n/).filter(l => l.trim() !== '').length;
+      dropLabel.innerHTML = '<span style="color:var(--ok);">' + file.name + '</span> — ' + nb + ' ligne(s)';
+      majBtnAnalyser();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function normaliserCode(code){
+    return (code || '').trim().toUpperCase().replace(/[\s\-\.\/]/g, '');
+  }
+
+  btnAnalyser.addEventListener('click', () => {
+    statusEl.style.display = 'block'; statusEl.style.color = 'var(--muted)';
+    statusEl.textContent = 'Analyse en cours…';
+    resultat.style.display = 'none';
+
+    const colCode = parseInt(document.getElementById('plfColCode').value) - 1;
+    const colPrix = parseInt(document.getElementById('plfColPrix').value) - 1;
+    const colDesc = parseInt(document.getElementById('plfColDesc').value) - 1;
+
+    // --- Parser le tableau SAP ---
+    const lignesSap = sapZone.value.split(/\r?\n/).filter(l => l.trim() !== '');
+    if (lignesSap.length < 2){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Tableau SAP vide ou trop court.'; return; }
+
+    const entetesSap = lignesSap[0].split('\t').map(h => h.trim());
+    const idxArticleSap = entetesSap.findIndex(h => /num.*article/i.test(h));
+    const idxDescSap = entetesSap.findIndex(h => /description/i.test(h));
+    const idxManufSap = entetesSap.findIndex(h => /fabr|manuf|mfr|code.?fab/i.test(h));
+    const idxPrixSap = entetesSap.findIndex(h => /prix|price|co[uû]t/i.test(h));
+
+    if (idxArticleSap === -1){
+      statusEl.style.color = 'var(--ecart)';
+      statusEl.textContent = 'Colonne « Numéro d\'article » introuvable dans l\'en-tête SAP. Colonnes détectées : ' + entetesSap.join(', ');
+      return;
+    }
+
+    const itemsSap = [];
+    for (let i = 1; i < lignesSap.length; i++){
+      const c = lignesSap[i].split('\t');
+      const article = (c[idxArticleSap] || '').trim();
+      if (!article) continue;
+      const desc = idxDescSap !== -1 ? (c[idxDescSap] || '').trim() : '';
+      const manuf = idxManufSap !== -1 ? (c[idxManufSap] || '').trim() : '';
+      let prixTxt = idxPrixSap !== -1 ? (c[idxPrixSap] || '').trim().replace(/[^0-9.,\-]/g, '') : '';
+      prixTxt = prixTxt.replace(/,/g, '');
+      const prix = parseFloat(prixTxt) || 0;
+      itemsSap.push({ article, desc, manuf, manufNorm: normaliserCode(manuf), prix, descLow: desc.toLowerCase() });
+    }
+
+    // --- Parser les données fournisseur ---
+    const texteFourn = fournZone.value;
+    const lignesFourn = texteFourn.split(/\r?\n/).filter(l => l.trim() !== '');
+    if (lignesFourn.length < 1){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Aucune donnée fournisseur détectée.'; return; }
+
+    const sep = lignesFourn[0].includes('\t') ? '\t' : lignesFourn[0].includes(';') ? ';' : ',';
+    const premierChamps = lignesFourn[0].split(sep);
+    const aEntete = premierChamps.some(h => /code|item|article|desc|prix|price|part|numéro|catalog/i.test(h.trim()));
+    const startIdx = aEntete ? 1 : 0;
+
+    const itemsFourn = [];
+    for (let i = startIdx; i < lignesFourn.length; i++){
+      const c = lignesFourn[i].split(sep).map(v => v.trim());
+      const code = (c[colCode] || '').trim();
+      let prixTxt = (c[colPrix] || '').trim().replace(/[^0-9.,\-]/g, '');
+      if (prixTxt.indexOf(',') > -1 && prixTxt.indexOf('.') > -1) prixTxt = prixTxt.replace(/,/g, '');
+      else if (prixTxt.indexOf(',') > -1 && prixTxt.split(',').length === 2 && prixTxt.split(',')[1].length <= 2) prixTxt = prixTxt.replace(',', '.');
+      else prixTxt = prixTxt.replace(/,/g, '');
+      const prix = parseFloat(prixTxt);
+      const desc = colDesc >= 0 && c[colDesc] ? c[colDesc].trim() : '';
+      if (!code || isNaN(prix)) continue;
+      itemsFourn.push({ code, codeNorm: normaliserCode(code), desc, descLow: desc.toLowerCase(), prix });
+    }
+
+    if (itemsFourn.length === 0){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Aucun article valide trouvé dans les données fournisseur. Vérifiez les numéros de colonnes.'; return; }
+
+    // --- Matching ---
+    lignesResultat = [];
+    const sapUtilises = new Set();
+
+    // Étape 1 : match exact par code manufacturier
+    for (const fourn of itemsFourn){
+      let bestIdx = -1;
+      for (let s = 0; s < itemsSap.length; s++){
+        if (sapUtilises.has(s)) continue;
+        if (itemsSap[s].manufNorm && fourn.codeNorm && itemsSap[s].manufNorm === fourn.codeNorm){
+          bestIdx = s; break;
+        }
+      }
+      if (bestIdx !== -1){
+        sapUtilises.add(bestIdx);
+        const sap = itemsSap[bestIdx];
+        const ecart = fourn.prix - sap.prix;
+        const ecartPct = sap.prix !== 0 ? (ecart / sap.prix * 100) : 0;
+        lignesResultat.push({
+          type: 'auto', coche: ecart !== 0,
+          fournCode: fourn.code, fournDesc: fourn.desc, fournPrix: fourn.prix,
+          sapArticle: sap.article, sapDesc: sap.desc, sapPrix: sap.prix,
+          ecart, ecartPct
+        });
+      }
+    }
+
+    // Étape 2 : match par code manufacturier partiel (contenu dans l'autre)
+    for (const fourn of itemsFourn){
+      if (lignesResultat.some(r => r.fournCode === fourn.code)) continue;
+      let bestIdx = -1;
+      for (let s = 0; s < itemsSap.length; s++){
+        if (sapUtilises.has(s)) continue;
+        const sm = itemsSap[s].manufNorm;
+        const fc = fourn.codeNorm;
+        if (sm && fc && sm.length >= 4 && fc.length >= 4 && (sm.includes(fc) || fc.includes(sm))){
+          bestIdx = s; break;
+        }
+      }
+      if (bestIdx !== -1){
+        sapUtilises.add(bestIdx);
+        const sap = itemsSap[bestIdx];
+        const ecart = fourn.prix - sap.prix;
+        const ecartPct = sap.prix !== 0 ? (ecart / sap.prix * 100) : 0;
+        lignesResultat.push({
+          type: 'auto', coche: ecart !== 0,
+          fournCode: fourn.code, fournDesc: fourn.desc, fournPrix: fourn.prix,
+          sapArticle: sap.article, sapDesc: sap.desc, sapPrix: sap.prix,
+          ecart, ecartPct
+        });
+      }
+    }
+
+    // Étape 3 : match par description (score de similarité)
+    for (const fourn of itemsFourn){
+      if (lignesResultat.some(r => r.fournCode === fourn.code)) continue;
+      if (!fourn.descLow) continue;
+      let bestIdx = -1, bestScore = 0;
+      const fMots = fourn.descLow.split(/\s+/).filter(m => m.length > 2);
+      for (let s = 0; s < itemsSap.length; s++){
+        if (sapUtilises.has(s)) continue;
+        if (!itemsSap[s].descLow) continue;
+        const sMots = itemsSap[s].descLow;
+        let hits = 0;
+        for (const m of fMots) { if (sMots.includes(m)) hits++; }
+        const score = fMots.length > 0 ? hits / fMots.length : 0;
+        if (score > bestScore && score >= 0.4){ bestScore = score; bestIdx = s; }
+      }
+      if (bestIdx !== -1){
+        sapUtilises.add(bestIdx);
+        const sap = itemsSap[bestIdx];
+        const ecart = fourn.prix - sap.prix;
+        const ecartPct = sap.prix !== 0 ? (ecart / sap.prix * 100) : 0;
+        lignesResultat.push({
+          type: 'desc', coche: false,
+          fournCode: fourn.code, fournDesc: fourn.desc, fournPrix: fourn.prix,
+          sapArticle: sap.article, sapDesc: sap.desc, sapPrix: sap.prix,
+          ecart, ecartPct, score: bestScore
+        });
+      }
+    }
+
+    // Étape 4 : non trouvés
+    for (const fourn of itemsFourn){
+      if (lignesResultat.some(r => r.fournCode === fourn.code)) continue;
+      lignesResultat.push({
+        type: 'none', coche: false,
+        fournCode: fourn.code, fournDesc: fourn.desc, fournPrix: fourn.prix,
+        sapArticle: '', sapDesc: '', sapPrix: 0,
+        ecart: 0, ecartPct: 0
+      });
+    }
+
+    // --- Afficher le résultat ---
+    const nbAuto = lignesResultat.filter(r => r.type === 'auto').length;
+    const nbDesc = lignesResultat.filter(r => r.type === 'desc').length;
+    const nbNone = lignesResultat.filter(r => r.type === 'none').length;
+    const nbEcartPrix = lignesResultat.filter(r => r.type !== 'none' && Math.abs(r.ecart) > 0.005).length;
+
+    statusEl.style.color = 'var(--ok)';
+    statusEl.textContent = 'Analyse terminée.';
+
+    summary.innerHTML = `
+      <span style="color:var(--ok);">${nbAuto} match${nbAuto !== 1 ? 's' : ''} code manuf</span>
+      <span style="color:var(--warn);">${nbDesc} match${nbDesc !== 1 ? 's' : ''} par description</span>
+      <span style="color:var(--ecart);">${nbNone} non trouvé${nbNone !== 1 ? 's' : ''}</span>
+      <span style="color:var(--text);">${nbEcartPrix} avec écart de prix</span>
+    `;
+
+    rendreTableau();
+    resultat.style.display = 'block';
+    selectAll.style.display = 'inline'; deselectAll.style.display = 'inline';
+    majBtnsDTW();
+  });
+
+  function rendreTableau(){
+    tbody.innerHTML = lignesResultat.map((r, i) => {
+      const rowClass = r.type === 'auto' ? 'plf-row-auto' : r.type === 'desc' ? 'plf-row-desc' : 'plf-row-none';
+      const matchLabel = r.type === 'auto' ? 'Code ✓' : r.type === 'desc' ? 'Desc ~' + (r.score ? Math.round(r.score * 100) + '%' : '') : '—';
+      const matchColor = r.type === 'auto' ? 'var(--ok)' : r.type === 'desc' ? 'var(--warn)' : 'var(--ecart)';
+      const ecartClass = Math.abs(r.ecart) > 0.005 ? 'plf-ecart' : 'plf-egal';
+      const disabled = r.type === 'none' ? 'disabled' : '';
+      return `<tr class="${rowClass}">
+        <td><input type="checkbox" class="plf-check plf-row-check" data-idx="${i}" ${r.coche ? 'checked' : ''} ${disabled}></td>
+        <td style="color:${matchColor};font-weight:600;font-size:12px;">${matchLabel}</td>
+        <td>${r.fournCode}</td>
+        <td class="plf-desc">${r.fournDesc}</td>
+        <td>${r.fournPrix.toFixed(4)}</td>
+        <td>${r.sapArticle}</td>
+        <td class="plf-desc">${r.sapDesc}</td>
+        <td>${r.sapPrix ? r.sapPrix.toFixed(4) : '—'}</td>
+        <td class="${ecartClass}">${r.type !== 'none' ? r.ecart.toFixed(4) : '—'}</td>
+        <td class="${ecartClass}">${r.type !== 'none' ? r.ecartPct.toFixed(2) + '%' : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('.plf-row-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        lignesResultat[parseInt(cb.dataset.idx)].coche = cb.checked;
+        majBtnsDTW();
+      });
+    });
+  }
+
+  function majBtnsDTW(){
+    const nbCochees = lignesResultat.filter(r => r.coche && r.type !== 'none').length;
+    btnDTW.disabled = nbCochees === 0;
+    btnExport.disabled = lignesResultat.length === 0;
+    btnDTW.textContent = nbCochees > 0 ? `Envoyer ${nbCochees} prix à DTW` : 'Envoyer à DTW';
+  }
+
+  checkAll.addEventListener('change', () => {
+    const etat = checkAll.checked;
+    lignesResultat.forEach(r => { if (r.type !== 'none') r.coche = etat; });
+    rendreTableau(); majBtnsDTW();
+  });
+
+  selectAll.addEventListener('click', () => {
+    lignesResultat.forEach(r => { if (r.type !== 'none') r.coche = true; });
+    checkAll.checked = true; rendreTableau(); majBtnsDTW();
+  });
+
+  deselectAll.addEventListener('click', () => {
+    lignesResultat.forEach(r => { r.coche = false; });
+    checkAll.checked = false; rendreTableau(); majBtnsDTW();
+  });
+
+  btnExport.addEventListener('click', () => {
+    const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+    const header = 'Match,Code Manuf Fourn,Desc Fourn,Nouveau Prix,Code Gromec,Desc SAP,Prix Actuel,Ecart,Ecart %,Approuvé';
+    const rows = lignesResultat.map(r =>
+      [r.type === 'auto' ? 'Code manuf' : r.type === 'desc' ? 'Description' : 'Non trouvé',
+       esc(r.fournCode), esc(r.fournDesc), r.fournPrix.toFixed(4),
+       esc(r.sapArticle), esc(r.sapDesc), r.sapPrix.toFixed(4),
+       r.ecart.toFixed(4), r.ecartPct.toFixed(2) + '%', r.coche ? 'Oui' : 'Non'
+      ].join(',')
+    );
+    const blob = new Blob(['﻿' + header + '\r\n' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = 'liste_prix_fournisseur_' + new Date().toISOString().slice(0,10) + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  btnDTW.addEventListener('click', async () => {
+    const cochees = lignesResultat.filter(r => r.coche && r.type !== 'none' && r.sapArticle);
+    if (cochees.length === 0) return;
+
+    const listeNum = parseInt(document.getElementById('plfListeNum').value) || 1;
+    const lineNum = listeNum - 1;
+
+    const sortie = [
+      'ParentKey\tLineNum\tPriceList\tPrice\tCurrency\tBasePriceList\tFactor\tManual\tAutoUpdate',
+      'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
+    ];
+    for (const r of cochees){
+      sortie.push(`${r.sapArticle}\t${lineNum}\t${listeNum}\t${r.fournPrix}\t\t\t\t\t`);
+    }
+
+    btnDTW.disabled = true; btnDTW.textContent = 'Envoi…';
+    footerStatus.style.display = 'block'; footerStatus.style.color = 'var(--muted)';
+    footerStatus.textContent = 'Envoi de ' + cochees.length + ' prix vers Firebase…';
+
+    try {
+      const contenu = sortie.join('\r\n');
+      const payload = {
+        type: 'import_prix',
+        fichier: 'liste_prix_fourn_L' + listeNum + '_' + Date.now() + '.txt',
+        contenu: contenu,
+        date: new Date().toISOString(),
+        statut: 'en_attente',
+        source: 'liste_prix_fournisseur',
+        nbArticles: cochees.length,
+        liste: listeNum
+      };
+      const rep = await fetch(FIREBASE_URL + 'gromec_vba/imports_prix.json', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      });
+      if (!rep.ok) throw new Error('HTTP ' + rep.status);
+      footerStatus.style.color = 'var(--ok)';
+      footerStatus.textContent = cochees.length + ' prix envoyé(s) vers DTW (Liste ' + String(listeNum).padStart(2, '0') + '). SyncDTW va traiter sous peu.';
+      btnDTW.textContent = 'Envoyé ✓';
+    } catch(e){
+      footerStatus.style.color = 'var(--ecart)';
+      footerStatus.textContent = 'Erreur : ' + e.message;
+      btnDTW.disabled = false; btnDTW.textContent = 'Réessayer';
     }
   });
 })();
