@@ -1035,7 +1035,23 @@
             Fournisseur :
             <select id="plfFournSelect" style="background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 10px;font-family:'IBM Plex Mono',monospace;font-size:13px;min-width:250px;max-width:400px;"></select>
           </label>
+          <button id="plfGererFourn" style="padding:4px 12px;border-radius:5px;border:1px solid var(--rule);background:var(--panel-2);color:var(--accent);cursor:pointer;font-size:12px;">Gérer la liste</button>
           <span id="plfFournCount" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
+      <div id="plfGererOverlay" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;">
+        <div style="background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:20px;max-width:500px;width:90%;max-height:70vh;display:flex;flex-direction:column;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h4 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:16px;">Fournisseurs visibles</h4>
+            <button id="plfGererFermer" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:20px;padding:0 4px;">✕</button>
+          </div>
+          <p style="margin:0 0 10px;font-size:12px;color:var(--muted);">Décochez les fournisseurs que vous ne voulez pas voir dans la liste déroulante.</p>
+          <div id="plfGererListe" style="overflow-y:auto;flex:1;border:1px solid var(--rule);border-radius:6px;"></div>
+          <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+            <button id="plfGererTout" style="padding:4px 12px;border-radius:5px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:12px;">Tout cocher</button>
+            <button id="plfGererRien" style="padding:4px 12px;border-radius:5px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);cursor:pointer;font-size:12px;">Tout décocher</button>
+            <button id="plfGererOk" style="padding:4px 16px;border-radius:5px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:12px;font-weight:600;">OK</button>
+          </div>
         </div>
       </div>
       <div class="plf-step">
@@ -1117,7 +1133,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-01 14:08";
+const DERNIERE_MAJ_CODE = "2026-09-01 14:02";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -2994,7 +3010,11 @@ demarrerSSELogs();
   const fournSelect = document.getElementById('plfFournSelect');
   const fournCount = document.getElementById('plfFournCount');
   const stepFourn = document.getElementById('plfStepFourn');
+  const gererOverlay = document.getElementById('plfGererOverlay');
+  const gererListe = document.getElementById('plfGererListe');
   let fournisseursMap = new Map();
+  let fournMasques = new Set();
+  try { const s = localStorage.getItem('plf_fourn_masques'); if (s) fournMasques = new Set(JSON.parse(s)); } catch(e){}
 
   let sapDebounce = null;
   sapZone.addEventListener('input', () => {
@@ -3017,6 +3037,52 @@ demarrerSSELogs();
     }
     majBtnAnalyser();
   });
+
+  // --- Gérer la liste (modal avec checkboxes) ---
+  document.getElementById('plfGererFourn').addEventListener('click', () => {
+    const sorted = [...fournisseursMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    gererListe.innerHTML = sorted.map(([nom, nb]) =>
+      '<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px;color:var(--text);border-bottom:1px solid var(--rule);">' +
+      '<input type="checkbox" data-nom="' + nom.replace(/"/g, '&quot;') + '" ' + (fournMasques.has(nom) ? '' : 'checked') + ' style="accent-color:var(--accent);width:15px;height:15px;flex-shrink:0;">' +
+      '<span style="flex:1;">' + nom + '</span>' +
+      '<span style="color:var(--muted);font-size:11px;">' + nb + '</span></label>'
+    ).join('');
+    gererOverlay.style.display = 'flex';
+  });
+
+  document.getElementById('plfGererFermer').addEventListener('click', () => fermerGerer());
+  document.getElementById('plfGererOk').addEventListener('click', () => fermerGerer());
+  gererOverlay.addEventListener('click', e => { if (e.target === gererOverlay) fermerGerer(); });
+
+  document.getElementById('plfGererTout').addEventListener('click', () => {
+    gererListe.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = true);
+  });
+  document.getElementById('plfGererRien').addEventListener('click', () => {
+    gererListe.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
+  });
+
+  function fermerGerer() {
+    fournMasques = new Set();
+    gererListe.querySelectorAll('input[type=checkbox]').forEach(c => {
+      if (!c.checked) fournMasques.add(c.dataset.nom);
+    });
+    try { localStorage.setItem('plf_fourn_masques', JSON.stringify([...fournMasques])); } catch(e){}
+    remplirSelect();
+    gererOverlay.style.display = 'none';
+  }
+
+  function remplirSelect() {
+    const sorted = [...fournisseursMap.entries()]
+      .filter(([nom]) => !fournMasques.has(nom))
+      .sort((a, b) => b[1] - a[1]);
+    const nbMasques = fournisseursMap.size - sorted.length;
+    const label = '— Choisir un fournisseur (' + sorted.length + ')' + (nbMasques > 0 ? ' · ' + nbMasques + ' masqué(s)' : '') + ' —';
+    fournSelect.innerHTML = '<option value="">' + label + '</option>' +
+      sorted.map(([nom, nb]) => '<option value="' + nom.replace(/"/g, '&quot;') + '">' + nom + ' (' + nb + ')</option>').join('');
+    fournCount.textContent = '';
+    fournisseurDetecte = null;
+    majBtnAnalyser();
+  }
 
   chkEnLigne.addEventListener('change', () => {
     if (chkEnLigne.checked) {
@@ -3050,10 +3116,7 @@ demarrerSSELogs();
     }
     if (fournisseursMap.size === 0) { stepFourn.style.display = 'none'; return; }
     stepFourn.style.display = 'block';
-    const sorted = [...fournisseursMap.entries()].sort((a, b) => b[1] - a[1]);
-    fournSelect.innerHTML = '<option value="">— Choisir un fournisseur (' + sorted.length + ') —</option>' +
-      sorted.map(([nom, nb]) => '<option value="' + nom.replace(/"/g, '&quot;') + '">' + nom + ' (' + nb + ')</option>').join('');
-    fournCount.textContent = '';
+    remplirSelect();
   }
 
   async function chercherPrixEnLigne(fournisseur) {
