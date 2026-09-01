@@ -1052,19 +1052,6 @@
               <option value="10">Liste 10</option>
             </select>
           </label>
-          <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
-            Colonne code manuf (fournisseur) :
-            <input type="number" id="plfColCode" value="1" min="1" max="20" style="width:50px;background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 8px;font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:center;">
-          </label>
-          <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
-            Colonne prix :
-            <input type="number" id="plfColPrix" value="2" min="1" max="20" style="width:50px;background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 8px;font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:center;">
-          </label>
-          <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
-            Colonne description :
-            <input type="number" id="plfColDesc" value="3" min="0" max="20" style="width:50px;background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 8px;font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:center;">
-            <span style="font-size:11px;color:var(--muted-2);">(0 = aucune)</span>
-          </label>
         </div>
       </div>
       <div class="plf-step">
@@ -1130,7 +1117,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-01 13:12";
+const DERNIERE_MAJ_CODE = "2026-09-01 13:21";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -3222,9 +3209,9 @@ demarrerSSELogs();
       escompteStatus.style.display = 'none';
     }
 
-    const colCode = parseInt(document.getElementById('plfColCode').value) - 1;
-    const colPrix = parseInt(document.getElementById('plfColPrix').value) - 1;
-    const colDesc = parseInt(document.getElementById('plfColDesc').value) - 1;
+    const colCode = 0;
+    const colPrix = 1;
+    const colDesc = 2;
 
     // --- Parser le tableau SAP ---
     const lignesSap = sapZone.value.split(/\r?\n/).filter(l => l.trim() !== '');
