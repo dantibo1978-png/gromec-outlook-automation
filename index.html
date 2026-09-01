@@ -1028,6 +1028,16 @@
           </div>
         </div>
       </div>
+      <div class="plf-step" id="plfStepFourn" style="display:none;">
+        <div class="plf-step-label">1b. Fournisseur à traiter</div>
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+          <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
+            Fournisseur :
+            <select id="plfFournSelect" style="background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 10px;font-family:'IBM Plex Mono',monospace;font-size:13px;min-width:200px;"></select>
+          </label>
+          <span id="plfFournCount" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
       <div class="plf-step">
         <div class="plf-step-label">2. Configuration</div>
         <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
@@ -1120,7 +1130,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-01 11:47";
+const DERNIERE_MAJ_CODE = "2026-09-01 13:11";
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
@@ -2986,19 +2996,32 @@ demarrerSSELogs();
 
   const chkEnLigne = document.getElementById('plfEnLigne');
   const enLigneStatus = document.getElementById('plfEnLigneStatus');
+  const fournSelect = document.getElementById('plfFournSelect');
+  const fournCount = document.getElementById('plfFournCount');
+  const stepFourn = document.getElementById('plfStepFourn');
+  let fournisseursMap = new Map(); // nom -> count
 
-  sapZone.addEventListener('input', () => { detecterFournisseur(); majBtnAnalyser(); });
+  sapZone.addEventListener('input', () => { detecterFournisseurs(); majBtnAnalyser(); });
   fournZone.addEventListener('input', () => { fichierFournContenu = null; majBtnAnalyser(); });
+
+  fournSelect.addEventListener('change', () => {
+    fournisseurDetecte = fournSelect.value;
+    const nb = fournisseursMap.get(fournisseurDetecte) || 0;
+    fournCount.textContent = nb + ' article' + (nb > 1 ? 's' : '') + ' pour ce fournisseur';
+    if (chkEnLigne.checked && fournisseurDetecte) {
+      chercherPrixEnLigne(fournisseurDetecte);
+    }
+    majBtnAnalyser();
+  });
 
   chkEnLigne.addEventListener('change', () => {
     if (chkEnLigne.checked) {
-      detecterFournisseur();
       if (fournisseurDetecte) {
         chercherPrixEnLigne(fournisseurDetecte);
       } else {
         enLigneStatus.style.display = 'block';
         enLigneStatus.style.color = 'var(--warn)';
-        enLigneStatus.textContent = 'Collez d\'abord les données SAP pour détecter le fournisseur (colonne « Nom du partenaire »).';
+        enLigneStatus.textContent = 'Collez d\'abord les données SAP et sélectionnez un fournisseur.';
       }
     } else {
       enLigneStatus.style.display = 'none';
@@ -3006,20 +3029,27 @@ demarrerSSELogs();
     majBtnAnalyser();
   });
 
-  function detecterFournisseur() {
+  function detecterFournisseurs() {
     fournisseurDetecte = null;
+    fournisseursMap = new Map();
     const texte = sapZone.value.trim();
-    if (!texte) return;
+    if (!texte) { stepFourn.style.display = 'none'; return; }
     const lignes = texte.split(/\r?\n/);
-    if (lignes.length < 2) return;
+    if (lignes.length < 2) { stepFourn.style.display = 'none'; return; }
     const entetes = lignes[0].split('\t').map(h => h.trim());
     const idxNom = entetes.findIndex(h => /nom.*partenaire|partner.*name|vendor.*name|fournisseur.*nom/i.test(h));
-    if (idxNom === -1) return;
+    if (idxNom === -1) { stepFourn.style.display = 'none'; return; }
     for (let i = 1; i < lignes.length; i++) {
       const cols = lignes[i].split('\t');
       const nom = (cols[idxNom] || '').trim();
-      if (nom) { fournisseurDetecte = nom; return; }
+      if (nom) fournisseursMap.set(nom, (fournisseursMap.get(nom) || 0) + 1);
     }
+    if (fournisseursMap.size === 0) { stepFourn.style.display = 'none'; return; }
+    stepFourn.style.display = 'block';
+    const sorted = [...fournisseursMap.entries()].sort((a, b) => b[1] - a[1]);
+    fournSelect.innerHTML = '<option value="">— Choisir un fournisseur —</option>' +
+      sorted.map(([nom, nb]) => '<option value="' + nom.replace(/"/g, '&quot;') + '">' + nom + ' (' + nb + ' articles)</option>').join('');
+    fournCount.textContent = fournisseursMap.size + ' fournisseur' + (fournisseursMap.size > 1 ? 's' : '') + ' détecté' + (fournisseursMap.size > 1 ? 's' : '');
   }
 
   async function chercherPrixEnLigne(fournisseur) {
@@ -3111,16 +3141,18 @@ demarrerSSELogs();
     chkEnLigne.checked = false;
     enLigneStatus.style.display = 'none';
     fournisseurDetecte = null;
+    fournisseursMap = new Map();
+    stepFourn.style.display = 'none';
+    fournSelect.innerHTML = '';
+    fournCount.textContent = '';
   }
 
   function majBtnAnalyser(){
     const aSap = sapZone.value.trim().length > 10;
     const aFourn = fournZone.value.trim().length > 5 || fichierFournContenu;
-    btnAnalyser.disabled = !(aSap && aFourn);
+    const aFournisseur = !!fournisseurDetecte;
+    btnAnalyser.disabled = !(aSap && aFourn && aFournisseur);
   }
-
-  // Also update SAP columns detection to include the new supplier-name columns
-  const SAP_COLUMNS_AIDE = 'Numéro d\'article, Description, Fournisseur standard, Nom du partenaire, Nº catalogue fournisseur, Prix fournisseur, Prix détail, etc.';
 
   function lireFichier(file){
     const ext = file.name.toLowerCase().split('.').pop();
@@ -3211,17 +3243,29 @@ demarrerSSELogs();
       return;
     }
 
+    const filtreFourn = fournisseurDetecte || '';
+
     const itemsSap = [];
     for (let i = 1; i < lignesSap.length; i++){
       const c = lignesSap[i].split('\t');
       const article = (c[idxArticleSap] || '').trim();
       if (!article) continue;
+      if (filtreFourn && idxNomFourn !== -1) {
+        const nomP = (c[idxNomFourn] || '').trim();
+        if (nomP !== filtreFourn) continue;
+      }
       const desc = idxDescSap !== -1 ? (c[idxDescSap] || '').trim() : '';
       const manuf = idxManufSap !== -1 ? (c[idxManufSap] || '').trim() : '';
       let prixTxt = idxPrixSap !== -1 ? (c[idxPrixSap] || '').trim().replace(/[^0-9.,\-]/g, '') : '';
       prixTxt = prixTxt.replace(/,/g, '');
       const prix = parseFloat(prixTxt) || 0;
       itemsSap.push({ article, desc, manuf, manufNorm: normaliserCode(manuf), prix, descLow: desc.toLowerCase() });
+    }
+
+    if (itemsSap.length === 0){
+      statusEl.style.color = 'var(--ecart)';
+      statusEl.textContent = filtreFourn ? 'Aucun article trouvé pour le fournisseur « ' + filtreFourn + ' ».' : 'Aucun article valide dans les données SAP.';
+      return;
     }
 
     // --- Parser les données fournisseur ---
