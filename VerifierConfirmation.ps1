@@ -2945,18 +2945,18 @@ function Invoke-TraiterNouveauCourriel {
     $analyse = Invoke-ClassifierCourriel $MailItem
     $Script:PoReviseRequis = $analyse.PoReviseRequis
 
-    # Prefixe indicateur dans le sujet du courriel (visible dans la liste Outlook)
-    # [OK 94%] = confiant, confirmation | [X 97%] = confiant, pas une confirmation | [? 71%] = incertain
+    # Indicateur du verdict Claude via UserProperty (invisible mais consultable)
+    # Ne PAS modifier le sujet : ca declenche les reponses automatiques Outlook
     $pctAffiche = [math]::Round($analyse.Confiance * 100)
-    $prefixe = if (-not $analyse.EstConfirmation) { "[X $pctAffiche%]" } `
-               elseif ($analyse.Confiance -ge $seuilAuto) { "[OK $pctAffiche%]" } `
-               else { "[? $pctAffiche%]" }
+    $verdictTag = if (-not $analyse.EstConfirmation) { "X $pctAffiche%" } `
+                  elseif ($analyse.Confiance -ge $seuilAuto) { "OK $pctAffiche%" } `
+                  else { "? $pctAffiche%" }
     try {
-        # Retirer TOUS les anciens prefixes [X ..%]/[OK ..%]/[? ..%], meme s'ils
-        # ne sont pas au tout debut (ex: apres "RE: " ajoute par Outlook a
-        # chaque reponse), pour eviter l'empilement au fil des echanges.
-        $sujetNettoye = $MailItem.Subject -replace '\[(X|OK!?|\?)\s*\d{1,3}%\]\s*', ''
-        $MailItem.Subject = "$prefixe $sujetNettoye".Trim()
+        $prop = $MailItem.UserProperties.Find("GromecVerdict")
+        if (-not $prop) {
+            $prop = $MailItem.UserProperties.Add("GromecVerdict", 1)
+        }
+        $prop.Value = $verdictTag
         $MailItem.Save()
     } catch {}
 
