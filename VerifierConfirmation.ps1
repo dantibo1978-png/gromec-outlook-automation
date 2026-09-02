@@ -2483,7 +2483,8 @@ SOURCE: PDF/CORPS
         $destCC = "(impossible a extraire)"
     }
 
-    $usrPrompt = "$contexteHistorique`n`nExpediteur: $($MailItem.SenderName) <$adresseExp>`nDestinataire (TO): $destTO`nCC: $destCC`nSujet: $($MailItem.Subject)`nPieces jointes: $nomsPJ`n`nCorps du courriel:`n$corps"
+    $sujetPropre = $MailItem.Subject -replace '^\[(X|OK|\?)\s*\d+%?\]\s*', ''
+    $usrPrompt = "$contexteHistorique`n`nExpediteur: $($MailItem.SenderName) <$adresseExp>`nDestinataire (TO): $destTO`nCC: $destCC`nSujet: $sujetPropre`nPieces jointes: $nomsPJ`n`nCorps du courriel:`n$corps"
 
     # Construire les messages avec PJ PDF incluses
     $contenuMessages = @(@{ type = "text"; text = $usrPrompt })
@@ -2987,7 +2988,7 @@ function Invoke-TraiterNouveauCourriel {
         Write-Audit "Choix du mode CORPS vs PDF" "Jugement de Claude (SOURCE): $(if($analyse.VerifierCorps){'CORPS'}else{'PDF'})`nApprentissage connu pour $adresseExp : $statutCorpsConnu`n=> Mode final retenu: $(if($verifierCorps){'CORPS'}else{'PDF'})"
 
     } else {
-        # Claude Haiku est incertain -- validation par Sonnet avant de deranger Dan
+        # Claude est incertain -- poser la question a Dan
         $suggestionOui = $analyse.EstConfirmation
         $pctConfiance  = [math]::Round($analyse.Confiance * 100)
 
@@ -2995,28 +2996,7 @@ function Invoke-TraiterNouveauCourriel {
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
         } else {
-            # Etape 2 : Sonnet valide le verdict de Haiku
-            Write-Log "INFO  Haiku incertain ($pctConfiance%) -> appel Sonnet pour validation"
-            $validationSonnet = Invoke-ValidationSonnet $MailItem $analyse
-            $sonnetConfiance = [math]::Round($validationSonnet.Confiance * 100)
-            $seuilSonnet = 80
-
-            if ($validationSonnet.Confiance -ge ($seuilSonnet / 100)) {
-                # Sonnet est confiant -> agir automatiquement
-                $estConfirmation = $validationSonnet.EstConfirmation
-                $verifierCorps = $validationSonnet.VerifierCorps
-                Write-Log "INFO  Sonnet confiant ($sonnetConfiance%) -> $(if($estConfirmation){'CONFIRMATION'}else{'SKIP'}) auto (Haiku etait a $pctConfiance%)"
-                Write-Audit "Validation Sonnet (auto)" "Haiku: $(if($suggestionOui){'OUI'}else{'NON'}) $pctConfiance%`nSonnet: $(if($estConfirmation){'OUI'}else{'NON'}) $sonnetConfiance%`nRaisonnement: $($validationSonnet.Raisonnement)`n=> Decision automatique sans popup"
-
-                if (-not $estConfirmation) { return }
-
-                $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
-                if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
-                if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
-            } else {
-            # Meme Sonnet hesite -> poser la question a Dan
-            Write-Log "INFO  Sonnet aussi incertain ($sonnetConfiance%) -> popup pour Dan"
-            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nHaiku: $(if($suggestionOui){'OUI'}else{'NON'}) ($pctConfiance%) | Sonnet: $(if($validationSonnet.EstConfirmation){'OUI'}else{'NON'}) ($sonnetConfiance%)`n`nEst-ce bien une confirmation de commande?"
+            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande'}else{'PAS une confirmation de commande'}) (confiance: $pctConfiance%).`n`nEst-ce bien une confirmation de commande?"
 
             Add-Type -AssemblyName System.Windows.Forms
             $form = New-Object System.Windows.Forms.Form
@@ -3067,7 +3047,6 @@ function Invoke-TraiterNouveauCourriel {
             } else {
                 $estConfirmation = $false
                 if ($suggestionOui) { Set-ReponseFournisseur $adresseExp $false }
-            }
             }
         }
     }
