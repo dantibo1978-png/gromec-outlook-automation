@@ -2972,20 +2972,7 @@ function Invoke-TraiterNouveauCourriel {
     $analyse = Invoke-ClassifierCourriel $MailItem
     $Script:PoReviseRequis = $analyse.PoReviseRequis
 
-    # Indicateur du verdict Claude via UserProperty (invisible mais consultable)
-    # Ne PAS modifier le sujet : ca declenche les reponses automatiques Outlook
     $pctAffiche = [math]::Round($analyse.Confiance * 100)
-    $verdictTag = if (-not $analyse.EstConfirmation) { "X $pctAffiche%" } `
-                  elseif ($analyse.Confiance -ge $seuilAuto) { "OK $pctAffiche%" } `
-                  else { "? $pctAffiche%" }
-    try {
-        $prop = $MailItem.UserProperties.Find("GromecVerdict")
-        if (-not $prop) {
-            $prop = $MailItem.UserProperties.Add("GromecVerdict", 1)
-        }
-        $prop.Value = $verdictTag
-        $MailItem.Save()
-    } catch {}
 
     $estConfirmation = $false
     $verifierCorps   = $false
