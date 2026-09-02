@@ -1137,7 +1137,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-02 16:25";
+const DERNIERE_MAJ_CODE = "2026-09-02 15:45";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -3498,19 +3498,26 @@ demarrerSSELogs();
     if (lignesFourn.length < 1){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Aucune donnée fournisseur détectée.'; return; }
 
     const sep = lignesFourn[0].includes('\t') ? '\t' : lignesFourn[0].includes(';') ? ';' : ',';
-    const premierChamps = lignesFourn[0].split(sep).map(h => h.trim());
-    const aEntete = premierChamps.some(h => /code|item|article|desc|prix|price|part|num[eé]ro|catalog|product|list|net|uom|unit|size|model/i.test(h));
-    const startIdx = aEntete ? 1 : 0;
+    const reEntete = /code|item|article|desc|prix|price|part|num[eé]ro|catalog|product|produit|list|net|uom|unit|unité|size|model|partie|\$/i;
+    let idxEntete = 0;
+    for (let li = 0; li < Math.min(lignesFourn.length, 20); li++) {
+      const champs = lignesFourn[li].split(sep).map(h => h.trim());
+      const nbMatch = champs.filter(h => reEntete.test(h)).length;
+      if (nbMatch >= 2) { idxEntete = li; break; }
+    }
+    const premierChamps = lignesFourn[idxEntete].split(sep).map(h => h.trim());
+    const aEntete = premierChamps.some(h => reEntete.test(h));
+    const startIdx = aEntete ? idxEntete + 1 : 0;
 
     // Détection des colonnes par en-tête
     let colCode = -1, colPrix = -1, colDesc = -1;
     if (aEntete) {
       for (let ci = 0; ci < premierChamps.length; ci++) {
         const h = premierChamps[ci].toLowerCase();
-        if (colCode === -1 && /^(item|code|part|cat|sku|prod|model|no\.|n[°ºo]|num|#|mfr|mfg|stock)/.test(h)) colCode = ci;
-        else if (colCode === -1 && /item\s*#|part\s*#|cat\s*(no|#|num)|code\s*(art|prod|manuf)|product\s*(code|num|#)|stock\s*#|sku|catalog/i.test(h)) colCode = ci;
-        if (colPrix === -1 && /prix|price|list|net|msrp|co[uû]t|cost|each|\$|tarif/i.test(h) && !/desc/i.test(h)) colPrix = ci;
-        if (colDesc === -1 && /desc|name|désig|libel|product(?!.*code)|article(?!.*#)/i.test(h) && !/price|prix/i.test(h)) colDesc = ci;
+        if (colCode === -1 && /^(item|code|part|partie|cat|sku|prod|model|no\.|n[°ºo]|num|#|mfr|mfg|stock)/.test(h)) colCode = ci;
+        else if (colCode === -1 && /item\s*#|part\s*#|partie\s*#|cat\s*(no|#|num)|code\s*(art|prod|manuf)|product\s*(code|num|#)|stock\s*#|sku|catalog/i.test(h)) colCode = ci;
+        if (colPrix === -1 && /prix|price|list|net|msrp|co[uû]t|cost|each|\$|tarif|unit[eé]/i.test(h) && !/desc/i.test(h)) colPrix = ci;
+        if (colDesc === -1 && /desc|name|désig|libel|produit|product(?!.*code)|article(?!.*#)/i.test(h) && !/price|prix|\$/i.test(h)) colDesc = ci;
       }
     }
 
