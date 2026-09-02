@@ -131,6 +131,33 @@ $FirebaseUrl    = $Config.FirebaseUrl
 $JoursRecherche = $Config.JoursRechercheEnvoyes
 $SeuilConfiance = $Config.SeuilConfiance
 
+# Si les reponses automatiques Outlook sont activees, desactiver le programme
+if (-not $Force.IsPresent) {
+    try {
+        $ol = New-Object -ComObject Outlook.Application
+        $store = $ol.Session.DefaultStore
+        $oofEnabled = $false
+        try {
+            $pr = $store.PropertyAccessor
+            $oofEnabled = $pr.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x661D000B")
+        } catch {
+            $ns = $ol.GetNamespace("MAPI")
+            if ($ns.ExchangeConnectionMode -ge 500) {
+                $mu = $ns.CurrentUser.AddressEntry.GetExchangeUser()
+                if ($mu -and $mu.PropertyAccessor) {
+                    try { $oofEnabled = $mu.PropertyAccessor.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x661D000B") } catch {}
+                }
+            }
+        }
+        if ($oofEnabled) {
+            try {
+                Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/valeurs.json" -Method Patch -ContentType "application/json" -Body '{"programme_actif":false}' -TimeoutSec 5 | Out-Null
+            } catch {}
+            exit 0
+        }
+    } catch {}
+}
+
 # Verifier si le programme est en pause (sauf reclassification manuelle -Force)
 if (-not $Force.IsPresent) {
     try {
