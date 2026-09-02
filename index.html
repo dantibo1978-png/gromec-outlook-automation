@@ -1137,9 +1137,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-02 15:37";
-const DERNIERE_MAJ_CODE = "2026-09-02 15:37";
-document.addEventListener('dragover', e => e.preventDefault());
+const DERNIERE_MAJ_CODE = "2026-09-02 15:38";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -3062,6 +3060,30 @@ demarrerSSELogs();
       } catch(err) {
         escDropLabel.innerHTML = '<span style="color:var(--ecart);">Erreur: ' + err.message + '</span>';
       }
+    } else if (['xlsx','xls'].includes(ext)) {
+      escDropLabel.innerHTML = '<span style="color:var(--warn);">' + file.name + '</span><br><span style="font-size:11px;color:var(--muted);">Lecture Excel en cours…</span>';
+      const reader = new FileReader();
+      reader.onload = async e => {
+        try {
+          if (!window.XLSX) {
+            await new Promise((res, rej) => {
+              const s = document.createElement('script');
+              s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+              s.onload = res; s.onerror = rej;
+              document.head.appendChild(s);
+            });
+          }
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const text = XLSX.utils.sheet_to_csv(ws, { FS: '\t' });
+          escZone.value = text;
+          const nb = text.split(/\r?\n/).filter(l => l.trim() !== '').length;
+          escDropLabel.innerHTML = '<span style="color:var(--ok);">' + file.name + '</span> — ' + nb + ' ligne(s)';
+        } catch(err) {
+          escDropLabel.innerHTML = '<span style="color:var(--ecart);">Erreur Excel : ' + err.message + '</span>';
+        }
+      };
+      reader.readAsArrayBuffer(file);
     } else if (['txt','csv'].includes(ext)) {
       const reader = new FileReader();
       reader.onload = e => {
@@ -3073,7 +3095,7 @@ demarrerSSELogs();
       };
       reader.readAsArrayBuffer(file);
     } else {
-      escDropLabel.innerHTML = '<span style="color:var(--ecart);">Format non supporté — PDF ou texte seulement</span>';
+      escDropLabel.innerHTML = '<span style="color:var(--ecart);">Format non supporté — .xlsx, .pdf, .csv ou .txt</span>';
     }
   }
 
@@ -3146,7 +3168,7 @@ demarrerSSELogs();
   function remplirSelect() {
     const sorted = [...fournisseursMap.entries()]
       .filter(([nom]) => !fournMasques.has(nom))
-      .sort((a, b) => b[1] - a[1]);
+      .sort((a, b) => a[0].localeCompare(b[0], 'fr'));
     const nbMasques = fournisseursMap.size - sorted.length;
     const label = '— Choisir un fournisseur (' + sorted.length + ')' + (nbMasques > 0 ? ' · ' + nbMasques + ' masqué(s)' : '') + ' —';
     fournSelect.innerHTML = '<option value="">' + label + '</option>' +
@@ -3348,7 +3370,31 @@ demarrerSSELogs();
       return;
     }
     if (ext === 'xlsx' || ext === 'xls'){
-      dropLabel.innerHTML = '<span style="color:var(--warn);">' + file.name + '</span><br><span style="font-size:11px;color:var(--muted);">Excel détecté — ouvrez dans Excel, sélectionnez tout (Ctrl+A), copiez (Ctrl+C), et collez dans la zone texte ci-dessous</span>';
+      dropLabel.innerHTML = '<span style="color:var(--warn);">' + file.name + '</span><br><span style="font-size:11px;color:var(--muted);">Lecture du fichier Excel en cours…</span>';
+      const reader = new FileReader();
+      reader.onload = async e => {
+        try {
+          if (!window.XLSX) {
+            await new Promise((res, rej) => {
+              const s = document.createElement('script');
+              s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+              s.onload = res; s.onerror = rej;
+              document.head.appendChild(s);
+            });
+          }
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const text = XLSX.utils.sheet_to_csv(ws, { FS: '\t' });
+          fichierFournContenu = text;
+          fournZone.value = text;
+          const nb = text.split(/\r?\n/).filter(l => l.trim() !== '').length;
+          dropLabel.innerHTML = '<span style="color:var(--ok);">' + file.name + '</span> — ' + nb + ' ligne(s)';
+          majBtnAnalyser();
+        } catch (err) {
+          dropLabel.innerHTML = '<span style="color:var(--ecart);">' + file.name + '</span><br><span style="font-size:11px;">Erreur lecture Excel : ' + err.message + '. Ouvrez dans Excel, Ctrl+A, Ctrl+C, collez ci-dessous.</span>';
+        }
+      };
+      reader.readAsArrayBuffer(file);
       return;
     }
     const reader = new FileReader();
