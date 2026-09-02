@@ -6,9 +6,82 @@ export default {
       return handleFetchPricelist(request);
     }
 
+    if (url.pathname === '/api/detect-columns' && request.method === 'POST') {
+      return handleDetectColumns(request, env);
+    }
+
     return env.ASSETS.fetch(request);
   }
 };
+
+async function handleDetectColumns(request, env) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json'
+  };
+
+  try {
+    if (!env.CLAUDE_API_KEY) {
+      return new Response(JSON.stringify({ error: 'CLAUDE_API_KEY non configuree' }), { status: 500, headers });
+    }
+
+    const body = await request.json();
+    const { lignes } = body;
+
+    if (!lignes || !lignes.length) {
+      return new Response(JSON.stringify({ error: 'Aucune ligne fournie' }), { status: 400, headers });
+    }
+
+    const echantillon = lignes.slice(0, 20).join('\n');
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': env.CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: `Voici les premieres lignes d'une liste de prix fournisseur (separees par tabulation ou virgule). Identifie les index de colonnes (base 0) pour:
+- code: le code article, numero de piece, part number, SKU, catalogue number
+- prix: le prix unitaire, prix coutant, list price
+- desc: la description du produit
+
+Reponds UNIQUEMENT en JSON strict, rien d'autre:
+{"code": INDEX, "prix": INDEX, "desc": INDEX, "entete": INDEX_LIGNE}
+
+ou INDEX est le numero de colonne (base 0), et entete est le numero de la ligne d'en-tete (base 0, -1 si pas d'en-tete).
+Si une colonne est introuvable, mets -1.
+
+Donnees:
+${echantillon}`
+        }]
+      })
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return new Response(JSON.stringify({ error: 'Erreur Claude API: ' + resp.status, details: errText }), { status: 502, headers });
+    }
+
+    const data = await resp.json();
+    const texte = data.content[0].text.trim();
+
+    const jsonMatch = texte.match(/\{[^}]+\}/);
+    if (!jsonMatch) {
+      return new Response(JSON.stringify({ error: 'Reponse Claude invalide', raw: texte }), { status: 500, headers });
+    }
+
+    const colonnes = JSON.parse(jsonMatch[0]);
+    return new Response(JSON.stringify(colonnes), { headers });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers });
+  }
+}
 
 const FOURNISSEURS_CONNUS = {
   'cb supplies': {
@@ -39,7 +112,7 @@ async function handleFetchPricelist(request) {
 
     if (!config) {
       return new Response(JSON.stringify({
-        error: 'Fournisseur non configuré pour la récupération en ligne',
+        error: 'Fournisseur non configure pour la recuperation en ligne',
         fournisseur,
         connus: Object.keys(FOURNISSEURS_CONNUS)
       }), { status: 404, headers });
@@ -81,7 +154,7 @@ async function handleFetchPricelist(request) {
               const texte = await dataResp.text();
               return new Response(JSON.stringify({ fichier: fichier.nom, contenu: texte, type: 'text' }), { headers });
             } else {
-              return new Response(JSON.stringify({ fichier: fichier.nom, url: fichier.url, type: 'binary', message: 'Fichier binaire — téléchargement direct requis' }), { headers });
+              return new Response(JSON.stringify({ fichier: fichier.nom, url: fichier.url, type: 'binary', message: 'Fichier binaire — telechargement direct requis' }), { headers });
             }
           }
         }
@@ -90,7 +163,7 @@ async function handleFetchPricelist(request) {
       return new Response(JSON.stringify({ fichiers, base: config.base }), { headers });
     }
 
-    return new Response(JSON.stringify({ error: 'Format non supporté' }), { status: 500, headers });
+    return new Response(JSON.stringify({ error: 'Format non supporte' }), { status: 500, headers });
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers });
   }

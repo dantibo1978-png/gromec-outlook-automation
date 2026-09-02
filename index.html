@@ -1137,7 +1137,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-02 16:32";
+const DERNIERE_MAJ_CODE = "2026-09-02 15:55";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -3414,7 +3414,7 @@ demarrerSSELogs();
     return (code || '').trim().toUpperCase().replace(/[\s\-\.\/]/g, '');
   }
 
-  btnAnalyser.addEventListener('click', () => {
+  btnAnalyser.addEventListener('click', async () => {
     statusEl.style.display = 'block'; statusEl.style.color = 'var(--muted)';
     statusEl.textContent = 'Analyse en cours…';
     resultat.style.display = 'none';
@@ -3492,92 +3492,43 @@ demarrerSSELogs();
       return;
     }
 
-    // --- Parser les données fournisseur (détection intelligente des colonnes) ---
+    // --- Parser les données fournisseur (détection IA des colonnes) ---
     const texteFourn = fournZone.value;
     const lignesFourn = texteFourn.split(/\r?\n/).filter(l => l.trim() !== '');
     if (lignesFourn.length < 1){ statusEl.style.color = 'var(--ecart)'; statusEl.textContent = 'Aucune donnée fournisseur détectée.'; return; }
 
     const sep = lignesFourn[0].includes('\t') ? '\t' : lignesFourn[0].includes(';') ? ';' : ',';
-    const reEntete = /code|item|article|desc|prix|price|part|num[eé]ro|catalog|product|produit|list|net|uom|unit|unité|size|model|partie|\$/i;
-    let idxEntete = 0;
-    for (let li = 0; li < Math.min(lignesFourn.length, 20); li++) {
-      const champs = lignesFourn[li].split(sep).map(h => h.trim());
-      const nbMatch = champs.filter(h => reEntete.test(h)).length;
-      if (nbMatch >= 2) { idxEntete = li; break; }
-    }
-    const premierChamps = lignesFourn[idxEntete].split(sep).map(h => h.trim());
-    const aEntete = premierChamps.some(h => reEntete.test(h));
-    const startIdx = aEntete ? idxEntete + 1 : 0;
 
-    // Détection des colonnes par en-tête
-    let colCode = -1, colPrix = -1, colDesc = -1;
-    if (aEntete) {
-      for (let ci = 0; ci < premierChamps.length; ci++) {
-        const h = premierChamps[ci].toLowerCase();
-        if (colCode === -1 && /^(item|code|part|partie|cat|sku|prod|model|no\.|n[°ºo]|num|#|mfr|mfg|stock)/.test(h)) colCode = ci;
-        else if (colCode === -1 && /item\s*#|part\s*#|partie\s*#|cat\s*(no|#|num)|code\s*(art|prod|manuf)|product\s*(code|num|#)|stock\s*#|sku|catalog/i.test(h)) colCode = ci;
-        if (colPrix === -1 && /prix|price|list|net|msrp|co[uû]t|cost|each|\$|tarif|unit[eé]/i.test(h) && !/desc/i.test(h)) colPrix = ci;
-        if (colDesc === -1 && /desc|name|désig|libel|produit|product(?!.*code)|article(?!.*#)/i.test(h) && !/price|prix|\$/i.test(h)) colDesc = ci;
-      }
-    }
-
-    // Détection par analyse des données si les en-têtes n'ont pas suffi
-    if (colCode === -1 || colPrix === -1) {
-      const echantillon = lignesFourn.slice(startIdx, Math.min(startIdx + 20, lignesFourn.length));
-      const nbCols = premierChamps.length;
-      const stats = Array.from({length: nbCols}, () => ({ nbNum: 0, nbAlpha: 0, nbMixed: 0, total: 0 }));
-      for (const ligne of echantillon) {
-        const cols = ligne.split(sep).map(v => v.trim());
-        for (let ci = 0; ci < Math.min(cols.length, nbCols); ci++) {
-          const v = cols[ci].replace(/[\$,\s]/g, '');
-          if (!v) continue;
-          stats[ci].total++;
-          if (/^-?\d+\.?\d*$/.test(v)) stats[ci].nbNum++;
-          else if (/^[a-zA-Z\s]+$/.test(v)) stats[ci].nbAlpha++;
-          else stats[ci].nbMixed++;
-        }
-      }
-      // Prix = colonne avec le plus de valeurs purement numériques
-      if (colPrix === -1) {
-        let bestPrix = -1, bestPrixScore = 0;
-        for (let ci = 0; ci < nbCols; ci++) {
-          if (ci === colCode || ci === colDesc) continue;
-          const score = stats[ci].total > 0 ? stats[ci].nbNum / stats[ci].total : 0;
-          if (score > bestPrixScore && score >= 0.5) { bestPrixScore = score; bestPrix = ci; }
-        }
-        colPrix = bestPrix;
-      }
-      // Code = colonne avec le plus de valeurs mixtes (alphanum) avant le prix
-      if (colCode === -1) {
-        let bestCode = -1, bestCodeScore = 0;
-        for (let ci = 0; ci < nbCols; ci++) {
-          if (ci === colPrix || ci === colDesc) continue;
-          const mixScore = stats[ci].total > 0 ? (stats[ci].nbMixed + stats[ci].nbNum * 0.3) / stats[ci].total : 0;
-          if (mixScore > bestCodeScore) { bestCodeScore = mixScore; bestCode = ci; }
-        }
-        colCode = bestCode;
-      }
-      // Description = colonne avec le plus de texte (alpha + mixed longs)
-      if (colDesc === -1) {
-        let bestDesc = -1, bestDescScore = 0;
-        for (let ci = 0; ci < nbCols; ci++) {
-          if (ci === colPrix || ci === colCode) continue;
-          const score = stats[ci].total > 0 ? (stats[ci].nbAlpha + stats[ci].nbMixed * 0.5) / stats[ci].total : 0;
-          if (score > bestDescScore) { bestDescScore = score; bestDesc = ci; }
-        }
-        colDesc = bestDesc;
-      }
+    statusEl.textContent = 'Détection des colonnes par IA…';
+    let colCode = -1, colPrix = -1, colDesc = -1, startIdx = 0;
+    try {
+      const resp = await fetch('/api/detect-columns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lignes: lignesFourn.slice(0, 20) })
+      });
+      const det = await resp.json();
+      if (det.error) throw new Error(det.error);
+      colCode = det.code ?? -1;
+      colPrix = det.prix ?? -1;
+      colDesc = det.desc ?? -1;
+      startIdx = (det.entete != null && det.entete >= 0) ? det.entete + 1 : 0;
+    } catch (err) {
+      statusEl.style.color = 'var(--ecart)';
+      statusEl.textContent = 'Erreur détection colonnes : ' + err.message;
+      return;
     }
 
     if (colCode === -1 || colPrix === -1) {
       statusEl.style.color = 'var(--ecart)';
-      statusEl.textContent = 'Impossible de détecter les colonnes code et prix dans les données fournisseur. En-têtes : ' + premierChamps.join(', ');
+      statusEl.textContent = 'IA n\'a pas pu identifier les colonnes code article et prix dans ce fichier.';
       return;
     }
 
-    const detectInfo = 'Colonnes détectées → Code: ' + (aEntete ? premierChamps[colCode] : 'col ' + (colCode+1)) +
-      ', Prix: ' + (aEntete ? premierChamps[colPrix] : 'col ' + (colPrix+1)) +
-      (colDesc >= 0 ? ', Desc: ' + (aEntete ? premierChamps[colDesc] : 'col ' + (colDesc+1)) : '');
+    const premierChamps = lignesFourn[Math.max(0, startIdx - 1)].split(sep).map(h => h.trim());
+    const detectInfo = 'Colonnes détectées (IA) → Code: ' + (premierChamps[colCode] || 'col ' + (colCode+1)) +
+      ', Prix: ' + (premierChamps[colPrix] || 'col ' + (colPrix+1)) +
+      (colDesc >= 0 ? ', Desc: ' + (premierChamps[colDesc] || 'col ' + (colDesc+1)) : '');
 
     function parsePrix(txt) {
       txt = (txt || '').trim().replace(/[\$\s]/g, '').replace(/[^0-9.,\-]/g, '');
