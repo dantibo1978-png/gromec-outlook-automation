@@ -1073,7 +1073,11 @@
       <div class="plf-step">
         <div class="plf-step-label">3. Escomptes par catégorie (optionnel)</div>
         <p style="color:var(--muted);font-size:12px;margin:0 0 6px;">Collez ici la grille d'escomptes du fournisseur (ex: CB Supplies Discount Structure). Le module détectera le Price Sheet # de chaque article et appliquera le multiplicateur automatiquement.</p>
-        <textarea class="plf-textarea" id="plfEscompteZone" style="height:100px;" placeholder="Collez la grille d'escomptes ici (tab-separated ou copié depuis PDF).&#10;CAT #    Description    Price Sheet #    Discount    Multiplier&#10;010      Copper Fittings    CF 1-25      96.38%      0.0362&#10;&#10;Le module cherche les colonnes Price Sheet # et Multiplier automatiquement."></textarea>
+        <div class="plf-drop" id="plfEscompteDrop">
+          <p id="plfEscompteDropLabel">Glissez le PDF de la grille d'escomptes ici — ou cliquez pour parcourir</p>
+          <input type="file" id="plfEscompteFileInput" accept=".xlsx,.xls,.csv,.txt,.pdf" style="display:none;">
+        </div>
+        <textarea class="plf-textarea" id="plfEscompteZone" style="height:100px;margin-top:8px;" placeholder="OU collez la grille d'escomptes ici (tab-separated ou copié depuis PDF).&#10;CAT #    Description    Price Sheet #    Discount    Multiplier&#10;010      Copper Fittings    CF 1-25      96.38%      0.0362&#10;&#10;Le module cherche les colonnes Price Sheet # et Multiplier automatiquement."></textarea>
         <div id="plfEscompteStatus" style="font-family:'IBM Plex Mono',monospace;font-size:12px;margin-top:4px;display:none;"></div>
       </div>
       <div class="plf-actions">
@@ -1133,7 +1137,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-02 10:13";
+const DERNIERE_MAJ_CODE = "2026-09-02 10:48";
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
@@ -3008,6 +3012,69 @@ demarrerSSELogs();
   drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
   drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) lireFichier(e.dataTransfer.files[0]); });
   fileInput.addEventListener('change', () => { if (fileInput.files.length > 0) lireFichier(fileInput.files[0]); });
+
+  // Drop zone pour la grille d'escomptes (section 3)
+  const escDrop = document.getElementById('plfEscompteDrop');
+  const escDropLabel = document.getElementById('plfEscompteDropLabel');
+  const escFileInput = document.getElementById('plfEscompteFileInput');
+  const escZone = document.getElementById('plfEscompteZone');
+  escDrop.addEventListener('click', () => escFileInput.click());
+  escDrop.addEventListener('dragover', e => { e.preventDefault(); escDrop.classList.add('dragover'); });
+  escDrop.addEventListener('dragleave', () => escDrop.classList.remove('dragover'));
+  escDrop.addEventListener('drop', e => { e.preventDefault(); escDrop.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) lireEscompte(e.dataTransfer.files[0]); });
+  escFileInput.addEventListener('change', () => { if (escFileInput.files.length > 0) lireEscompte(escFileInput.files[0]); });
+
+  async function lireEscompte(file) {
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (ext === 'pdf') {
+      escDropLabel.innerHTML = '<span style="color:var(--warn);">' + file.name + '</span><br><span style="font-size:11px;color:var(--muted);">Extraction du texte du PDF en cours…</span>';
+      try {
+        if (!window.pdfjsLib) {
+          const m = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
+          window.pdfjsLib = m;
+        }
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+        const buf = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        let texte = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const lignes = [];
+          let dernierY = null;
+          let ligneCourante = [];
+          for (const item of content.items) {
+            const y = Math.round(item.transform[5]);
+            if (dernierY !== null && Math.abs(y - dernierY) > 3) {
+              lignes.push(ligneCourante.join('\t'));
+              ligneCourante = [];
+            }
+            ligneCourante.push(item.str);
+            dernierY = y;
+          }
+          if (ligneCourante.length > 0) lignes.push(ligneCourante.join('\t'));
+          texte += lignes.join('\n') + '\n';
+        }
+        escZone.value = texte;
+        const nb = texte.split(/\r?\n/).filter(l => l.trim() !== '').length;
+        escDropLabel.innerHTML = '<span style="color:var(--ok);">' + file.name + '</span> — ' + nb + ' ligne(s) extraites (' + pdf.numPages + ' page' + (pdf.numPages > 1 ? 's' : '') + ')';
+      } catch(err) {
+        escDropLabel.innerHTML = '<span style="color:var(--ecart);">Erreur: ' + err.message + '</span>';
+      }
+    } else if (['txt','csv'].includes(ext)) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const buf = new Uint8Array(e.target.result);
+        const text = (buf[0] === 0xFF && buf[1] === 0xFE) ? new TextDecoder('utf-16le').decode(buf) : new TextDecoder('utf-8').decode(buf);
+        escZone.value = text;
+        const nb = text.split(/\r?\n/).filter(l => l.trim() !== '').length;
+        escDropLabel.innerHTML = '<span style="color:var(--ok);">' + file.name + '</span> — ' + nb + ' ligne(s)';
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      escDropLabel.innerHTML = '<span style="color:var(--ecart);">Format non supporté — PDF ou texte seulement</span>';
+    }
+  }
 
   const chkEnLigne = document.getElementById('plfEnLigne');
   const enLigneStatus = document.getElementById('plfEnLigneStatus');
