@@ -2871,7 +2871,29 @@ function Invoke-TraiterNouveauCourriel {
         $suggestionOui = $analyse.EstConfirmation
         $pctConfiance  = [math]::Round($analyse.Confiance * 100)
 
-        if ($ForcerTraitement) {
+        # Boost par apprentissage : si le fournisseur a un historique clair
+        # (3+ reponses identiques et 0 contraires), on fait confiance a
+        # l'apprentissage et on agit automatiquement meme si Claude hesite.
+        $compteurs = Get-CompteursFournisseur $adresseExp
+        $seuilApprentissage = 3
+        $apprentissageClair = $false
+        if ($compteurs.Oui -ge $seuilApprentissage -and $compteurs.Non -eq 0 -and $suggestionOui) {
+            $apprentissageClair = $true
+            Write-Log "INFO  Confiance basse ($pctConfiance%) MAIS apprentissage fort ($($compteurs.Oui) OUI, 0 NON) -> auto-confirmation pour $adresseExp"
+            $estConfirmation = $true
+            $verifierCorps = $analyse.VerifierCorps
+            $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
+            if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
+            if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
+        } elseif ($compteurs.Non -ge $seuilApprentissage -and $compteurs.Oui -eq 0 -and -not $suggestionOui) {
+            $apprentissageClair = $true
+            Write-Log "INFO  Confiance basse ($pctConfiance%) MAIS apprentissage fort ($($compteurs.Non) NON, 0 OUI) -> skip auto pour $adresseExp"
+            $estConfirmation = $false
+        }
+
+        if ($apprentissageClair) {
+            # Deja gere ci-dessus, pas de question
+        } elseif ($ForcerTraitement) {
             # Ne devrait plus arriver (gere en haut) mais securite
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
