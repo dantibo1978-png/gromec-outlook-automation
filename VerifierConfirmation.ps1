@@ -2383,6 +2383,13 @@ seulement de contexte pour identifier le numero de BC -- ce n'est jamais
 une preuve de confirmation, meme s'il contient des mots comme "commande"
 ou semble etre un bon de commande.
 
+IMPORTANT -- DESTINATAIRE PRINCIPAL vs CC: Verifie le champ "Destinataire (TO)"
+et "CC" fournis ci-dessous. Si Gromec (dthibault@gromec.com) est SEULEMENT en
+CC et le destinataire principal est un TIERS (transporteur, autre fournisseur,
+compagnie de livraison), c'est tres probablement AUTRE -- le fournisseur communique
+avec un tiers et met Gromec en copie par courtoisie. Ce n'est PAS une confirmation
+de commande adressee a Gromec.
+
 Analyse le sujet, le corps ET toutes les pieces jointes fournies.
 
 Reponds a ces 3 questions, puis classifie le TYPE du courriel:
@@ -2424,13 +2431,21 @@ QTYPE: Classe le courriel dans EXACTEMENT UNE de ces categories:
   AUTRE = Tout le reste: devis seuls, factures seules, newsletters, MTR/certificats,
       documents qualite, bons de livraison seuls, propositions de produits alternatifs/substituts,
       contre-propositions commerciales, demandes de modification (changer adresse/contact),
-      courriels sans reference a une commande specifique.
+      courriels sans reference a une commande specifique, ET AUSSI:
+      - Courriels de TRANSPORT/LOGISTIQUE adresses a un transporteur (pickup, ramassage,
+        "confirmer le ramassage", BOL, connaissement, Guilbault, Dicom, Purolator, FedEx,
+        Day&Ross, etc.) ou Gromec est en copie seulement
+      - Communications entre le fournisseur et un tiers ou Gromec est en CC
+      - Tout courriel ou le destinataire principal (TO) n'est pas @gromec.com
 
 REGLES DE CLASSIFICATION:
 - C'est une CONFIRMATION seulement si le fournisseur CONFIRME LUI-MEME la commande
-  (pas s'il pose une question, informe d'une expedition, ou discute d'un litige).
+  DIRECTEMENT A GROMEC (pas a un tiers avec Gromec en CC).
+- Si Gromec est en CC seulement et le destinataire principal est un tiers -> AUTRE
+  (meme si le corps mentionne une commande, un numero de BC, ou une livraison).
 - Un courriel qui mentionne des quantites dans un contexte d'EXPEDITION ("ships today",
   "part aujourd'hui", "loaded", "items en backorder") = AVIS_EXPEDITION, pas CONFIRMATION.
+- Un courriel de transport/pickup (demande de ramassage a un transporteur) = AUTRE.
 - Un courriel qui DEMANDE quelque chose au client = ACTION_REQUISE si c'est lie a la
   commande, SUIVI_STATUT si c'est une simple question de logistique.
 - En cas de doute entre CONFIRMATION et un autre type, prefere l'autre type.
@@ -2449,7 +2464,26 @@ SOURCE: PDF/CORPS
     if ($corps.Length -gt 3000) { $corps = $corps.Substring(0, 3000) }
     $nomsPJ = ($MailItem.Attachments | ForEach-Object { $_.FileName }) -join ", "
 
-    $usrPrompt = "$contexteHistorique`n`nExpediteur: $($MailItem.SenderName) <$adresseExp>`nSujet: $($MailItem.Subject)`nPieces jointes: $nomsPJ`n`nCorps du courriel:`n$corps"
+    # Extraire les destinataires TO et CC pour aider la classification
+    $destTO = ""
+    $destCC = ""
+    try {
+        $recips = $MailItem.Recipients
+        $toList = @()
+        $ccList = @()
+        foreach ($r in $recips) {
+            $addr = $r.Address
+            if ($r.Type -eq 1) { $toList += "$($r.Name) <$addr>" }    # olTo
+            elseif ($r.Type -eq 2) { $ccList += "$($r.Name) <$addr>" } # olCC
+        }
+        $destTO = if ($toList.Count -gt 0) { $toList -join "; " } else { "(inconnu)" }
+        $destCC = if ($ccList.Count -gt 0) { $ccList -join "; " } else { "(aucun)" }
+    } catch {
+        $destTO = "(impossible a extraire)"
+        $destCC = "(impossible a extraire)"
+    }
+
+    $usrPrompt = "$contexteHistorique`n`nExpediteur: $($MailItem.SenderName) <$adresseExp>`nDestinataire (TO): $destTO`nCC: $destCC`nSujet: $($MailItem.Subject)`nPieces jointes: $nomsPJ`n`nCorps du courriel:`n$corps"
 
     # Construire les messages avec PJ PDF incluses
     $contenuMessages = @(@{ type = "text"; text = $usrPrompt })
@@ -2752,6 +2786,30 @@ function Invoke-TraiterNouveauCourriel {
         }
     }
 
+    # Filtre rapide : si Gromec est en CC seulement (pas en TO) et le destinataire
+    # principal est un tiers non-Gromec, c'est probablement un courriel de transport
+    # ou coordination ou Gromec est en copie par courtoisie -- skip sans appeler Haiku
+    if (-not $ForcerTraitement) {
+        try {
+            $gromecEnTO = $false
+            $gromecEnCC = $false
+            $autreTiersEnTO = $false
+            foreach ($r in $MailItem.Recipients) {
+                $rAddr = ""
+                try { $rAddr = $r.Address.ToLower() } catch { try { $rAddr = $r.AddressEntry.GetExchangeUser().PrimarySmtpAddress.ToLower() } catch {} }
+                if ($rAddr -like "*@gromec.com") {
+                    if ($r.Type -eq 1) { $gromecEnTO = $true } else { $gromecEnCC = $true }
+                } elseif ($r.Type -eq 1 -and $rAddr -ne "") {
+                    $autreTiersEnTO = $true
+                }
+            }
+            if ($gromecEnCC -and -not $gromecEnTO -and $autreTiersEnTO) {
+                Write-Log "INFO  Gromec en CC seulement (TO = tiers) -- courriel ignore : $($MailItem.Subject)"
+                return
+            }
+        } catch {}
+    }
+
     # Reponse a une relance de date de livraison (onglet relance-fournisseur) :
     # traitement dedie, avant le classifieur de confirmation -- ce n'est pas
     # une confirmation de commande, inutile d'y depenser un appel Claude Haiku
@@ -2813,7 +2871,29 @@ function Invoke-TraiterNouveauCourriel {
         $suggestionOui = $analyse.EstConfirmation
         $pctConfiance  = [math]::Round($analyse.Confiance * 100)
 
-        if ($ForcerTraitement) {
+        # Boost par apprentissage : si le fournisseur a un historique clair
+        # (3+ reponses identiques et 0 contraires), on fait confiance a
+        # l'apprentissage et on agit automatiquement meme si Claude hesite.
+        $compteurs = Get-CompteursFournisseur $adresseExp
+        $seuilApprentissage = 3
+        $apprentissageClair = $false
+        if ($compteurs.Oui -ge $seuilApprentissage -and $compteurs.Non -eq 0 -and $suggestionOui) {
+            $apprentissageClair = $true
+            Write-Log "INFO  Confiance basse ($pctConfiance%) MAIS apprentissage fort ($($compteurs.Oui) OUI, 0 NON) -> auto-confirmation pour $adresseExp"
+            $estConfirmation = $true
+            $verifierCorps = $analyse.VerifierCorps
+            $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
+            if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
+            if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
+        } elseif ($compteurs.Non -ge $seuilApprentissage -and $compteurs.Oui -eq 0 -and -not $suggestionOui) {
+            $apprentissageClair = $true
+            Write-Log "INFO  Confiance basse ($pctConfiance%) MAIS apprentissage fort ($($compteurs.Non) NON, 0 OUI) -> skip auto pour $adresseExp"
+            $estConfirmation = $false
+        }
+
+        if ($apprentissageClair) {
+            # Deja gere ci-dessus, pas de question
+        } elseif ($ForcerTraitement) {
             # Ne devrait plus arriver (gere en haut) mais securite
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
