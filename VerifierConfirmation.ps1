@@ -2543,6 +2543,126 @@ SOURCE: PDF/CORPS
     }
 }
 
+function Invoke-ValidationSonnet {
+    param($MailItem, $analyseHaiku)
+
+    $adresseExp = (Get-AdresseSMTP $MailItem)
+    $corps = $MailItem.Body
+    if ($corps.Length -gt 5000) { $corps = $corps.Substring(0, 5000) }
+    $nomsPJ = ($MailItem.Attachments | ForEach-Object { $_.FileName }) -join ", "
+
+    $destTO = ""
+    $destCC = ""
+    try {
+        $recips = $MailItem.Recipients
+        $toList = @()
+        $ccList = @()
+        foreach ($r in $recips) {
+            $addr = $r.Address
+            if ($r.Type -eq 1) { $toList += "$($r.Name) <$addr>" }
+            elseif ($r.Type -eq 2) { $ccList += "$($r.Name) <$addr>" }
+        }
+        $destTO = if ($toList.Count -gt 0) { $toList -join "; " } else { "(inconnu)" }
+        $destCC = if ($ccList.Count -gt 0) { $ccList -join "; " } else { "(aucun)" }
+    } catch {
+        $destTO = "(impossible a extraire)"
+        $destCC = "(impossible a extraire)"
+    }
+
+    $haikuQtype = if ($analyseHaiku.TexteBrut -match "QTYPE:\s*(\S+)") { $Matches[1] } else { "?" }
+    $haikuConf = [math]::Round($analyseHaiku.Confiance * 100)
+
+    $sysPrompt = @"
+Tu es un validateur expert pour Gromec Inc. (distributeur industriel, Quebec).
+Un premier classificateur (Haiku) a analyse ce courriel et a donne son verdict.
+Tu dois le VALIDER ou le CORRIGER avec ton analyse independante.
+
+Le premier classificateur a dit:
+- Type: $haikuQtype
+- Est une confirmation: $(if($analyseHaiku.EstConfirmation){'OUI'}else{'NON'})
+- Confiance: $haikuConf%
+- Source (PDF ou corps): $(if($analyseHaiku.VerifierCorps){'CORPS'}else{'PDF'})
+
+DEFINITION D'UNE CONFIRMATION DE COMMANDE:
+Le fournisseur CONFIRME avoir recu et accepte la commande de Gromec, avec des
+donnees concretes (prix, quantites, delai, numero de commande du fournisseur).
+Le document-cle est souvent un PDF "Order Acknowledgement" / "Accuse de reception".
+
+CE QUI N'EST PAS UNE CONFIRMATION:
+- Avis d'expedition (tracking, BOL, "ships today")
+- Suivi de statut ("on surveille", "c'est en backorder")
+- Facturation (credit, facture, litige)
+- Transport/logistique (pickup, ramassage, connaissement)
+- Communication a un tiers ou Gromec est en CC seulement
+- Devis, propositions, newsletters
+- Action requise par le client (PO revise, confirmation de prix)
+
+REGLES:
+- Analyse le courriel de facon INDEPENDANTE, ne te fie pas au verdict de Haiku
+- Si Gromec est en CC seulement et le TO est un tiers -> PAS une confirmation
+- Evalue UNIQUEMENT le dernier message de la chaine (le plus recent, en haut)
+- En cas de doute, prefere NON (moins grave de manquer une confirmation que de
+  traiter un email non pertinent comme confirmation)
+
+Reponds EXACTEMENT en ce format:
+RAISONNEMENT: (1-2 phrases expliquant ta decision)
+CONFIRMATION: OUI/NON
+CONFIANCE: 0.00
+SOURCE: PDF/CORPS
+"@
+
+    $usrPrompt = "Expediteur: $($MailItem.SenderName) <$adresseExp>`nDestinataire (TO): $destTO`nCC: $destCC`nSujet: $($MailItem.Subject)`nPieces jointes: $nomsPJ`n`nCorps du courriel:`n$corps"
+
+    $contenuMessages = @(@{ type = "text"; text = $usrPrompt })
+    foreach ($pj in $MailItem.Attachments) {
+        if ($pj.FileName -like "*.pdf") {
+            try {
+                $cheminTemp = Join-Path $env:TEMP "sonnet_$([guid]::NewGuid().ToString('N').Substring(0,8))_$($pj.FileName)"
+                $pj.SaveAsFile($cheminTemp)
+                $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($cheminTemp))
+                Remove-Item $cheminTemp -Force -ErrorAction SilentlyContinue
+                $contenuMessages += @{
+                    type   = "document"
+                    source = @{ type = "base64"; media_type = "application/pdf"; data = $b64 }
+                }
+            } catch {}
+        }
+    }
+
+    $body = @{
+        model      = "claude-sonnet-4-20250514"
+        max_tokens = 200
+        system     = $sysPrompt
+        messages   = @(@{ role = "user"; content = $contenuMessages })
+    } | ConvertTo-Json -Depth 15
+
+    $headers = @{ "x-api-key" = $ClaudeApiKey; "anthropic-version" = "2023-06-01"; "anthropic-beta" = "pdfs-2024-09-25" }
+    $delai = 2
+    for ($tentative = 1; $tentative -le 3; $tentative++) {
+        try {
+            $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 60
+            $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
+
+            $confirmation = if ($texte -match "CONFIRMATION:\s*(OUI|NON)") { $Matches[1] } else { "NON" }
+            $confiance    = if ($texte -match "CONFIANCE:\s*([\d.]+)")     { [double]$Matches[1] } else { 0.5 }
+            $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
+            $raisonnement = if ($texte -match "RAISONNEMENT:\s*(.+?)(?=\n|$)") { $Matches[1] } else { "" }
+            $estConf      = ($confirmation -eq "OUI")
+
+            Write-Audit "Validation (Claude Sonnet)" "--- PROMPT UTILISATEUR ---`n$usrPrompt`n`n--- REPONSE BRUTE ---`n$texte`n`n--- INTERPRETATION ---`nCONFIRMATION=$confirmation  CONFIANCE=$confiance  SOURCE=$source`nRAISONNEMENT=$raisonnement"
+
+            return @{ EstConfirmation = $estConf; Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); Raisonnement = $raisonnement }
+        } catch {
+            if ($tentative -eq 3) {
+                Write-Log "ERREUR Sonnet a echoue apres 3 tentatives: $($_.Exception.Message)"
+                return @{ EstConfirmation = $analyseHaiku.EstConfirmation; Confiance = 0.0; VerifierCorps = $analyseHaiku.VerifierCorps; Raisonnement = "ERREUR SONNET - fallback Haiku" }
+            }
+            Start-Sleep -Seconds $delai
+            $delai *= 2
+        }
+    }
+}
+
 # =====================================================================
 # FONCTIONS - Reponses aux relances de date de livraison
 # (onglet outils/relance-fournisseur.html -> file gromec_vba/relance_auto)
@@ -2867,39 +2987,36 @@ function Invoke-TraiterNouveauCourriel {
         Write-Audit "Choix du mode CORPS vs PDF" "Jugement de Claude (SOURCE): $(if($analyse.VerifierCorps){'CORPS'}else{'PDF'})`nApprentissage connu pour $adresseExp : $statutCorpsConnu`n=> Mode final retenu: $(if($verifierCorps){'CORPS'}else{'PDF'})"
 
     } else {
-        # Claude est incertain
+        # Claude Haiku est incertain -- validation par Sonnet avant de deranger Dan
         $suggestionOui = $analyse.EstConfirmation
         $pctConfiance  = [math]::Round($analyse.Confiance * 100)
 
-        # Boost par apprentissage : si le fournisseur a un historique clair
-        # (3+ reponses identiques et 0 contraires), on fait confiance a
-        # l'apprentissage et on agit automatiquement meme si Claude hesite.
-        $compteurs = Get-CompteursFournisseur $adresseExp
-        $seuilApprentissage = 3
-        $apprentissageClair = $false
-        if ($compteurs.Oui -ge $seuilApprentissage -and $compteurs.Non -eq 0 -and $suggestionOui) {
-            $apprentissageClair = $true
-            Write-Log "INFO  Confiance basse ($pctConfiance%) MAIS apprentissage fort ($($compteurs.Oui) OUI, 0 NON) -> auto-confirmation pour $adresseExp"
-            $estConfirmation = $true
-            $verifierCorps = $analyse.VerifierCorps
-            $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
-            if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
-            if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
-        } elseif ($compteurs.Non -ge $seuilApprentissage -and $compteurs.Oui -eq 0 -and -not $suggestionOui) {
-            $apprentissageClair = $true
-            Write-Log "INFO  Confiance basse ($pctConfiance%) MAIS apprentissage fort ($($compteurs.Non) NON, 0 OUI) -> skip auto pour $adresseExp"
-            $estConfirmation = $false
-        }
-
-        if ($apprentissageClair) {
-            # Deja gere ci-dessus, pas de question
-        } elseif ($ForcerTraitement) {
-            # Ne devrait plus arriver (gere en haut) mais securite
+        if ($ForcerTraitement) {
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
         } else {
-            # Mode normal : poser la question a Dan
-            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande'}else{'PAS une confirmation de commande'}) (confiance: $pctConfiance%).`n`nEst-ce bien une confirmation de commande?"
+            # Etape 2 : Sonnet valide le verdict de Haiku
+            Write-Log "INFO  Haiku incertain ($pctConfiance%) -> appel Sonnet pour validation"
+            $validationSonnet = Invoke-ValidationSonnet $MailItem $analyse
+            $sonnetConfiance = [math]::Round($validationSonnet.Confiance * 100)
+            $seuilSonnet = 80
+
+            if ($validationSonnet.Confiance -ge ($seuilSonnet / 100)) {
+                # Sonnet est confiant -> agir automatiquement
+                $estConfirmation = $validationSonnet.EstConfirmation
+                $verifierCorps = $validationSonnet.VerifierCorps
+                Write-Log "INFO  Sonnet confiant ($sonnetConfiance%) -> $(if($estConfirmation){'CONFIRMATION'}else{'SKIP'}) auto (Haiku etait a $pctConfiance%)"
+                Write-Audit "Validation Sonnet (auto)" "Haiku: $(if($suggestionOui){'OUI'}else{'NON'}) $pctConfiance%`nSonnet: $(if($estConfirmation){'OUI'}else{'NON'}) $sonnetConfiance%`nRaisonnement: $($validationSonnet.Raisonnement)`n=> Decision automatique sans popup"
+
+                if (-not $estConfirmation) { return }
+
+                $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
+                if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
+                if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
+            } else {
+            # Meme Sonnet hesite -> poser la question a Dan
+            Write-Log "INFO  Sonnet aussi incertain ($sonnetConfiance%) -> popup pour Dan"
+            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nHaiku: $(if($suggestionOui){'OUI'}else{'NON'}) ($pctConfiance%) | Sonnet: $(if($validationSonnet.EstConfirmation){'OUI'}else{'NON'}) ($sonnetConfiance%)`n`nEst-ce bien une confirmation de commande?"
 
             Add-Type -AssemblyName System.Windows.Forms
             $form = New-Object System.Windows.Forms.Form
@@ -2950,6 +3067,7 @@ function Invoke-TraiterNouveauCourriel {
             } else {
                 $estConfirmation = $false
                 if ($suggestionOui) { Set-ReponseFournisseur $adresseExp $false }
+            }
             }
         }
     }
