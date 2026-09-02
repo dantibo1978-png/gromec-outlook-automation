@@ -1133,7 +1133,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-02 09:20";
+const DERNIERE_MAJ_CODE = "2026-09-02 10:12";
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
@@ -3223,6 +3223,50 @@ demarrerSSELogs();
     btnAnalyser.disabled = !(aSap && aFourn && aFournisseur);
   }
 
+  async function extrairePDF(file){
+    try {
+      if (!window.pdfjsLib) {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
+        s.type = 'module';
+        await new Promise((ok, ko) => { s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+      }
+      if (!window.pdfjsLib) {
+        const m = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
+        window.pdfjsLib = m;
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      let texte = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const lignes = [];
+        let dernierY = null;
+        let ligneCourante = [];
+        for (const item of content.items) {
+          const y = Math.round(item.transform[5]);
+          if (dernierY !== null && Math.abs(y - dernierY) > 3) {
+            lignes.push(ligneCourante.join('\t'));
+            ligneCourante = [];
+          }
+          ligneCourante.push(item.str);
+          dernierY = y;
+        }
+        if (ligneCourante.length > 0) lignes.push(ligneCourante.join('\t'));
+        texte += lignes.join('\n') + '\n';
+      }
+      fichierFournContenu = texte;
+      fournZone.value = texte;
+      const nb = texte.split(/\r?\n/).filter(l => l.trim() !== '').length;
+      dropLabel.innerHTML = '<span style="color:var(--ok);">' + file.name + '</span> — ' + nb + ' ligne(s) extraites du PDF (' + pdf.numPages + ' page' + (pdf.numPages > 1 ? 's' : '') + ')';
+      majBtnAnalyser();
+    } catch(err) {
+      dropLabel.innerHTML = '<span style="color:var(--ecart);">Erreur lecture PDF: ' + err.message + '</span><br><span style="font-size:11px;color:var(--muted);">Collez le contenu manuellement dans la zone texte ci-dessous</span>';
+    }
+  }
+
   function lireFichier(file){
     const ext = file.name.toLowerCase().split('.').pop();
     if (!['xlsx','xls','csv','txt','pdf'].includes(ext)){
@@ -3231,7 +3275,8 @@ demarrerSSELogs();
       return;
     }
     if (ext === 'pdf'){
-      dropLabel.innerHTML = '<span style="color:var(--warn);">' + file.name + '</span><br><span style="font-size:11px;color:var(--muted);">PDF détecté — collez le contenu manuellement dans la zone texte ci-dessous</span>';
+      dropLabel.innerHTML = '<span style="color:var(--warn);">' + file.name + '</span><br><span style="font-size:11px;color:var(--muted);">Extraction du texte du PDF en cours…</span>';
+      extrairePDF(file);
       return;
     }
     if (ext === 'xlsx' || ext === 'xls'){
