@@ -1737,7 +1737,6 @@ function rendreFiche(d){
 }
 
 async function supprimerFiche(id){
-  if (!confirm('Effacer cette entrée définitivement ?')) return;
   try {
     const entree = donnees.find(d => d.id === id);
     if (entree && entree.entryID) {
