@@ -1061,7 +1061,7 @@
             Liste de prix SAP :
             <select id="plfListeNum" style="background:var(--panel-2);border:1px solid var(--rule);border-radius:5px;color:var(--text);padding:5px 10px;font-family:'IBM Plex Mono',monospace;font-size:13px;">
               <option value="1">Liste 01 (Détail)</option>
-              <option value="2">Liste 02 (Coûtant)</option>
+              <option value="2" selected>Liste 02 (Coûtant)</option>
               <option value="3">Liste 03</option>
               <option value="4">Liste 04</option>
               <option value="5">Liste 05</option>
@@ -1137,7 +1137,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-03 09:30";
+const DERNIERE_MAJ_CODE = "2026-09-03 10:00";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
