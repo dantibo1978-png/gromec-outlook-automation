@@ -890,6 +890,32 @@ function Set-ReponseFournisseur {
     Write-Log "INFO  fournisseurs_appris.csv mis a jour : $Adresse -> $(if ($EstConfirmation) { 'OUI' } else { 'NON' })"
 }
 
+function Set-ReponseCorps {
+    param([string]$Adresse, [bool]$VerifierCorps)
+    $fichier = "U:\GromecOutlook\comportement_corps.csv"
+    $nbCorps = 0; $nbPdf = 0
+    $lignes = @(); $trouve = $false
+
+    if (Test-Path $fichier) {
+        foreach ($ligne in Get-Content $fichier) {
+            $champs = $ligne -split ","
+            if ($champs.Count -ge 3 -and $champs[0].Trim().ToLower() -eq $Adresse.ToLower()) {
+                $nbCorps = [int]$champs[1]; $nbPdf = [int]$champs[2]
+                if ($VerifierCorps) { $nbCorps++; $nbPdf = 0 } else { $nbPdf++; $nbCorps = 0 }
+                $lignes += "$Adresse,$nbCorps,$nbPdf"
+                $trouve = $true
+            } else {
+                $lignes += $ligne
+            }
+        }
+    }
+    if (-not $trouve) {
+        if ($VerifierCorps) { $lignes += "$Adresse,1,0" } else { $lignes += "$Adresse,0,1" }
+    }
+    $lignes | Out-File -FilePath $fichier -Encoding ASCII -Force
+    Write-Log "INFO  comportement_corps.csv mis a jour : $Adresse -> $(if ($VerifierCorps) { 'CORPS' } else { 'PDF' })"
+}
+
 function Invoke-TraiterReclassification {
     param([object]$Reclassif, [string]$CleFirebase)
 
@@ -1095,6 +1121,21 @@ while ($true) {
                         -Method Patch -Body '{"aReessayer":false,"actionRequise":false}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
                     $scriptPath = "U:\GromecOutlook\VerifierConfirmation.ps1"
                     Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force" -WindowStyle Hidden
+                }
+
+                if ($entreeR.aReessayer -eq $true -and $entreeR.contestation.type -eq 'mauvais_mode' -and $entreeR.entryID) {
+                    $expediteurR = $entreeR.fournisseur
+                    $modeActuel = $entreeR.modeAnalyse
+                    if ($modeActuel -eq "CORPS") {
+                        Set-ReponseCorps -Adresse $expediteurR -VerifierCorps $false
+                    } else {
+                        Set-ReponseCorps -Adresse $expediteurR -VerifierCorps $true
+                    }
+                    Write-Log "INFO  Contestation mauvais_mode : $expediteurR mode $modeActuel -> $(if ($modeActuel -eq 'CORPS') { 'PDF' } else { 'CORPS' }) (cle: $cleR)"
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cleR.json" `
+                        -Method Patch -Body '{"aReessayer":false}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    $scriptPath = "U:\GromecOutlook\VerifierConfirmation.ps1"
+                    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -Force" -WindowStyle Hidden
                 }
             }
         } catch {
