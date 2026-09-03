@@ -296,7 +296,7 @@ function Set-FirebaseValue {
 }
 
 function Write-FirebaseHistorique {
-    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande, [string]$EntryID = "", [string]$StoreID = "", [string]$HistoriqueId = "", $Entete = $null)
+    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande, [string]$EntryID = "", [string]$StoreID = "", [string]$HistoriqueId = "", $Entete = $null, [string]$ModeAnalyse = "")
 
     if ($Resultats.Count -eq 0) { return }
 
@@ -341,6 +341,7 @@ function Write-FirebaseHistorique {
         poReviseRequis = [bool]$Script:PoReviseRequis
         actionRequise = $true
     }
+    if ($ModeAnalyse -ne "") { $entree["modeAnalyse"] = $ModeAnalyse }
     if ($null -ne $Entete) { $entree["entete"] = $Entete }
 
     try {
@@ -2298,7 +2299,8 @@ function Invoke-TraiterComparaison {
     }
 
     Write-RapportExcel $nomFourn $sujet $statutLabel $resultats $devise $numeroBC
-    Write-FirebaseHistorique $nomFourn $sujet $statutLabel $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP
+    $modeStr = if ($VerifierCorps) { "CORPS" } else { "PDF" }
+    Write-FirebaseHistorique $nomFourn $sujet $statutLabel $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP -ModeAnalyse $modeStr
 }
 
 # =====================================================================
@@ -2980,16 +2982,21 @@ function Invoke-TraiterNouveauCourriel {
             # Sonnet dit OUI -- traiter comme confirmation
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
+            Set-ReponseFournisseur $adresseExp $true
+            if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
             Write-Log "INFO  Auto OUI ($pctAffiche%) : $($MailItem.Subject)"
 
         } elseif ($fournisseurConnu -or $motsClesPJ) {
             # Sonnet dit NON mais fournisseur connu ou PJ suspecte -- traiter quand meme
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
+            Set-ReponseFournisseur $adresseExp $true
+            if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
             Write-Log "INFO  Auto OUI (filet securite: fournisseur=$(if($fournisseurConnu){'connu'}else{'inconnu'}), PJ=$(if($motsClesPJ){'suspecte'}else{'normale'})) : $($MailItem.Subject)"
 
         } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.95) {
             # Sonnet dit NON avec 95%+ de confiance et aucun signal fort -- skip
+            Set-ReponseFournisseur $adresseExp $false
             Write-Log "INFO  Skip auto (NON a ${pctAffiche}%) : $($MailItem.Subject)"
             return
 
@@ -2997,6 +3004,8 @@ function Invoke-TraiterNouveauCourriel {
             # Sonnet hesite -- dans le doute, traiter comme confirmation
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
+            Set-ReponseFournisseur $adresseExp $true
+            if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
             Write-Log "INFO  Auto OUI (doute, ${pctAffiche}%) : $($MailItem.Subject)"
         }
 
