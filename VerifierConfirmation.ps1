@@ -2505,7 +2505,7 @@ SOURCE: PDF/CORPS
     }
 
     $body = @{
-        model      = "claude-haiku-4-5-20251001"
+        model      = "claude-sonnet-4-20250514"
         max_tokens = 120
         system     = $sysPrompt
         messages   = @(@{ role = "user"; content = $contenuMessages })
@@ -2961,86 +2961,50 @@ function Invoke-TraiterNouveauCourriel {
         if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
         Write-Audit "Choix du mode CORPS vs PDF (Force)" "Jugement de Claude (SOURCE): $(if($analyse.VerifierCorps){'CORPS'}else{'PDF'})`nApprentissage connu pour $adresseExp : $statutCorpsConnu`n=> Mode final retenu: $(if($verifierCorps){'CORPS'}else{'PDF'})"
 
-    } elseif ($analyse.Confiance -ge $seuilAuto) {
-        # Claude est confiant -- agir automatiquement sans deranger Dan
-        $estConfirmation = $analyse.EstConfirmation
-        $verifierCorps   = $analyse.VerifierCorps
+    } else {
+        # Logique autonome sans popup -- Sonnet decide seul
+        $compteurs = Get-CompteursFournisseur $adresseExp
+        $fournisseurConnu = ($compteurs.Oui -ge 1)
 
-        if (-not $estConfirmation) { return }  # Skip silencieux
+        # Filet de securite : mots-cles forts dans les PJ
+        $motsClesPJ = $false
+        try {
+            foreach ($pj in $MailItem.Attachments) {
+                if ($pj.FileName -match '(?i)(order.?ack|confirmation|sales.?order|accus.+r.+ception|bon.?de.?commande)') {
+                    $motsClesPJ = $true; break
+                }
+            }
+        } catch {}
 
-        # Pour le mode corps/PDF, privilegier l'apprentissage existant si disponible
+        if ($analyse.EstConfirmation) {
+            # Sonnet dit OUI -- traiter comme confirmation
+            $estConfirmation = $true
+            $verifierCorps   = $analyse.VerifierCorps
+            Write-Log "INFO  Auto OUI ($pctAffiche%) : $($MailItem.Subject)"
+
+        } elseif ($fournisseurConnu -or $motsClesPJ) {
+            # Sonnet dit NON mais fournisseur connu ou PJ suspecte -- traiter quand meme
+            $estConfirmation = $true
+            $verifierCorps   = $analyse.VerifierCorps
+            Write-Log "INFO  Auto OUI (filet securite: fournisseur=$(if($fournisseurConnu){'connu'}else{'inconnu'}), PJ=$(if($motsClesPJ){'suspecte'}else{'normale'})) : $($MailItem.Subject)"
+
+        } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.95) {
+            # Sonnet dit NON avec 95%+ de confiance et aucun signal fort -- skip
+            Write-Log "INFO  Skip auto (NON a ${pctAffiche}%) : $($MailItem.Subject)"
+            return
+
+        } else {
+            # Sonnet hesite -- dans le doute, traiter comme confirmation
+            $estConfirmation = $true
+            $verifierCorps   = $analyse.VerifierCorps
+            Write-Log "INFO  Auto OUI (doute, ${pctAffiche}%) : $($MailItem.Subject)"
+        }
+
+        # Mode corps/PDF : privilegier l'apprentissage existant
         $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
         if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
         if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
         Write-Audit "Choix du mode CORPS vs PDF" "Jugement de Claude (SOURCE): $(if($analyse.VerifierCorps){'CORPS'}else{'PDF'})`nApprentissage connu pour $adresseExp : $statutCorpsConnu`n=> Mode final retenu: $(if($verifierCorps){'CORPS'}else{'PDF'})"
-
-    } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.75) {
-        # Claude dit NON avec confiance >= 75% : skip silencieux.
-        Write-Log "INFO  Skip auto (NON a $([math]::Round($analyse.Confiance * 100))%) : $($MailItem.Subject)"
-        return
-
-    } else {
-        # Claude hesite OU dit OUI avec confiance basse -- poser la question
-        $suggestionOui = $analyse.EstConfirmation
-        $pctConfiance  = [math]::Round($analyse.Confiance * 100)
-
-        if ($ForcerTraitement) {
-            $estConfirmation = $true
-            $verifierCorps   = $analyse.VerifierCorps
-        } else {
-            $q = "Courriel de: $($MailItem.SenderName)`nSujet: $($MailItem.Subject)`n`nClaude pense que c'est $(if($suggestionOui){'UNE confirmation de commande'}else{'PAS une confirmation de commande'}) (confiance: $pctConfiance%).`n`nEst-ce bien une confirmation de commande?"
-
-            Add-Type -AssemblyName System.Windows.Forms
-            $form = New-Object System.Windows.Forms.Form
-            $form.Text = "Confirmation de commande?"
-            $form.Size = New-Object System.Drawing.Size(420, 220)
-            $form.StartPosition = "CenterScreen"
-            $form.FormBorderStyle = "FixedDialog"
-            $form.MaximizeBox = $false; $form.MinimizeBox = $false
-
-            $lbl = New-Object System.Windows.Forms.Label
-            $lbl.Text = $q
-            $lbl.Location = New-Object System.Drawing.Point(15, 15)
-            $lbl.Size = New-Object System.Drawing.Size(385, 90)
-            $form.Controls.Add($lbl)
-
-            $btnPDF = New-Object System.Windows.Forms.Button
-            $btnPDF.Text = "Oui - PDF joint"
-            $btnPDF.Location = New-Object System.Drawing.Point(15, 120)
-            $btnPDF.Size = New-Object System.Drawing.Size(115, 35)
-            $btnPDF.Add_Click({ $form.Tag = "PDF"; $form.Close() })
-            $form.Controls.Add($btnPDF)
-
-            $btnCorps = New-Object System.Windows.Forms.Button
-            $btnCorps.Text = "Oui - Corps du courriel"
-            $btnCorps.Location = New-Object System.Drawing.Point(140, 120)
-            $btnCorps.Size = New-Object System.Drawing.Size(155, 35)
-            $btnCorps.Add_Click({ $form.Tag = "Corps"; $form.Close() })
-            $form.Controls.Add($btnCorps)
-
-            $btnNon = New-Object System.Windows.Forms.Button
-            $btnNon.Text = "Non"
-            $btnNon.Location = New-Object System.Drawing.Point(305, 120)
-            $btnNon.Size = New-Object System.Drawing.Size(90, 35)
-            $btnNon.Add_Click({ $form.Tag = "Non"; $form.Close() })
-            $form.Controls.Add($btnNon)
-
-            $form.ShowDialog() | Out-Null
-            $rep = $form.Tag
-
-            if ($rep -eq "PDF") {
-                $estConfirmation = $true; $verifierCorps = $false
-                if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
-                Set-ReponseCorps $adresseExp $false
-            } elseif ($rep -eq "Corps") {
-                $estConfirmation = $true; $verifierCorps = $true
-                if (-not $suggestionOui) { Set-ReponseFournisseur $adresseExp $true }
-                Set-ReponseCorps $adresseExp $true
-            } else {
-                $estConfirmation = $false
-                if ($suggestionOui) { Set-ReponseFournisseur $adresseExp $false }
-            }
-        }
     }
 
     if (-not $estConfirmation) { return }
