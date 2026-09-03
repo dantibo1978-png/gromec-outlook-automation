@@ -17,10 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Installer Wrangler et déployer
+      - name: Deployer le Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: '3.90.0'
+          command: deploy --config wrangler.jsonc
           secrets: |
             CLAUDE_API_KEY
         env:
