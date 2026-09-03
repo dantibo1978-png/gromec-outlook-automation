@@ -2387,97 +2387,41 @@ function Invoke-ClassifierCourriel {
     }
 
     $sysPrompt = @"
-Tu es un classificateur de courriels pour Gromec Inc. (distributeur industriel, Quebec).
-Tu dois determiner le TYPE d'un courriel recu d'un fournisseur.
+Tu es un detecteur de confirmations de commandes pour Gromec Inc. (distributeur industriel, Quebec).
+Ta tache est SIMPLE : determiner si un courriel de fournisseur doit etre TRAITE (compare avec la commande SAP) ou IGNORE.
 
-IMPORTANT -- CHAINE DE COURRIELS: le corps peut contenir plusieurs messages
-empiles (reponses/transferts avec "De: ... Envoye: ...", "Fwd:", ">").
-Base ta reponse UNIQUEMENT sur le DERNIER message ecrit (le plus recent,
-generalement en haut). Le reste de la chaine (y compris le courriel
-ORIGINAL de Gromec/Daniel Thibault qui a ete cite/transfere) sert
-seulement de contexte pour identifier le numero de BC -- ce n'est jamais
-une preuve de confirmation, meme s'il contient des mots comme "commande"
-ou semble etre un bon de commande.
+REGLE D'OR : en cas de doute, reponds TRAITER. Le cout d'une comparaison SAP inutile est negligeable. Le cout d'une confirmation manquee est ENORME.
 
-IMPORTANT -- DESTINATAIRE PRINCIPAL vs CC: Verifie le champ "Destinataire (TO)"
-et "CC" fournis ci-dessous. Si Gromec (dthibault@gromec.com) est SEULEMENT en
-CC et le destinataire principal est un TIERS (transporteur, autre fournisseur,
-compagnie de livraison), c'est tres probablement AUTRE -- le fournisseur communique
-avec un tiers et met Gromec en copie par courtoisie. Ce n'est PAS une confirmation
-de commande adressee a Gromec.
+TRAITER si le courriel contient UN OU PLUSIEURS de ces elements :
+- Un PDF "Order Acknowledgement", "Sales Order", "Accuse de reception", "Confirmation" avec des prix/quantites
+- Le fournisseur mentionne avoir recu/traite une commande Gromec (numero 9XXXXXX)
+- Des prix, quantites ou delais de livraison en lien avec une commande
+- Un tableau de lignes de commande (items, prix, quantites) dans le corps OU une piece jointe
+- Le fournisseur demande une action liee a une commande (PO revise, prix a confirmer, "order on hold")
+- Le sujet ou le corps contient "order", "commande", "PO", "confirmation", "acknowledgement" avec un contexte de commande
+- Un numero de commande Gromec (9XXXXXX) est mentionne avec des donnees concretes
 
-Analyse le sujet, le corps ET toutes les pieces jointes fournies.
+IGNORER seulement si le courriel est CLAIREMENT dans une de ces categories :
+- Newsletter, publicite, promotion sans lien avec une commande specifique
+- Auto-reply generique sans contenu ("out of office", "message received")
+- Avis d'expedition/tracking SANS prix ni quantites a verifier (juste "your order shipped", tracking number)
+- Facturation pure (facture, credit, paiement) sans reference a des prix/quantites de commande
+- Communication a un TIERS (transporteur, autre entreprise) ou Gromec est seulement en CC
+- Courriel interne Gromec
+- Certificats (MTR), documents qualite, bons de livraison sans prix
 
-Reponds a ces 3 questions, puis classifie le TYPE du courriel:
-
-Q1_NUMERO_BC: Y a-t-il un numero de commande Gromec (format 9XXXXXX, ex: 9006906)?
-Q3_DATE_LIVRAISON: Le DERNIER message confirme-t-il une date de livraison ou delai?
-Q5_DOCUMENT_COMMANDE: Une piece jointe contient-elle une VRAIE confirmation/accuse de reception
-    du FOURNISSEUR (prix/quantites/delais confirmes par le fournisseur)? ATTENTION: si la piece
-    jointe est simplement LE BON DE COMMANDE ORIGINAL DE GROMEC renvoye tel quel (meme mise en page
-    que ce que Daniel envoie, sans annotation ni prix confirmes par le fournisseur), reponds NON --
-    ce n'est qu'une reference, pas une confirmation.
-
-QTYPE: Classe le courriel dans EXACTEMENT UNE de ces categories:
-  CONFIRMATION = Le fournisseur CONFIRME avoir recu/traite la commande, avec des prix,
-      quantites ou delais concrets. Inclut les confirmations partielles (ex: 1 ligne sur 10).
-      Le document-cle est souvent un PDF "Order Acknowledgement" / "Accusé de réception" /
-      "Sales Order" avec tableau de prix/quantites.
-  ACTION_REQUISE = Le fournisseur a recu la commande mais DEMANDE AU CLIENT (Gromec) de faire
-      quelque chose AVANT de traiter/expedier. Exemples:
-      - Renvoyer un PO revise ("please send revised PO", "envoyer PO corrige")
-      - Accepter/confirmer des prix differents ("Confirmation Required", "please acknowledge",
-        "return signed copy", "requires your immediate attention")
-      - Commande en attente/hold ("order on hold pending your confirmation")
-      - "REPLY NEEDED TO RELEASE ORDER"
-      NOTE: le fournisseur demande a Gromec de confirmer, pas l'inverse.
-  AVIS_EXPEDITION = Notification d'expedition/livraison. Le fournisseur informe que des items
-      PARTENT ou SONT PARTIS (tracking, BOL, "ships today", "part aujourd'hui", "loaded").
-      Peut mentionner des quantites expediees et des items en backorder.
-      Ce n'est PAS une confirmation de commande, c'est un suivi logistique post-commande.
-  SUIVI_STATUT = Mise a jour de statut sans confirmation concrete. Exemples:
-      - "le prix a ete corrige" (sans donner le prix)
-      - "c'est en backorder", "on surveille la commande"
-      - "je m'excuse du delai"
-      - Question du fournisseur ("ceci vous convient?", "etes-vous ouvert?")
-      - Mise a jour administrative sans donnees concretes
-  FACTURATION = Discussion de facturation, credit, reclamation, litige, correction post-livraison.
-      Exemples: "will issue a credit", erreur de facturation, quantites recues vs facturees,
-      paiement, releve de compte.
-  AUTRE = Tout le reste: devis seuls, factures seules, newsletters, MTR/certificats,
-      documents qualite, bons de livraison seuls, propositions de produits alternatifs/substituts,
-      contre-propositions commerciales, demandes de modification (changer adresse/contact),
-      courriels sans reference a une commande specifique, ET AUSSI:
-      - Courriels de TRANSPORT/LOGISTIQUE adresses a un transporteur (pickup, ramassage,
-        "confirmer le ramassage", BOL, connaissement, Guilbault, Dicom, Purolator, FedEx,
-        Day&Ross, etc.) ou Gromec est en copie seulement
-      - Communications entre le fournisseur et un tiers ou Gromec est en CC
-      - Tout courriel ou le destinataire principal (TO) n'est pas @gromec.com
-
-REGLES DE CLASSIFICATION:
-- C'est une CONFIRMATION seulement si le fournisseur CONFIRME LUI-MEME la commande
-  DIRECTEMENT A GROMEC (pas a un tiers avec Gromec en CC).
-- Si Gromec est en CC seulement et le destinataire principal est un tiers -> AUTRE
-  (meme si le corps mentionne une commande, un numero de BC, ou une livraison).
-- Un courriel qui mentionne des quantites dans un contexte d'EXPEDITION ("ships today",
-  "part aujourd'hui", "loaded", "items en backorder") = AVIS_EXPEDITION, pas CONFIRMATION.
-- Un courriel de transport/pickup (demande de ramassage a un transporteur) = AUTRE.
-- Un courriel qui DEMANDE quelque chose au client = ACTION_REQUISE si c'est lie a la
-  commande, SUIVI_STATUT si c'est une simple question de logistique.
-- En cas de doute entre CONFIRMATION et un autre type, prefere l'autre type.
-$(if ($correctionsClassif -ne "") { "`nCORRECTIONS DE L'UTILISATEUR (erreurs passees -- sois plus attentif a ces cas):`n$correctionsClassif`n" })
-Reponds EXACTEMENT en ce format:
-Q1_NUMERO_BC: OUI/NON
-Q3_DATE_LIVRAISON: OUI/NON
-Q5_DOCUMENT_COMMANDE: OUI/NON
-QTYPE: CONFIRMATION/ACTION_REQUISE/AVIS_EXPEDITION/SUIVI_STATUT/FACTURATION/AUTRE
-CONFIRMATION: OUI/NON
-CONFIANCE: 0.00
+CHAINE DE COURRIELS : le corps peut contenir des reponses empilees. Analyse le message le
+plus recent (en haut). Le reste sert de contexte pour identifier le numero de commande.
+$(if ($correctionsClassif -ne "") { "`nCORRECTIONS DE L'UTILISATEUR (erreurs passees a eviter) :`n$correctionsClassif`n" })
+Reponds EXACTEMENT en ce format (rien d'autre) :
+DECISION: TRAITER/IGNORER
+CONFIANCE: 0.00 a 1.00
 SOURCE: PDF/CORPS
+RAISON: une phrase courte expliquant ta decision
 "@
 
     $corps = $MailItem.Body
-    if ($corps.Length -gt 3000) { $corps = $corps.Substring(0, 3000) }
+    if ($corps.Length -gt 5000) { $corps = $corps.Substring(0, 5000) }
     $nomsPJ = ($MailItem.Attachments | ForEach-Object { $_.FileName }) -join ", "
 
     # Extraire les destinataires TO et CC pour aider la classification
@@ -2499,7 +2443,7 @@ SOURCE: PDF/CORPS
         $destCC = "(impossible a extraire)"
     }
 
-    $sujetPropre = $MailItem.Subject -replace '^\[(X|OK|\?)\s*\d+%?\]\s*', ''
+    $sujetPropre = $MailItem.Subject -replace '^\[(X|OK[!?]?|Reclass\.)\s*\d*%?\]\s*', ''
     $usrPrompt = "$contexteHistorique`n`nExpediteur: $($MailItem.SenderName) <$adresseExp>`nDestinataire (TO): $destTO`nCC: $destCC`nSujet: $sujetPropre`nPieces jointes: $nomsPJ`n`nCorps du courriel:`n$corps"
 
     # Construire les messages avec PJ PDF incluses
@@ -2522,7 +2466,7 @@ SOURCE: PDF/CORPS
 
     $body = @{
         model      = "claude-sonnet-4-20250514"
-        max_tokens = 120
+        max_tokens = 200
         system     = $sysPrompt
         messages   = @(@{ role = "user"; content = $contenuMessages })
     } | ConvertTo-Json -Depth 15
@@ -2531,25 +2475,18 @@ SOURCE: PDF/CORPS
     $delai = 2
     for ($tentative = 1; $tentative -le 3; $tentative++) {
         try {
-            $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 45
+            $rep = Invoke-RestMethod -Uri $ClaudeApiUrl -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 60
             $texte = ($rep.content | Where-Object { $_.type -eq "text" } | Select-Object -First 1).text
 
-            $confirmation = if ($texte -match "CONFIRMATION:\s*(OUI|NON)") { $Matches[1] } else { "NON" }
-            $confiance    = if ($texte -match "CONFIANCE:\s*([\d.]+)")     { [double]$Matches[1] } else { 0.5 }
-            $source       = if ($texte -match "SOURCE:\s*(PDF|CORPS)")     { $Matches[1] } else { "PDF" }
-            $qtype        = if ($texte -match "QTYPE:\s*(\S+)")            { $Matches[1] } else { "AUTRE" }
-            $poRevise     = ($qtype -eq "ACTION_REQUISE")
-            # EstConfirmation depend UNIQUEMENT de QTYPE (regle documentee du modele
-            # de classification actuel). Le champ CONFIRMATION est un reliquat de
-            # l'ancien modele a 8 questions, sans definition claire dans le prompt
-            # pour les cas ACTION_REQUISE -- Claude y repond parfois NON pour un
-            # rapport d'ecarts qui EST une action requise legitime (ex: Masco "Order
-            # Discrepancy"), ce qui bloquait silencieusement tout le traitement.
-            $estConf      = ($qtype -eq "CONFIRMATION" -or $qtype -eq "ACTION_REQUISE")
+            $decision  = if ($texte -match "DECISION:\s*(TRAITER|IGNORER)") { $Matches[1] } else { "TRAITER" }
+            $confiance = if ($texte -match "CONFIANCE:\s*([\d.]+)")         { [double]$Matches[1] } else { 0.5 }
+            $source    = if ($texte -match "SOURCE:\s*(PDF|CORPS)")         { $Matches[1] } else { "PDF" }
+            $raison    = if ($texte -match "RAISON:\s*(.+)")               { $Matches[1].Trim() } else { "" }
+            $estConf   = ($decision -eq "TRAITER")
 
-            Write-Audit "Classification (Claude Haiku)" "--- PROMPT UTILISATEUR ---`n$usrPrompt`n`n--- REPONSE BRUTE ---`n$texte`n`n--- INTERPRETATION ---`nQTYPE=$qtype  CONFIRMATION=$confirmation  CONFIANCE=$confiance  SOURCE=$source`n=> EstConfirmation=$estConf  PoReviseRequis=$poRevise"
+            Write-Audit "Classification (Claude Sonnet)" "--- PROMPT UTILISATEUR ---`n$usrPrompt`n`n--- REPONSE BRUTE ---`n$texte`n`n--- INTERPRETATION ---`nDECISION=$decision  CONFIANCE=$confiance  SOURCE=$source`nRAISON=$raison`n=> EstConfirmation=$estConf"
 
-            return @{ EstConfirmation = $estConf; Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false; PoReviseRequis = $poRevise }
+            return @{ EstConfirmation = $estConf; Confiance = $confiance; VerifierCorps = ($source -eq "CORPS"); TexteBrut = $texte; Exclu = $false; PoReviseRequis = $false }
         } catch {
             if ($tentative -eq 3) {
                 return @{ EstConfirmation = $false; Confiance = 0.0; VerifierCorps = $false; TexteBrut = "ERREUR: $($_.Exception.Message)"; Exclu = $false }
@@ -2957,7 +2894,7 @@ function Invoke-TraiterNouveauCourriel {
         return
     }
 
-    # Claude Haiku analyse le courriel avec PJ incluses
+    # Claude Sonnet analyse le courriel avec PJ incluses
     $analyse = Invoke-ClassifierCourriel $MailItem
     $Script:PoReviseRequis = $analyse.PoReviseRequis
 
@@ -2967,18 +2904,16 @@ function Invoke-TraiterNouveauCourriel {
     $verifierCorps   = $false
 
     if ($ForcerTraitement) {
-        # Mode reclassification manuelle : ignorer le verdict de Claude,
-        # toujours traiter comme confirmation (Dan a dit que c'en est une)
-        Write-Log "INFO  Mode -Force : traitement force comme confirmation (Claude: $(if($analyse.EstConfirmation){'OUI'}else{'NON'}) $([math]::Round($analyse.Confiance*100))%)"
+        Write-Log "INFO  Mode -Force : traitement force comme confirmation (Sonnet: $(if($analyse.EstConfirmation){'TRAITER'}else{'IGNORER'}) $([math]::Round($analyse.Confiance*100))%)"
         $estConfirmation = $true
         $verifierCorps   = $analyse.VerifierCorps
         $statutCorpsConnu = Get-StatutCorpsConnu $adresseExp
         if ($statutCorpsConnu -eq "CORPS") { $verifierCorps = $true }
         if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
-        Write-Audit "Choix du mode CORPS vs PDF (Force)" "Jugement de Claude (SOURCE): $(if($analyse.VerifierCorps){'CORPS'}else{'PDF'})`nApprentissage connu pour $adresseExp : $statutCorpsConnu`n=> Mode final retenu: $(if($verifierCorps){'CORPS'}else{'PDF'})"
+        Write-Audit "Choix du mode CORPS vs PDF (Force)" "Jugement de Sonnet (SOURCE): $(if($analyse.VerifierCorps){'CORPS'}else{'PDF'})`nApprentissage connu pour $adresseExp : $statutCorpsConnu`n=> Mode final retenu: $(if($verifierCorps){'CORPS'}else{'PDF'})"
 
     } else {
-        # Logique autonome sans popup -- Sonnet decide seul
+        # Logique autonome -- Sonnet decide, filets de securite en renfort
         $compteurs = Get-CompteursFournisseur $adresseExp
         $fournisseurConnu = ($compteurs.Oui -ge 1)
 
@@ -2992,39 +2927,49 @@ function Invoke-TraiterNouveauCourriel {
             }
         } catch {}
 
+        # Filet de securite : mots-cles forts dans le sujet
+        $motsClesSujet = $false
+        if ($MailItem.Subject -match '(?i)(order.?ack|confirmation|accus.+r.+ception|sales.?order)') {
+            $motsClesSujet = $true
+        }
+
         if ($analyse.EstConfirmation) {
-            # Sonnet dit OUI -- traiter comme confirmation
+            # Sonnet dit TRAITER
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
             Set-ReponseFournisseur $adresseExp $true
             if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
             Set-PrefixeSujet $MailItem "[OK $pctAffiche%]"
-            Write-Log "INFO  Auto OUI ($pctAffiche%) : $($MailItem.Subject)"
+            Write-Log "INFO  Auto TRAITER ($pctAffiche%) : $($MailItem.Subject)"
 
-        } elseif ($fournisseurConnu -or $motsClesPJ) {
-            # Sonnet dit NON mais fournisseur connu ou PJ suspecte -- traiter quand meme
+        } elseif ($fournisseurConnu -or $motsClesPJ -or $motsClesSujet) {
+            # Sonnet dit IGNORER mais un signal fort contredit -- traiter quand meme
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
             Set-ReponseFournisseur $adresseExp $true
             if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
+            $raisons = @()
+            if ($fournisseurConnu) { $raisons += "fournisseur connu" }
+            if ($motsClesPJ)      { $raisons += "PJ suspecte" }
+            if ($motsClesSujet)   { $raisons += "sujet suspect" }
             Set-PrefixeSujet $MailItem "[OK! $pctAffiche%]"
-            Write-Log "INFO  Auto OUI (filet securite: fournisseur=$(if($fournisseurConnu){'connu'}else{'inconnu'}), PJ=$(if($motsClesPJ){'suspecte'}else{'normale'})) : $($MailItem.Subject)"
+            Write-Log "INFO  Auto TRAITER (filet: $($raisons -join ', ')) : $($MailItem.Subject)"
 
-        } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.95) {
-            # Sonnet dit NON avec 95%+ de confiance et aucun signal fort -- skip
+        } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.90) {
+            # Sonnet dit IGNORER avec 90%+ de confiance et aucun signal fort
             Set-ReponseFournisseur $adresseExp $false
             Set-PrefixeSujet $MailItem "[X $pctAffiche%]"
-            Write-Log "INFO  Skip auto (NON a ${pctAffiche}%) : $($MailItem.Subject)"
+            Write-Log "INFO  Skip auto (IGNORER a ${pctAffiche}%) : $($MailItem.Subject)"
             return
 
         } else {
-            # Sonnet hesite -- dans le doute, traiter comme confirmation
+            # Sonnet dit IGNORER mais pas assez confiant -- traiter par precaution
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
             Set-ReponseFournisseur $adresseExp $true
             if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
             Set-PrefixeSujet $MailItem "[OK? $pctAffiche%]"
-            Write-Log "INFO  Auto OUI (doute, ${pctAffiche}%) : $($MailItem.Subject)"
+            Write-Log "INFO  Auto TRAITER (doute, ${pctAffiche}%) : $($MailItem.Subject)"
         }
 
         # Mode corps/PDF : privilegier l'apprentissage existant
