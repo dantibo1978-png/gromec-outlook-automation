@@ -2974,9 +2974,8 @@ function Invoke-TraiterNouveauCourriel {
         if ($statutCorpsConnu -eq "PDF")   { $verifierCorps = $false }
         Write-Audit "Choix du mode CORPS vs PDF" "Jugement de Claude (SOURCE): $(if($analyse.VerifierCorps){'CORPS'}else{'PDF'})`nApprentissage connu pour $adresseExp : $statutCorpsConnu`n=> Mode final retenu: $(if($verifierCorps){'CORPS'}else{'PDF'})"
 
-    } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.50) {
-        # Claude dit NON avec confiance >= 50% : skip silencieux.
-        # Manquer un email non pertinent n'est pas grave.
+    } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.75) {
+        # Claude dit NON avec confiance >= 75% : skip silencieux.
         Write-Log "INFO  Skip auto (NON a $([math]::Round($analyse.Confiance * 100))%) : $($MailItem.Subject)"
         return
 
