@@ -303,23 +303,22 @@
   .suppr-btn{
     font-family:'IBM Plex Mono', monospace;
     font-size:12px;
-    padding:5px 12px;
+    padding:4px 8px;
     border-radius:6px;
     border:1px solid var(--ecart);
     background:transparent;
     color:var(--ecart);
     cursor:pointer;
-    opacity:0;
-    pointer-events:none;
+    opacity:0.6;
+    pointer-events:auto;
     transition:opacity .2s, background .15s;
     flex-shrink:0;
     white-space:nowrap;
   }
   .fiche.open .suppr-btn{
     opacity:1;
-    pointer-events:auto;
   }
-  .suppr-btn:hover{ background:var(--ecart-bg); }
+  .suppr-btn:hover{ background:var(--ecart-bg); opacity:1; }
 
   .chevron{
     width:9px; height:9px;
@@ -1137,7 +1136,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-03 14:30";
+const DERNIERE_MAJ_CODE = "2026-09-03 15:45";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -1738,7 +1737,6 @@ function rendreFiche(d){
 }
 
 async function supprimerFiche(id){
-  if (!confirm('Effacer cette entrée définitivement ?')) return;
   try {
     const entree = donnees.find(d => d.id === id);
     if (entree && entree.entryID) {
