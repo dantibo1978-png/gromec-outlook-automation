@@ -1570,6 +1570,20 @@ function Set-CategorieConfirmation {
     $MailItem.Save()
 }
 
+function Set-PrefixeSujet {
+    param($MailItem, [string]$Prefixe)
+    try {
+        $sujet = $MailItem.Subject
+        if ($sujet -match '^\[.*?\]\s*') {
+            $sujet = $sujet -replace '^\[.*?\]\s*', ''
+        }
+        $MailItem.Subject = "$Prefixe $sujet"
+        $MailItem.Save()
+    } catch {
+        Write-Log "WARN  Impossible de modifier le sujet : $($_.Exception.Message)"
+    }
+}
+
 # =====================================================================
 # FONCTIONS - Rapport Excel (3 feuilles: Verification, Sommaire, Donnees_SAP)
 # =====================================================================
@@ -2984,6 +2998,7 @@ function Invoke-TraiterNouveauCourriel {
             $verifierCorps   = $analyse.VerifierCorps
             Set-ReponseFournisseur $adresseExp $true
             if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
+            Set-PrefixeSujet $MailItem "[OK $pctAffiche%]"
             Write-Log "INFO  Auto OUI ($pctAffiche%) : $($MailItem.Subject)"
 
         } elseif ($fournisseurConnu -or $motsClesPJ) {
@@ -2992,11 +3007,13 @@ function Invoke-TraiterNouveauCourriel {
             $verifierCorps   = $analyse.VerifierCorps
             Set-ReponseFournisseur $adresseExp $true
             if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
+            Set-PrefixeSujet $MailItem "[OK! $pctAffiche%]"
             Write-Log "INFO  Auto OUI (filet securite: fournisseur=$(if($fournisseurConnu){'connu'}else{'inconnu'}), PJ=$(if($motsClesPJ){'suspecte'}else{'normale'})) : $($MailItem.Subject)"
 
         } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.95) {
             # Sonnet dit NON avec 95%+ de confiance et aucun signal fort -- skip
             Set-ReponseFournisseur $adresseExp $false
+            Set-PrefixeSujet $MailItem "[X $pctAffiche%]"
             Write-Log "INFO  Skip auto (NON a ${pctAffiche}%) : $($MailItem.Subject)"
             return
 
@@ -3006,6 +3023,7 @@ function Invoke-TraiterNouveauCourriel {
             $verifierCorps   = $analyse.VerifierCorps
             Set-ReponseFournisseur $adresseExp $true
             if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
+            Set-PrefixeSujet $MailItem "[OK? $pctAffiche%]"
             Write-Log "INFO  Auto OUI (doute, ${pctAffiche}%) : $($MailItem.Subject)"
         }
 
