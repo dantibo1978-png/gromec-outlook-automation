@@ -254,7 +254,7 @@ const SIGNATURE = [
 ];
 
 function buildEmailBody(vendor, rows) {
-  const greeting = rows.length > 1 ? 'Salut, PT non commandés' : 'Salut, PT non commandé';
+  const greeting = rows.length > 1 ? 'Salut, PT non commandés ou demande d'achat non fait' : 'Salut, PT non commandé ou demande d'achat non fait';
   const lines = [`${greeting}`, ''];
   rows.forEach(row => {
     lines.push(
