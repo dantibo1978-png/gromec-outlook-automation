@@ -2915,7 +2915,7 @@ function Invoke-TraiterNouveauCourriel {
     } else {
         # Logique autonome -- Sonnet decide, filets de securite en renfort
         $compteurs = Get-CompteursFournisseur $adresseExp
-        $fournisseurConnu = ($compteurs.Oui -ge 1)
+        $fournisseurConnu = ($compteurs.Oui -ge 3 -and $compteurs.Oui -gt $compteurs.Non)
 
         # Filet de securite : mots-cles forts dans les PJ
         $motsClesPJ = $false
@@ -2960,6 +2960,12 @@ function Invoke-TraiterNouveauCourriel {
             Set-ReponseFournisseur $adresseExp $false
             Set-PrefixeSujet $MailItem "[X $pctAffiche%]"
             Write-Log "INFO  Skip auto (IGNORER a ${pctAffiche}%) : $($MailItem.Subject)"
+            return
+
+        } elseif ($analyse.TexteBrut -like "ERREUR:*") {
+            # Erreur API Sonnet -- ne pas traiter comme confirmation, ignorer
+            Set-PrefixeSujet $MailItem "[ERR]"
+            Write-Log "WARN  Erreur API Sonnet, courriel ignore : $($analyse.TexteBrut) -- $($MailItem.Subject)"
             return
 
         } else {
