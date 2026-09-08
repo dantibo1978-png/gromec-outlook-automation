@@ -2465,7 +2465,7 @@ RAISON: une phrase courte expliquant ta decision
     }
 
     $body = @{
-        model      = "claude-sonnet-4-20250514"
+        model      = "claude-sonnet-5"
         max_tokens = 200
         system     = $sysPrompt
         messages   = @(@{ role = "user"; content = $contenuMessages })
@@ -2584,7 +2584,7 @@ SOURCE: PDF/CORPS
     }
 
     $body = @{
-        model      = "claude-sonnet-4-20250514"
+        model      = "claude-sonnet-5"
         max_tokens = 200
         system     = $sysPrompt
         messages   = @(@{ role = "user"; content = $contenuMessages })
