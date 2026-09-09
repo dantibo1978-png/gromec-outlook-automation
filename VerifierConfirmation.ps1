@@ -2394,14 +2394,11 @@ REGLE D'OR : en cas de doute, reponds TRAITER. Le cout d'une comparaison SAP inu
 
 TRAITER si le courriel contient UN OU PLUSIEURS de ces elements :
 - Un PDF "Order Acknowledgement", "Sales Order", "Accuse de reception", "Confirmation" avec des prix/quantites
-- Le fournisseur mentionne avoir recu/traite une commande Gromec (numero 9XXXXXX)
-- Des prix, quantites ou delais de livraison en lien avec une commande
+- Le fournisseur mentionne avoir recu/traite une commande Gromec (numero 9XXXXXX) ET fournit des prix ou quantites
 - Un tableau de lignes de commande (items, prix, quantites) dans le corps OU une piece jointe
 - Le fournisseur demande une action liee a une commande (PO revise, prix a confirmer, "order on hold")
-- Le sujet ou le corps contient "order", "commande", "PO", "confirmation", "acknowledgement" avec un contexte de commande
-- Un numero de commande Gromec (9XXXXXX) est mentionne avec des donnees concretes
 
-IGNORER seulement si le courriel est CLAIREMENT dans une de ces categories :
+IGNORER si le courriel correspond a une de ces categories :
 - Newsletter, publicite, promotion sans lien avec une commande specifique
 - Auto-reply generique sans contenu ("out of office", "message received")
 - Avis d'expedition/tracking SANS prix ni quantites a verifier (juste "your order shipped", tracking number)
@@ -2409,6 +2406,9 @@ IGNORER seulement si le courriel est CLAIREMENT dans une de ces categories :
 - Communication a un TIERS (transporteur, autre entreprise) ou Gromec est seulement en CC
 - Courriel interne Gromec
 - Certificats (MTR), documents qualite, bons de livraison sans prix
+- Bons d'emballage (packing slips), bordereaux d'expedition, documents de transport
+- Transfert (FW/TR) ou reponse simple (Re:) a un PO Gromec SANS contenu de confirmation (pas de prix, pas de tableau, juste le PO original transfere ou un "bien recu" / "noted" / "we will review")
+- Le courriel mentionne un numero de commande 9XXXXXX mais ne contient AUCUN prix, quantite ou tableau -- la simple presence d'un numero de commande ne suffit PAS a classifier comme confirmation
 
 CHAINE DE COURRIELS : le corps peut contenir des reponses empilees. Analyse le message le
 plus recent (en haut). Le reste sert de contexte pour identifier le numero de commande.
@@ -2921,7 +2921,8 @@ function Invoke-TraiterNouveauCourriel {
         $motsClesPJ = $false
         try {
             foreach ($pj in $MailItem.Attachments) {
-                if ($pj.FileName -match '(?i)(order.?ack|confirmation|sales.?order|accus.+r.+ception|bon.?de.?commande)') {
+                if ($pj.FileName -match '(?i)(order.?ack|confirmation|sales.?order|accus.+r.+ception)' -and
+                    $pj.FileName -notmatch '(?i)(packing.?slip|bon.?d.?emballage|shipping|bordereau|MTR|mill.?test)') {
                     $motsClesPJ = $true; break
                 }
             }
