@@ -2390,13 +2390,13 @@ function Invoke-ClassifierCourriel {
 Tu es un detecteur de confirmations de commandes pour Gromec Inc. (distributeur industriel, Quebec).
 Ta tache est SIMPLE : determiner si un courriel de fournisseur doit etre TRAITE (compare avec la commande SAP) ou IGNORE.
 
-REGLE D'OR : en cas de doute, reponds TRAITER. Le cout d'une comparaison SAP inutile est negligeable. Le cout d'une confirmation manquee est ENORME.
-
-TRAITER si le courriel contient UN OU PLUSIEURS de ces elements :
+TRAITER UNIQUEMENT si le courriel est une VRAIE confirmation de commande contenant des PRIX ou QUANTITES a verifier :
 - Un PDF "Order Acknowledgement", "Sales Order", "Accuse de reception", "Confirmation" avec des prix/quantites
-- Le fournisseur mentionne avoir recu/traite une commande Gromec (numero 9XXXXXX) ET fournit des prix ou quantites
-- Un tableau de lignes de commande (items, prix, quantites) dans le corps OU une piece jointe
+- Le fournisseur confirme avoir recu/traite une commande Gromec (numero 9XXXXXX) ET fournit un tableau de prix ou quantites
+- Un tableau de lignes de commande (items, prix, quantites) dans le corps OU une piece jointe PDF
 - Le fournisseur demande une action liee a une commande (PO revise, prix a confirmer, "order on hold")
+
+IMPORTANT : la presence d'un numero de commande, d'un nom de fournisseur ou du mot "commande"/"order" ne suffit PAS. Il faut des DONNEES CHIFFREES (prix, quantites, montants) pour classifier TRAITER.
 
 IGNORER si le courriel correspond a une de ces categories :
 - Newsletter, publicite, promotion sans lien avec une commande specifique
@@ -2943,21 +2943,20 @@ function Invoke-TraiterNouveauCourriel {
             Set-PrefixeSujet $MailItem "[OK $pctAffiche%]"
             Write-Log "INFO  Auto TRAITER ($pctAffiche%) : $($MailItem.Subject)"
 
-        } elseif ($fournisseurConnu -or $motsClesPJ -or $motsClesSujet) {
+        } elseif ($motsClesPJ -or $motsClesSujet) {
             # Sonnet dit IGNORER mais un signal fort contredit -- traiter quand meme
             $estConfirmation = $true
             $verifierCorps   = $analyse.VerifierCorps
             Set-ReponseFournisseur $adresseExp $true
             if ($analyse.VerifierCorps) { Set-ReponseCorps $adresseExp $true } else { Set-ReponseCorps $adresseExp $false }
             $raisons = @()
-            if ($fournisseurConnu) { $raisons += "fournisseur connu" }
             if ($motsClesPJ)      { $raisons += "PJ suspecte" }
             if ($motsClesSujet)   { $raisons += "sujet suspect" }
             Set-PrefixeSujet $MailItem "[OK! $pctAffiche%]"
             Write-Log "INFO  Auto TRAITER (filet: $($raisons -join ', ')) : $($MailItem.Subject)"
 
-        } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.90) {
-            # Sonnet dit IGNORER avec 90%+ de confiance et aucun signal fort
+        } elseif (-not $analyse.EstConfirmation -and $analyse.Confiance -ge 0.75) {
+            # Sonnet dit IGNORER avec 75%+ de confiance et aucun signal fort
             Set-ReponseFournisseur $adresseExp $false
             Set-PrefixeSujet $MailItem "[X $pctAffiche%]"
             Write-Log "INFO  Skip auto (IGNORER a ${pctAffiche}%) : $($MailItem.Subject)"
