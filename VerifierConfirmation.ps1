@@ -2328,6 +2328,28 @@ function Invoke-TraiterComparaison {
     Write-RapportExcel $nomFourn $sujet $statutLabel $resultats $devise $numeroBC
     $modeStr = if ($VerifierCorps) { "CORPS" } else { "PDF" }
     Write-FirebaseHistorique $nomFourn $sujet $statutLabel $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP -ModeAnalyse $modeStr
+
+    Save-CopieConfirmation $MailConfirmation $numeroBC
+}
+
+function Save-CopieConfirmation {
+    param($MailItem, [string]$NumeroBC)
+    if ([string]::IsNullOrEmpty($NumeroBC)) { return }
+    try {
+        $annee = (Get-Date).ToString("yyyy")
+        $dossier = "P:\confirmation\$annee\$NumeroBC"
+        if (-not (Test-Path $dossier)) {
+            New-Item -Path $dossier -ItemType Directory -Force | Out-Null
+        }
+        $nomFichier = ($MailItem.Subject -replace '[\\/:*?"<>|]', '_').Substring(0, [Math]::Min(100, $MailItem.Subject.Length)) + ".msg"
+        $chemin = Join-Path $dossier $nomFichier
+        if (-not (Test-Path $chemin)) {
+            $MailItem.SaveAs($chemin, 3)  # olMSG = 3
+            Write-Log "INFO  Copie confirmation sauvegardee : $chemin"
+        }
+    } catch {
+        Write-Log "WARN  Impossible de sauvegarder la copie confirmation : $($_.Exception.Message)"
+    }
 }
 
 # =====================================================================
