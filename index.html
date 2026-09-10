@@ -1136,7 +1136,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-10 08:30";
+const DERNIERE_MAJ_CODE = "2026-09-10 14:12";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -1683,7 +1683,7 @@ function rendreFiche(d){
   return `
   <div class="fiche" data-id="${d.id}">
     <div class="fiche-head" onclick="toggleFiche('${d.id}')">
-      <span class="stamp ${d.contestation ? 'stamp-conteste' : d.envoyer_confirmation === 'envoye' ? 'stamp-confirme' : estOK ? 'stamp-ok' : 'stamp-ecart'}">${d.contestation ? 'CONTESTÉ' : d.envoyer_confirmation === 'envoye' ? 'CONFIRMÉ' : estOK ? (d.statut === 'OK_PARTIEL' ? 'CONFORME (partiel)' : 'CONFORME') : 'ÉCART'}</span>
+      <span class="stamp ${d.statut === 'RECLASSE_IGNORER' ? 'stamp-conteste' : d.contestation ? 'stamp-conteste' : d.envoyer_confirmation === 'envoye' ? 'stamp-confirme' : estOK ? 'stamp-ok' : 'stamp-ecart'}">${d.statut === 'RECLASSE_IGNORER' ? 'IGNORÉ (reclassé)' : d.contestation ? 'CONTESTÉ' : d.envoyer_confirmation === 'envoye' ? 'CONFIRMÉ' : estOK ? (d.statut === 'OK_PARTIEL' ? 'CONFORME (partiel)' : 'CONFORME') : 'ÉCART'}</span>
       ${d.poReviseRequis ? '<span class="stamp stamp-po-revise">Confirmation requise</span>' : ''}
       <div class="fiche-info">
         <p class="fiche-fournisseur">${d.fournisseur || 'Fournisseur inconnu'}</p>
@@ -1867,7 +1867,7 @@ async function modifierQuantite(event, ficheId, ligne, nouvelleValeur){
 function genererContestationHtml(d, estOK){
   if (d.contestation) {
     const c = d.contestation;
-    const typeTxt = {faux_ok:'Faux conforme — il y a des écarts', faux_ecart:'Faux écart — c\'est conforme', mauvais_mode:'Mauvais mode d\'analyse', retraiter:'Retraiter la commande'}[c.type] || c.type;
+    const typeTxt = {faux_ok:'Faux conforme — il y a des écarts', faux_ecart:'Faux écart — c\'est conforme', mauvais_mode:'Mauvais mode d\'analyse', retraiter:'Retraiter la commande', pas_confirmation:'Pas une confirmation — email classé par erreur'}[c.type] || c.type;
     return `<div class="contester-row">
       <span class="conteste-badge">Contesté : ${typeTxt}</span>
       ${c.raison ? `<span style="font-size:12px;color:var(--muted);margin-left:8px;">${c.raison}</span>` : ''}
@@ -1877,11 +1877,13 @@ function genererContestationHtml(d, estOK){
   const optionsOK = `
     <label class="contester-option"><input type="radio" name="contest-${d.id}" value="faux_ok"> Ce n'est PAS conforme — il y a des écarts que le script n'a pas détectés</label>
     <label class="contester-option"><input type="radio" name="contest-${d.id}" value="mauvais_mode"> Mauvais mode d'analyse (aurait dû lire le PDF au lieu du corps, ou vice versa)</label>
-    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="retraiter"> Retraiter ce courriel avec un nouveau numéro de BC</label>`;
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="retraiter"> Retraiter ce courriel avec un nouveau numéro de BC</label>
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="pas_confirmation"> Ce n'est PAS une confirmation — email classé par erreur</label>`;
   const optionsEcart = `
     <label class="contester-option"><input type="radio" name="contest-${d.id}" value="faux_ecart"> C'est conforme — les écarts détectés sont incorrects</label>
     <label class="contester-option"><input type="radio" name="contest-${d.id}" value="mauvais_mode"> Mauvais mode d'analyse (aurait dû lire le PDF au lieu du corps, ou vice versa)</label>
-    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="retraiter"> Retraiter ce courriel avec un nouveau numéro de BC</label>`;
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="retraiter"> Retraiter ce courriel avec un nouveau numéro de BC</label>
+    <label class="contester-option"><input type="radio" name="contest-${d.id}" value="pas_confirmation"> Ce n'est PAS une confirmation — email classé par erreur</label>`;
   return `<div class="contester-row">
     <button class="contester-btn" onclick="event.stopPropagation(); toggleContestation('${d.id}')">&#x26A0; Contester ce résultat</button>
     <div class="contester-panel" id="contest-panel-${d.id}">
