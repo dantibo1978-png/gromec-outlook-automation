@@ -2337,7 +2337,7 @@ function Save-CopieConfirmation {
     if ([string]::IsNullOrEmpty($NumeroBC)) { return }
     try {
         $annee = (Get-Date).ToString("yyyy")
-        $dossier = "P:\confirmation\$annee\$NumeroBC"
+        $dossier = "P:\CONFIRMATION DE COMMANDE FOURNISSEUR\$annee\$NumeroBC"
         if (-not (Test-Path $dossier)) {
             New-Item -Path $dossier -ItemType Directory -Force | Out-Null
         }
