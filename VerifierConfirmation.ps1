@@ -499,6 +499,19 @@ function Sync-ReessaisManuels {
         if ($entree.statut -eq "NON_APPARIE" -and [string]::IsNullOrEmpty($numeroBCManuel)) { continue }
 
         Write-Log "INFO  Retraitement contestation pour $cle (type: $($entree.contestation.type))"
+
+        if ($entree.contestation.type -eq "pas_confirmation") {
+            Set-PrefixeSujet $mail "[Reclass.]"
+            Update-FirebaseChamp "gromec_vba/historique/$cle" @{
+                statut           = "RECLASSE_IGNORER"
+                aReessayer       = $false
+                dateDernierEssai = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
+                reclassification = "Contestation: pas une confirmation"
+            } | Out-Null
+            Write-Log "INFO  Contestation pas_confirmation : email reclasse IGNORER pour $cle"
+            continue
+        }
+
         Invoke-TraiterComparaison $Namespace $mail $numeroBCManuel $cle
     }
 }
