@@ -2333,7 +2333,7 @@ function Invoke-TraiterComparaison {
 }
 
 function Save-CopieConfirmation {
-    param($MailItem, [string]$NumeroBC)
+    param($MailItem, [string]$NumeroBC, [string]$Sujet)
     if ([string]::IsNullOrEmpty($NumeroBC)) { return }
     try {
         $annee = (Get-Date).ToString("yyyy")
@@ -2341,11 +2341,19 @@ function Save-CopieConfirmation {
         if (-not (Test-Path $dossier)) {
             New-Item -Path $dossier -ItemType Directory -Force | Out-Null
         }
-        $nomFichier = ($MailItem.Subject -replace '[\\/:*?"<>|]', '_').Substring(0, [Math]::Min(100, $MailItem.Subject.Length)) + ".msg"
-        $chemin = Join-Path $dossier $nomFichier
-        if (-not (Test-Path $chemin)) {
-            $MailItem.SaveAs($chemin, 3)  # olMSG = 3
-            Write-Log "INFO  Copie confirmation sauvegardee : $chemin"
+        $nbSauv = 0
+        foreach ($pj in $MailItem.Attachments) {
+            if ($pj.FileName -like "*.pdf") {
+                $nomPJ = $pj.FileName -replace '[\\/:*?"<>|]', '_'
+                $chemin = Join-Path $dossier $nomPJ
+                if (-not (Test-Path $chemin)) {
+                    $pj.SaveAsFile($chemin)
+                    $nbSauv++
+                }
+            }
+        }
+        if ($nbSauv -gt 0) {
+            Write-Log "INFO  $nbSauv PDF sauvegarde(s) dans $dossier"
         }
     } catch {
         Write-Log "WARN  Impossible de sauvegarder la copie confirmation : $($_.Exception.Message)"
