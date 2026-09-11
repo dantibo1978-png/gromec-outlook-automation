@@ -2329,7 +2329,7 @@ function Invoke-TraiterComparaison {
     $modeStr = if ($VerifierCorps) { "CORPS" } else { "PDF" }
     Write-FirebaseHistorique $nomFourn $sujet $statutLabel $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP -ModeAnalyse $modeStr
 
-    Save-CopieConfirmation $MailConfirmation $numeroBC
+    Save-CopieConfirmation $MailConfirmation $numeroBC $sujet
 }
 
 function Save-CopieConfirmation {
@@ -2352,8 +2352,30 @@ function Save-CopieConfirmation {
                 }
             }
         }
+        if ($nbSauv -eq 0) {
+            $sujetClean = if ($Sujet) { $Sujet } else { "Confirmation" }
+            $sujetClean = ($sujetClean -replace '[\\/:*?"<>|]', '_')
+            if ($sujetClean.Length -gt 80) { $sujetClean = $sujetClean.Substring(0, 80) }
+            $cheminPDF = Join-Path $dossier "$sujetClean.pdf"
+            if (-not (Test-Path $cheminPDF)) {
+                $htmlTemp = Join-Path $env:TEMP "conf_$([guid]::NewGuid().ToString('N').Substring(0,8)).html"
+                $MailItem.HTMLBody | Set-Content $htmlTemp -Encoding UTF8
+                $word = $null
+                try {
+                    $word = New-Object -ComObject Word.Application
+                    $word.Visible = $false
+                    $doc = $word.Documents.Open($htmlTemp)
+                    $doc.SaveAs([ref]$cheminPDF, [ref]17)  # wdFormatPDF = 17
+                    $doc.Close([ref]$false)
+                    $nbSauv++
+                } finally {
+                    if ($word) { $word.Quit(); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null }
+                    Remove-Item $htmlTemp -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
         if ($nbSauv -gt 0) {
-            Write-Log "INFO  $nbSauv PDF sauvegarde(s) dans $dossier"
+            Write-Log "INFO  $nbSauv fichier(s) sauvegarde(s) dans $dossier"
         }
     } catch {
         Write-Log "WARN  Impossible de sauvegarder la copie confirmation : $($_.Exception.Message)"
