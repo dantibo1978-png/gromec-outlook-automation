@@ -1854,13 +1854,19 @@ function Write-FirebaseEchec {
 }
 
 function Test-BCDejaTraitee {
-    param([string]$NumeroBC)
+    param([string]$NumeroBC, [string]$SujetNouvel)
     if ([string]::IsNullOrEmpty($NumeroBC)) { return $false }
     try {
         $historique = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique.json?orderBy=%22numeroCommande%22&equalTo=%22$NumeroBC%22" -Method Get -TimeoutSec 10
         if ($null -ne $historique -and $historique.PSObject.Properties.Count -gt 0) {
             foreach ($cle in $historique.PSObject.Properties.Name) {
-                if ($historique.$cle.statut -eq "OK") { return $true }
+                if ($historique.$cle.statut -eq "OK") {
+                    $sujetExistant = $historique.$cle.sujet -replace '^\[.*?\]\s*', ''
+                    $sujetCompare = $SujetNouvel -replace '^\[.*?\]\s*', '' -replace '^(RE|FW|TR)\s*:\s*', ''
+                    $sujetExistantClean = $sujetExistant -replace '^(RE|FW|TR)\s*:\s*', ''
+                    if ($sujetCompare -eq $sujetExistantClean) { return $true }
+                    Write-Log "INFO  BC $NumeroBC deja OK mais sujet different -- traitement autorise (existant: $sujetExistant / nouveau: $SujetNouvel)"
+                }
             }
         }
     } catch {}
@@ -1989,7 +1995,7 @@ function Invoke-TraiterComparaison {
         # action a Gromec signale par definition quelque chose de nouveau sur
         # ce BC, peu importe qu'une confirmation anterieure ait ete OK (ex:
         # rapport d'ecarts Masco recu apres une premiere confirmation reussie).
-        if (-not $ForcerTraitement -and -not $HistoriqueId -and -not $Script:PoReviseRequis -and (Test-BCDejaTraitee $numeroBC)) {
+        if (-not $ForcerTraitement -and -not $HistoriqueId -and -not $Script:PoReviseRequis -and (Test-BCDejaTraitee $numeroBC $sujet)) {
             Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
             return
         }
@@ -2165,7 +2171,7 @@ function Invoke-TraiterComparaison {
         # action a Gromec signale par definition quelque chose de nouveau sur
         # ce BC, peu importe qu'une confirmation anterieure ait ete OK (ex:
         # rapport d'ecarts Masco recu apres une premiere confirmation reussie).
-        if (-not $ForcerTraitement -and -not $HistoriqueId -and -not $Script:PoReviseRequis -and (Test-BCDejaTraitee $numeroBC)) {
+        if (-not $ForcerTraitement -and -not $HistoriqueId -and -not $Script:PoReviseRequis -and (Test-BCDejaTraitee $numeroBC $sujet)) {
             Write-Log "INFO  BC $numeroBC deja traitee avec succes -- courriel ignore."
             Remove-Item $cheminConfirmation -Force -ErrorAction SilentlyContinue
             return
