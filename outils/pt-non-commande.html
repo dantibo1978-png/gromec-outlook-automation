@@ -123,6 +123,17 @@
   .vendor-row button { padding: 5px 10px; font-size: 0.8rem; }
   .vendor-row button.sent { background: var(--ok); }
   .vendor-row button.sent:hover { background: #15803d; }
+  .vendor-name { cursor: pointer; color: var(--primary); text-decoration: underline; }
+  .vendor-name:hover { color: var(--primary-dark); }
+  .vendor-panel { background:#1B232E; border:1px solid var(--border); border-radius:8px; padding:16px; margin:8px 0; }
+  .vendor-panel h3 { margin:0 0 12px; font-size:0.95rem; }
+  .vendor-panel .section { margin-bottom:14px; }
+  .vendor-panel .section-title { font-weight:600; font-size:0.85rem; margin-bottom:6px; color:#8C9BAE; }
+  .vendor-panel select { background:#212B38; color:#E7ECF2; border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:0.85rem; }
+  .vendor-panel button { font-size:0.8rem; padding:4px 10px; margin-left:6px; }
+  .vendor-panel label { display:block; font-size:0.83rem; padding:2px 0; cursor:pointer; }
+  .vendor-panel label input { margin-right:6px; }
+  .vendor-panel .code-list { max-height:200px; overflow-y:auto; background:#212B38; border-radius:4px; padding:6px 10px; }
   .error { color: var(--warn); font-weight: 600; margin-top: 8px; }
   .ok { color: var(--ok); }
   details summary { cursor: pointer; font-weight: 600; margin-top: 10px; }
@@ -323,21 +334,62 @@ document.getElementById('processBtn').addEventListener('click', () => {
     byVendor.get(vendor).push(row);
   });
 
+  window.__gromecExclusions = window.__gromecExclusions || {};
+  window.__gromecMerges = window.__gromecMerges || {};
   window.__gromecResult = { sapRows, remaining, removed, byVendor };
 
-  document.getElementById('statTotal').textContent = sapRows.length;
-  document.getElementById('statRemoved').textContent = removed.length;
-  document.getElementById('statRemaining').textContent = remaining.length;
-  document.getElementById('statVendors').textContent = byVendor.size;
+  renderVendorTable();
+});
+
+function getEffectiveVendorMap() {
+  const result = window.__gromecResult;
+  if (!result) return new Map();
+  const merges = window.__gromecMerges || {};
+  const exclusions = window.__gromecExclusions || {};
+  const effective = new Map();
+
+  result.byVendor.forEach((rows, vendor) => {
+    const target = merges[vendor] || vendor;
+    const filtered = rows.filter(r => {
+      const code = normalizeArticle(r["Numéro d'article"]);
+      return !(exclusions[vendor] && exclusions[vendor][code]);
+    });
+    if (filtered.length === 0) return;
+    if (!effective.has(target)) effective.set(target, []);
+    effective.get(target).push(...filtered);
+  });
+
+  return effective;
+}
+
+function renderVendorTable() {
+  const result = window.__gromecResult;
+  if (!result) return;
+
+  const effective = getEffectiveVendorMap();
+
+  document.getElementById('statTotal').textContent = result.sapRows.length;
+  document.getElementById('statRemoved').textContent = result.removed.length;
+  let totalRemaining = 0;
+  effective.forEach(rows => totalRemaining += rows.length);
+  document.getElementById('statRemaining').textContent = totalRemaining;
+  document.getElementById('statVendors').textContent = effective.size;
 
   const vendorBody = document.querySelector('#vendorTable tbody');
   vendorBody.innerHTML = '';
-  [...byVendor.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([vendor, rows]) => {
+  [...effective.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([vendor, rows]) => {
     const firstRow = rows[0];
     const email = generateVendorEmail(firstRow['Nom'], firstRow['Prénom']);
     const tr = document.createElement('tr');
     tr.className = 'vendor-row';
-    tr.innerHTML = `<td>${esc(vendor)}</td><td>${esc(email)}</td><td>${rows.length}</td><td></td>`;
+    const tdName = document.createElement('td');
+    const nameLink = document.createElement('span');
+    nameLink.className = 'vendor-name';
+    nameLink.textContent = vendor;
+    nameLink.addEventListener('click', () => toggleVendorPanel(vendor, tr));
+    tdName.appendChild(nameLink);
+    tr.appendChild(tdName);
+    tr.innerHTML += `<td>${esc(email)}</td><td>${rows.length}</td><td></td>`;
     const btn = document.createElement('button');
     btn.textContent = 'Ouvrir dans Outlook';
     btn.addEventListener('click', () => {
@@ -349,6 +401,102 @@ document.getElementById('processBtn').addEventListener('click', () => {
     vendorBody.appendChild(tr);
   });
 
+  document.getElementById('summary').classList.add('show');
+  document.getElementById('downloadBtn').disabled = effective.size === 0;
+}
+
+function toggleVendorPanel(vendor, vendorTr) {
+  const existing = vendorTr.nextElementSibling;
+  if (existing && existing.classList.contains('panel-row')) {
+    existing.remove();
+    return;
+  }
+  document.querySelectorAll('.panel-row').forEach(el => el.remove());
+
+  const panelTr = document.createElement('tr');
+  panelTr.className = 'panel-row';
+  const panelTd = document.createElement('td');
+  panelTd.colSpan = 4;
+
+  const effective = getEffectiveVendorMap();
+  const allVendors = [...effective.keys()].filter(v => v !== vendor).sort();
+
+  const originalRows = window.__gromecResult.byVendor.get(vendor) || [];
+  const exclusions = window.__gromecExclusions[vendor] || {};
+  const mergedFrom = Object.entries(window.__gromecMerges).filter(([,t]) => t === vendor).map(([s]) => s);
+
+  let html = `<div class="vendor-panel">`;
+  html += `<h3>Options pour ${esc(vendor)}</h3>`;
+
+  html += `<div class="section"><div class="section-title">Jumeler avec un autre vendeur</div>`;
+  if (allVendors.length > 0) {
+    html += `<select id="mergeTarget">`;
+    allVendors.forEach(v => { html += `<option value="${esc(v)}">${esc(v)}</option>`; });
+    html += `</select>`;
+    html += `<button id="mergeBtn">Jumeler →</button>`;
+  } else {
+    html += `<span style="font-size:0.83rem;color:#8C9BAE;">Aucun autre vendeur disponible</span>`;
+  }
+  if (mergedFrom.length > 0) {
+    html += `<div style="font-size:0.82rem;margin-top:6px;color:#8C9BAE;">Vendeurs jumelés ici : ${mergedFrom.map(esc).join(', ')} <button id="unmergeBtn" style="font-size:0.75rem;">Annuler jumelage</button></div>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="section"><div class="section-title">Exclure des codes de produits des relances</div>`;
+  html += `<div class="code-list">`;
+  const allCodes = [];
+  originalRows.forEach(r => {
+    const code = normalizeArticle(r["Numéro d'article"]);
+    if (code && !allCodes.find(c => c.code === code)) {
+      allCodes.push({ code, desc: r['Description article/service'] || '' });
+    }
+  });
+  if (allCodes.length === 0) {
+    html += `<span style="font-size:0.83rem;color:#8C9BAE;">Aucun code pour ce vendeur</span>`;
+  } else {
+    allCodes.forEach(({ code, desc }) => {
+      const checked = exclusions[code] ? ' checked' : '';
+      html += `<label><input type="checkbox" data-code="${esc(code)}"${checked}> ${esc(code)} — ${esc(desc)}</label>`;
+    });
+  }
+  html += `</div></div>`;
+  html += `</div>`;
+
+  panelTd.innerHTML = html;
+  panelTr.appendChild(panelTd);
+  vendorTr.after(panelTr);
+
+  const mergeBtn = panelTd.querySelector('#mergeBtn');
+  if (mergeBtn) {
+    mergeBtn.addEventListener('click', () => {
+      const target = panelTd.querySelector('#mergeTarget').value;
+      window.__gromecMerges[vendor] = target;
+      panelTr.remove();
+      renderVendorTable();
+    });
+  }
+
+  const unmergeBtn = panelTd.querySelector('#unmergeBtn');
+  if (unmergeBtn) {
+    unmergeBtn.addEventListener('click', () => {
+      mergedFrom.forEach(src => { delete window.__gromecMerges[src]; });
+      panelTr.remove();
+      renderVendorTable();
+    });
+  }
+
+  panelTd.querySelectorAll('input[type="checkbox"][data-code]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (!window.__gromecExclusions[vendor]) window.__gromecExclusions[vendor] = {};
+      if (cb.checked) {
+        window.__gromecExclusions[vendor][cb.dataset.code] = true;
+      } else {
+        delete window.__gromecExclusions[vendor][cb.dataset.code];
+      }
+      renderVendorTable();
+    });
+  });
+
   const removedBody = document.querySelector('#removedTable tbody');
   removedBody.innerHTML = '';
   removed.forEach(row => {
@@ -357,12 +505,8 @@ document.getElementById('processBtn').addEventListener('click', () => {
     removedBody.appendChild(tr);
   });
 
-  document.getElementById('summary').classList.add('show');
-  document.getElementById('downloadBtn').disabled = byVendor.size === 0;
-
   statusEl.textContent = 'Traitement terminé.';
   statusEl.className = 'ok';
-});
 
 function sanitizeFilename(name) {
   return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'vendeur';
@@ -370,11 +514,13 @@ function sanitizeFilename(name) {
 
 document.getElementById('downloadBtn').addEventListener('click', async () => {
   const result = window.__gromecResult;
-  if (!result || result.byVendor.size === 0) return;
+  if (!result) return;
+  const effective = getEffectiveVendorMap();
+  if (effective.size === 0) return;
 
   const zip = new JSZip();
 
-  result.byVendor.forEach((rows, vendor) => {
+  effective.forEach((rows, vendor) => {
     const wb = XLSX.utils.book_new();
     const data = [TABLE1_HEADERS, ...rows.map(r => TABLE1_HEADERS.map(h => r[h]))];
     const ws = XLSX.utils.aoa_to_sheet(data);
