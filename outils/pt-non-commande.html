@@ -338,7 +338,18 @@ document.getElementById('processBtn').addEventListener('click', () => {
   window.__gromecMerges = window.__gromecMerges || {};
   window.__gromecResult = { sapRows, remaining, removed, byVendor };
 
+  const removedBody = document.querySelector('#removedTable tbody');
+  removedBody.innerHTML = '';
+  removed.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(row.__vendor)}</td><td>${esc(row["Numéro d'article"])}</td><td>${esc(row['Description article/service'])}</td>`;
+    removedBody.appendChild(tr);
+  });
+
   renderVendorTable();
+
+  statusEl.textContent = 'Traitement terminé.';
+  statusEl.className = 'ok';
 });
 
 function getEffectiveVendorMap() {
@@ -382,14 +393,8 @@ function renderVendorTable() {
     const email = generateVendorEmail(firstRow['Nom'], firstRow['Prénom']);
     const tr = document.createElement('tr');
     tr.className = 'vendor-row';
-    const tdName = document.createElement('td');
-    const nameLink = document.createElement('span');
-    nameLink.className = 'vendor-name';
-    nameLink.textContent = vendor;
-    nameLink.addEventListener('click', () => toggleVendorPanel(vendor, tr));
-    tdName.appendChild(nameLink);
-    tr.appendChild(tdName);
-    tr.innerHTML += `<td>${esc(email)}</td><td>${rows.length}</td><td></td>`;
+    tr.innerHTML = `<td><span class="vendor-name">${esc(vendor)}</span></td><td>${esc(email)}</td><td>${rows.length}</td><td></td>`;
+    tr.querySelector('.vendor-name').addEventListener('click', () => toggleVendorPanel(vendor, tr));
     const btn = document.createElement('button');
     btn.textContent = 'Ouvrir dans Outlook';
     btn.addEventListener('click', () => {
@@ -496,17 +501,7 @@ function toggleVendorPanel(vendor, vendorTr) {
       renderVendorTable();
     });
   });
-
-  const removedBody = document.querySelector('#removedTable tbody');
-  removedBody.innerHTML = '';
-  removed.forEach(row => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${esc(row.__vendor)}</td><td>${esc(row["Numéro d'article"])}</td><td>${esc(row['Description article/service'])}</td>`;
-    removedBody.appendChild(tr);
-  });
-
-  statusEl.textContent = 'Traitement terminé.';
-  statusEl.className = 'ok';
+}
 
 function sanitizeFilename(name) {
   return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'vendeur';
