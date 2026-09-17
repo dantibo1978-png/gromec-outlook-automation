@@ -1478,6 +1478,41 @@ function Find-CourrielEnvoyeCorrespondant {
         }
     }
 
+    # Chercher aussi dans les courriels recus de ijuneau@gromec.com (acheteuse)
+    if ($candidatsBCAvecPDF.Count -eq 0 -and $candidatsBCSansPDF.Count -eq 0) {
+        $dossiersInbox = @()
+        try { $dossiersInbox += $Namespace.GetDefaultFolder(6) } catch {}
+        foreach ($store in $Namespace.Stores) {
+            try {
+                $inbox = $store.GetDefaultFolder(6)
+                if ($inbox -and ($dossiersInbox.Count -eq 0 -or $inbox.EntryID -ne $dossiersInbox[0].EntryID)) {
+                    $dossiersInbox += $inbox
+                }
+            } catch {}
+        }
+        foreach ($inboxFolder in $dossiersInbox) {
+            try {
+                $filtreInbox = "[ReceivedTime] >= '$limiteDateStr' AND [SenderEmailAddress] = 'ijuneau@gromec.com'"
+                $itemsInbox = $inboxFolder.Items.Restrict($filtreInbox)
+            } catch { continue }
+            foreach ($item in $itemsInbox) {
+                if ($item.Class -ne 43) { continue }
+                $sujetPO = ($item.Subject -like "*Commande fournisseur*" -or $item.Subject -like "*Purchase Order*" -or $item.Subject -like "*purchase order*" -or $item.Subject -like "*commande fournisseur*")
+                if (-not $sujetPO) { continue }
+                $sujetMatch = ($NumeroBC -ne "" -and $item.Subject -like "*$NumeroBC*")
+                if (-not $sujetMatch) { continue }
+                $aPDF = $false
+                foreach ($pj in $item.Attachments) {
+                    if ($pj.FileName -like "*.pdf") { $aPDF = $true; break }
+                }
+                if ($aPDF) { $candidatsBCAvecPDF += $item } else { $candidatsBCSansPDF += $item }
+            }
+        }
+        if ($candidatsBCAvecPDF.Count -gt 0 -or $candidatsBCSansPDF.Count -gt 0) {
+            Write-Log "INFO  BC $NumeroBC trouve dans courriel recu de ijuneau@gromec.com"
+        }
+    }
+
     Write-Audit "Recherche du courriel envoye" "NumeroBC recherche: '$NumeroBC'`nAdresse fournisseur: $adresseFournisseur`nCandidats BC+PDF: $($candidatsBCAvecPDF.Count)`nCandidats BC sans PDF: $($candidatsBCSansPDF.Count)`nCandidats par domaine (fallback, domaines acceptes: $($domainesAcceptes -join ', ')): $($candidatsFourn.Count)"
 
     # Priorite: BC + PDF > BC sans PDF > fournisseur + PDF
