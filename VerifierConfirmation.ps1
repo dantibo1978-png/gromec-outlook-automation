@@ -131,6 +131,35 @@ $FirebaseUrl    = $Config.FirebaseUrl
 $JoursRecherche = $Config.JoursRechercheEnvoyes
 $SeuilConfiance = $Config.SeuilConfiance
 
+# Synchroniser le toggle avec le statut de reponse automatique Outlook (Out of Office)
+# Utilise un flag "pause_oof" pour distinguer une pause OOF d'une pause manuelle
+if (-not $Force.IsPresent) {
+    try {
+        $outlookOOF = New-Object -ComObject Outlook.Application
+        $nsOOF = $outlookOOF.GetNamespace("MAPI")
+        $storeOOF = $nsOOF.DefaultStore
+        $oofActif = $storeOOF.PropertyAccessor.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x661D000B")
+        if ($oofActif -eq $true) {
+            try {
+                $valActuelToggle = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/valeurs/programme_actif.json" -Method Get -TimeoutSec 5
+                if ($valActuelToggle -ne $false) {
+                    Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/valeurs.json" -Method Patch -ContentType "application/json" -Body '{"programme_actif":false,"pause_oof":true}' -TimeoutSec 5 | Out-Null
+                    Write-Log "INFO  Reponse automatique Outlook detectee -- programme mis en pause automatiquement"
+                }
+            } catch {}
+            exit 0
+        } else {
+            try {
+                $pauseOOF = Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/valeurs/pause_oof.json" -Method Get -TimeoutSec 5
+                if ($pauseOOF -eq $true) {
+                    Invoke-RestMethod -Uri "${FirebaseUrl}gromec_vba/parametres/valeurs.json" -Method Patch -ContentType "application/json" -Body '{"programme_actif":true,"pause_oof":false}' -TimeoutSec 5 | Out-Null
+                    Write-Log "INFO  Reponse automatique Outlook desactivee -- programme reactive automatiquement"
+                }
+            } catch {}
+        }
+    } catch {}
+}
+
 # Verifier si le programme est en pause (sauf reclassification manuelle -Force)
 if (-not $Force.IsPresent) {
     try {
