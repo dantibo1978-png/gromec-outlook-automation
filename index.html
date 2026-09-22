@@ -803,6 +803,10 @@
   }
   .param-add-row button:hover{ opacity:0.85; }
   .param-empty{ color:var(--muted-2); font-size:13px; font-style:italic; }
+  .param-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; max-height:220px; overflow-y:auto; padding:4px 0; }
+  .param-chip{ display:inline-flex; align-items:center; gap:4px; background:var(--panel-2); border:1px solid var(--rule); border-radius:14px; padding:3px 8px 3px 10px; font-size:12px; font-family:'IBM Plex Mono',monospace; white-space:nowrap; }
+  .param-chip .btn-chip-del{ width:16px; height:16px; border-radius:50%; border:none; background:transparent; color:var(--muted); cursor:pointer; font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center; padding:0; }
+  .param-chip .btn-chip-del:hover{ color:var(--ecart); background:rgba(226,85,63,0.15); }
   .param-field-row{ margin-bottom:14px; }
   .param-field-row label{
     display:block; font-size:13px; font-weight:600; margin-bottom:4px; color:var(--text);
@@ -1136,7 +1140,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-22 09:30";
+const DERNIERE_MAJ_CODE = "2026-09-22 15:57";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2662,7 +2666,7 @@ demarrerSSELogs();
     <div class="param-section">
       <h4>Fournisseurs « NE PAS UTILISER DELIVRO »</h4>
       <p style="color:var(--muted);font-size:12px;margin:0 0 10px;">Quand un brouillon Outlook est destiné à un de ces domaines, la mention « NE PAS UTILISER DELIVRO » est ajoutée automatiquement au début du message.</p>
-      <div class="param-list" id="listeNoDelivro"></div>
+      <div class="param-chips" id="listeNoDelivro"></div>
       <div class="param-add-row">
         <input type="text" id="inputNoDelivro" placeholder="Ex: boshart.com">
         <button id="btnAjouterNoDelivro">Ajouter</button>
@@ -2882,8 +2886,16 @@ demarrerSSELogs();
         cont.innerHTML = '<p class="param-empty">Aucun fournisseur configuré.</p>';
         return;
       }
-      for (const [cle, val] of Object.entries(data)) {
-        cont.appendChild(creerItem(typeof val === 'object' ? (val.domaine || cle) : val, cle, 'no_delivro'));
+      const sorted = Object.entries(data).map(([cle, val]) => ({cle, domaine: typeof val === 'object' ? (val.domaine || cle) : val})).sort((a,b) => a.domaine.localeCompare(b.domaine));
+      for (const {cle, domaine} of sorted) {
+        const chip = document.createElement('span');
+        chip.className = 'param-chip';
+        chip.innerHTML = domaine + '<button class="btn-chip-del" title="Supprimer">&times;</button>';
+        chip.querySelector('.btn-chip-del').addEventListener('click', async () => {
+          await fetch(FB + 'no_delivro/' + cle + '.json', {method:'DELETE'});
+          chargerNoDelivro();
+        });
+        cont.appendChild(chip);
       }
     } catch(e){ cont.innerHTML = '<p class="param-empty" style="color:var(--ecart)">Erreur de chargement.</p>'; }
   }
