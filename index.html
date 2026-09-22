@@ -1136,7 +1136,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-09-21 10:07";
+const DERNIERE_MAJ_CODE = "2026-09-22 09:30";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2660,6 +2660,16 @@ demarrerSSELogs();
     </div>
 
     <div class="param-section">
+      <h4>Fournisseurs « NE PAS UTILISER DELIVRO »</h4>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 10px;">Quand un brouillon Outlook est destiné à un de ces domaines, la mention « NE PAS UTILISER DELIVRO » est ajoutée automatiquement au début du message.</p>
+      <div class="param-list" id="listeNoDelivro"></div>
+      <div class="param-add-row">
+        <input type="text" id="inputNoDelivro" placeholder="Ex: boshart.com">
+        <button id="btnAjouterNoDelivro">Ajouter</button>
+      </div>
+    </div>
+
+    <div class="param-section">
       <h4>Classification & matching</h4>
       <div class="param-field-row">
         <label>Tolérance de prix (écart acceptable)</label>
@@ -2754,7 +2764,7 @@ demarrerSSELogs();
   };
 
   async function chargerParametres(){
-    await Promise.all([chargerSujetsExclus(), chargerDomainesExclus(), chargerValeurs()]);
+    await Promise.all([chargerSujetsExclus(), chargerDomainesExclus(), chargerNoDelivro(), chargerValeurs()]);
   }
 
   async function chargerValeurs(){
@@ -2860,6 +2870,40 @@ demarrerSSELogs();
     if (e.key === 'Enter') document.getElementById('btnAjouterDomaine').click();
   });
 
+  // --- No Delivro ---
+  async function chargerNoDelivro(){
+    const cont = document.getElementById('listeNoDelivro');
+    cont.innerHTML = '<p class="param-empty">Chargement…</p>';
+    try {
+      const rep = await fetch(FB + 'no_delivro.json');
+      const data = await rep.json();
+      cont.innerHTML = '';
+      if (!data || Object.keys(data).length === 0) {
+        cont.innerHTML = '<p class="param-empty">Aucun fournisseur configuré.</p>';
+        return;
+      }
+      for (const [cle, val] of Object.entries(data)) {
+        cont.appendChild(creerItem(typeof val === 'object' ? (val.domaine || cle) : val, cle, 'no_delivro'));
+      }
+    } catch(e){ cont.innerHTML = '<p class="param-empty" style="color:var(--ecart)">Erreur de chargement.</p>'; }
+  }
+
+  document.getElementById('btnAjouterNoDelivro').addEventListener('click', async () => {
+    const input = document.getElementById('inputNoDelivro');
+    const domaine = input.value.trim().toLowerCase().replace(/^@/, '');
+    if (!domaine) return;
+    await fetch(FB + 'no_delivro/' + domaine.replace(/\./g, '_') + '.json', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ domaine: domaine, date: new Date().toISOString() })
+    });
+    input.value = '';
+    chargerNoDelivro();
+  });
+
+  document.getElementById('inputNoDelivro').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('btnAjouterNoDelivro').click();
+  });
+
   // --- Helpers ---
   function creerItem(texte, cle, collection){
     const div = document.createElement('div');
@@ -2874,6 +2918,7 @@ demarrerSSELogs();
       btn.disabled = true;
       await fetch(FB + collection + '/' + cle + '.json', { method: 'DELETE' });
       if (collection === 'sujets_exclus') chargerSujetsExclus();
+      else if (collection === 'no_delivro') chargerNoDelivro();
       else chargerDomainesExclus();
     });
     div.appendChild(span);
