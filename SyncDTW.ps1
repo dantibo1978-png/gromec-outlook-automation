@@ -1047,6 +1047,73 @@ try {
     Write-Log "WARN  Erreur migration actionRequise : $($_.Exception.Message)"
 }
 
+$Script:DernierCheckBrouillons = [datetime]::MinValue
+$Script:ListeNoDelivro = @()
+
+function Sync-ListeNoDelivro {
+    try {
+        $rep = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/no_delivro.json" -Method Get -TimeoutSec 5
+        if ($null -ne $rep -and $rep -ne "null") {
+            $Script:ListeNoDelivro = @()
+            foreach ($prop in $rep.PSObject.Properties) {
+                $val = $prop.Value
+                if ($val -is [PSCustomObject] -and $val.domaine) {
+                    $Script:ListeNoDelivro += $val.domaine
+                } else {
+                    $Script:ListeNoDelivro += $prop.Name.Replace('_', '.')
+                }
+            }
+        } else {
+            $Script:ListeNoDelivro = @()
+        }
+    } catch {}
+}
+
+function Invoke-VerifierBrouillonsDelivro {
+    param([object]$Outlook)
+    if (-not $Outlook) { return }
+    if ($Script:ListeNoDelivro.Count -eq 0) { return }
+
+    try {
+        $ns = $Outlook.GetNamespace("MAPI")
+        $drafts = $ns.GetDefaultFolder(16)  # olFolderDrafts
+        $balise = "NE PAS UTILISER DELIVRO"
+
+        foreach ($item in $drafts.Items) {
+            if ($item.Class -ne 43) { continue }
+            if ($item.HTMLBody -like "*$balise*") { continue }
+
+            $destinataires = @()
+            foreach ($recip in $item.Recipients) {
+                try { $addr = $recip.Address.ToLower() } catch { try { $addr = $recip.AddressEntry.GetExchangeUser().PrimarySmtpAddress.ToLower() } catch { $addr = "" } }
+                if ($addr) { $destinataires += $addr }
+            }
+
+            $doitAjouter = $false
+            foreach ($fourn in $Script:ListeNoDelivro) {
+                $fournLower = $fourn.ToLower()
+                foreach ($dest in $destinataires) {
+                    if ($dest -like "*$fournLower*") { $doitAjouter = $true; break }
+                }
+                if ($doitAjouter) { break }
+            }
+
+            if ($doitAjouter) {
+                $mention = "<p style='color:red;font-weight:bold;font-size:14px;'>$balise</p>"
+                if ($item.HTMLBody -match '<body[^>]*>') {
+                    $item.HTMLBody = $item.HTMLBody -replace '(<body[^>]*>)', "`$1$mention"
+                } else {
+                    $item.HTMLBody = "$mention" + $item.HTMLBody
+                }
+                $item.Save()
+                Write-Log "INFO  Brouillon modifie -- ajout '$balise' pour: $($item.Subject)"
+            }
+        }
+    } catch {
+        Write-Log "WARN  Erreur verification brouillons Delivro : $($_.Exception.Message)"
+    }
+}
+
 $DerniereePurgeLogs = Get-Date "2000-01-01"
 
 # ── Connexion Outlook pour l'envoi automatique des relances (optionnel) ────
@@ -1093,6 +1160,16 @@ while ($true) {
     if ($Script:ParamActiverEnvoiRelance -and $Script:OutlookRelance) {
         try { Invoke-EnvoiRelancesAutomatiques -Outlook $Script:OutlookRelance }
         catch { Write-Log "ERREUR Invoke-EnvoiRelancesAutomatiques : $($_.Exception.Message)" }
+    }
+
+    # Verifier les brouillons Outlook pour ajouter "NE PAS UTILISER DELIVRO" (toutes les 30s)
+    if (((Get-Date) - $Script:DernierCheckBrouillons).TotalSeconds -ge 30) {
+        Sync-ListeNoDelivro
+        $outlookBrouillon = if ($Script:OutlookRelance) { $Script:OutlookRelance } else { try { New-Object -ComObject Outlook.Application } catch { $null } }
+        if ($outlookBrouillon) {
+            Invoke-VerifierBrouillonsDelivro -Outlook $outlookBrouillon
+        }
+        $Script:DernierCheckBrouillons = Get-Date
     }
 
     # Verifier reclassifications manuelles (VBA Outlook) -- liste pour supporter plusieurs en meme temps
