@@ -1077,7 +1077,7 @@ function Invoke-VerifierBrouillonsDelivro {
     try {
         $ns = $Outlook.GetNamespace("MAPI")
         $drafts = $ns.GetDefaultFolder(16)  # olFolderDrafts
-        $balise = "NE PAS UTILISER DELIVRO"
+        $balise = "gromec-no-delivro"
 
         foreach ($item in $drafts.Items) {
             if ($item.Class -ne 43) { continue }
@@ -1099,7 +1099,7 @@ function Invoke-VerifierBrouillonsDelivro {
             }
 
             if ($doitAjouter) {
-                $mention = "<p style='color:red;font-weight:bold;font-size:14px;'>$balise</p>"
+                $mention = "<p id='$balise' style='color:red;font-size:24px;margin:0;line-height:1;'>&#9679;</p>"
                 if ($item.HTMLBody -match '<body[^>]*>') {
                     $item.HTMLBody = $item.HTMLBody -replace '(<body[^>]*>)', "`$1$mention"
                 } else {
