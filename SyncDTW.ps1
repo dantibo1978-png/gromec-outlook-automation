@@ -1077,11 +1077,20 @@ function Invoke-VerifierBrouillonsDelivro {
     try {
         $ns = $Outlook.GetNamespace("MAPI")
         $drafts = $ns.GetDefaultFolder(16)  # olFolderDrafts
-        $balise = "gromec-no-delivro"
+        $nomCategorie = "NO DELIVRO"
+
+        # Creer la categorie si elle n'existe pas
+        try {
+            $categories = $ns.Categories
+            $existe = $false
+            foreach ($cat in $categories) { if ($cat.Name -eq $nomCategorie) { $existe = $true; break } }
+            if (-not $existe) {
+                $ns.Categories.Add($nomCategorie, 6)  # 6 = olCategoryColorRed
+            }
+        } catch {}
 
         foreach ($item in $drafts.Items) {
             if ($item.Class -ne 43) { continue }
-            if ($item.HTMLBody -like "*$balise*") { continue }
 
             $destinataires = @()
             foreach ($recip in $item.Recipients) {
@@ -1098,15 +1107,21 @@ function Invoke-VerifierBrouillonsDelivro {
                 if ($doitAjouter) { break }
             }
 
-            if ($doitAjouter) {
-                $mention = "<p id='$balise' style='color:red;font-size:24px;margin:0;line-height:1;'>&#9679;</p>"
-                if ($item.HTMLBody -match '<body[^>]*>') {
-                    $item.HTMLBody = $item.HTMLBody -replace '(<body[^>]*>)', "`$1$mention"
+            $dejaCategorie = ($item.Categories -split ',\s*') -contains $nomCategorie
+
+            if ($doitAjouter -and -not $dejaCategorie) {
+                if ($item.Categories -and $item.Categories.Trim() -ne "") {
+                    $item.Categories = $item.Categories + ", $nomCategorie"
                 } else {
-                    $item.HTMLBody = "$mention" + $item.HTMLBody
+                    $item.Categories = $nomCategorie
                 }
                 $item.Save()
-                Write-Log "INFO  Brouillon modifie -- ajout '$balise' pour: $($item.Subject)"
+                Write-Log "INFO  Brouillon categorise '$nomCategorie' pour: $($item.Subject)"
+            } elseif (-not $doitAjouter -and $dejaCategorie) {
+                $cats = ($item.Categories -split ',\s*') | Where-Object { $_ -ne $nomCategorie }
+                $item.Categories = ($cats -join ', ')
+                $item.Save()
+                Write-Log "INFO  Brouillon categorie '$nomCategorie' retiree pour: $($item.Subject)"
             }
         }
     } catch {
