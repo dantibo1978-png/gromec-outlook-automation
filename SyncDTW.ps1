@@ -441,10 +441,13 @@ function Invoke-TraiterEntree {
         Write-Log "WARN  Impossible de relire l'entree fraiche, utilisation du cache."
     }
 
-    # Verifier que l'entree est encore en attente (evite double-traitement)
-    if ($Entree.dtw_statut -ne 'en_attente') {
+    # Verifier que l'entree est en attente ou coincee en cours (evite double-traitement sauf recovery)
+    if ($Entree.dtw_statut -ne 'en_attente' -and $Entree.dtw_statut -ne 'en_cours') {
         Write-Log "INFO  Entree $Cle deja traitee (statut=$($Entree.dtw_statut)) - abandon."
         return
+    }
+    if ($Entree.dtw_statut -eq 'en_cours') {
+        Write-Log "INFO  Entree $Cle coincee en_cours - nouvelle tentative."
     }
 
     # Marquer immediatement comme en cours pour eviter double-traitement
@@ -1259,7 +1262,7 @@ while ($true) {
             $copierPrix    = [bool]$entree.dtw_copierPrix
             $copierQty     = [bool]$entree.dtw_copierQty
             $aLignesCochees = ($null -ne $entree.dtw_lignesCochees)
-            if (-not $copierPrix -and -not $copierQty -and -not $aLignesCochees) { continue }
+            if (-not $copierPrix -and -not $copierQty -and -not $aLignesCochees -and $statut -ne 'en_cours') { continue }
 
             try {
                 Invoke-TraiterEntree -Cle $cle -Entree $entree
