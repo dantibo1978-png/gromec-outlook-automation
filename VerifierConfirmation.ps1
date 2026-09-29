@@ -2400,8 +2400,8 @@ function Save-CopieConfirmation {
                     $word = New-Object -ComObject Word.Application
                     $word.Visible = $false
                     $doc = $word.Documents.Open($htmlTemp)
-                    $doc.SaveAs([ref]$cheminPDF, [ref]17)  # wdFormatPDF = 17
-                    $doc.Close([ref]$false)
+                    $doc.SaveAs2($cheminPDF, 17)
+                    $doc.Close($false)
                     $nbSauv++
                 } finally {
                     if ($word) { $word.Quit(); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null }
@@ -2412,8 +2412,50 @@ function Save-CopieConfirmation {
         if ($nbSauv -gt 0) {
             Write-Log "INFO  $nbSauv fichier(s) sauvegarde(s) dans $dossier"
         }
+
+        # Sauvegarder tous les emails lies a ce BC en .msg
+        Save-EmailsLiesBC $MailItem $NumeroBC $dossier
     } catch {
         Write-Log "WARN  Impossible de sauvegarder la copie confirmation : $($_.Exception.Message)"
+    }
+}
+
+function Save-EmailsLiesBC {
+    param($MailConfirmation, [string]$NumeroBC, [string]$Dossier)
+    try {
+        $outlook = $MailConfirmation.Application
+        $ns = $outlook.GetNamespace("MAPI")
+        $limiteDate = (Get-Date).AddDays(-$JoursRecherche)
+        $limiteDateStr = $limiteDate.ToString("MM/dd/yyyy HH:mm")
+        $nbSauv = 0
+
+        $dossiers = @()
+        try { $dossiers += $ns.GetDefaultFolder(6) } catch {}   # Inbox
+        try { $dossiers += $ns.GetDefaultFolder(5) } catch {}   # Sent
+
+        foreach ($folder in $dossiers) {
+            try {
+                $items = $folder.Items.Restrict("[ReceivedTime] >= '$limiteDateStr' OR [SentOn] >= '$limiteDateStr'")
+            } catch { continue }
+            foreach ($item in $items) {
+                if ($item.Class -ne 43) { continue }
+                if ($item.Subject -notlike "*$NumeroBC*") { continue }
+                $sujetClean = ($item.Subject -replace '[\\/:*?"<>|]', '_')
+                if ($sujetClean.Length -gt 80) { $sujetClean = $sujetClean.Substring(0, 80) }
+                $dateStr = try { $item.ReceivedTime.ToString("yyyy-MM-dd_HHmm") } catch { $item.SentOn.ToString("yyyy-MM-dd_HHmm") }
+                $nomFichier = "${dateStr}_${sujetClean}.msg"
+                $chemin = Join-Path $Dossier $nomFichier
+                if (-not (Test-Path $chemin)) {
+                    $item.SaveAs($chemin, 3)  # olMSG = 3
+                    $nbSauv++
+                }
+            }
+        }
+        if ($nbSauv -gt 0) {
+            Write-Log "INFO  $nbSauv email(s) .msg sauvegarde(s) dans $Dossier"
+        }
+    } catch {
+        Write-Log "WARN  Impossible de sauvegarder les emails lies au BC : $($_.Exception.Message)"
     }
 }
 
