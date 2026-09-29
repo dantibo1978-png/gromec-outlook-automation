@@ -2443,16 +2443,29 @@ function Save-EmailsLiesBC {
                 $sujetClean = ($item.Subject -replace '[\\/:*?"<>|]', '_')
                 if ($sujetClean.Length -gt 80) { $sujetClean = $sujetClean.Substring(0, 80) }
                 $dateStr = try { $item.ReceivedTime.ToString("yyyy-MM-dd_HHmm") } catch { $item.SentOn.ToString("yyyy-MM-dd_HHmm") }
-                $nomFichier = "${dateStr}_${sujetClean}.msg"
+                $nomFichier = "${dateStr}_${sujetClean}.html"
                 $chemin = Join-Path $Dossier $nomFichier
                 if (-not (Test-Path $chemin)) {
-                    $item.SaveAs($chemin, 3)  # olMSG = 3
+                    $expediteur = try { $item.SenderName } catch { "" }
+                    $destinataires = try { $item.To } catch { "" }
+                    $dateEmail = try { $item.ReceivedTime.ToString("yyyy-MM-dd HH:mm") } catch { try { $item.SentOn.ToString("yyyy-MM-dd HH:mm") } catch { "" } }
+                    $entete = "<div style='background:#f0f0f0;padding:10px;margin-bottom:10px;font-family:Calibri,sans-serif;font-size:13px;border-bottom:2px solid #ccc;'>" +
+                        "<b>De:</b> $expediteur<br><b>A:</b> $destinataires<br><b>Date:</b> $dateEmail<br><b>Objet:</b> $($item.Subject)</div>"
+                    $html = "<html><head><meta charset='utf-8'><title>$($item.Subject)</title></head><body>$entete$($item.HTMLBody)</body></html>"
+                    $html | Set-Content $chemin -Encoding UTF8
                     $nbSauv++
+                    foreach ($pj in $item.Attachments) {
+                        if ($pj.FileName -like "*.pdf") {
+                            $nomPJ = $pj.FileName -replace '[\\/:*?"<>|]', '_'
+                            $cheminPJ = Join-Path $Dossier $nomPJ
+                            if (-not (Test-Path $cheminPJ)) { $pj.SaveAsFile($cheminPJ) }
+                        }
+                    }
                 }
             }
         }
         if ($nbSauv -gt 0) {
-            Write-Log "INFO  $nbSauv email(s) .msg sauvegarde(s) dans $Dossier"
+            Write-Log "INFO  $nbSauv email(s) sauvegarde(s) dans $Dossier"
         }
     } catch {
         Write-Log "WARN  Impossible de sauvegarder les emails lies au BC : $($_.Exception.Message)"
