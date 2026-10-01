@@ -2452,7 +2452,7 @@ function Save-EmailsLiesBC {
                     $entete = "<div style='background:#f0f0f0;padding:10px;margin-bottom:10px;font-family:Calibri,sans-serif;font-size:13px;border-bottom:2px solid #ccc;'>" +
                         "<b>De:</b> $expediteur<br><b>A:</b> $destinataires<br><b>Date:</b> $dateEmail<br><b>Objet:</b> $($item.Subject)</div>"
                     $html = "<html><head><meta charset='utf-8'><title>$($item.Subject)</title></head><body>$entete$($item.HTMLBody)</body></html>"
-                    $html | Set-Content $chemin -Encoding UTF8
+                    [System.IO.File]::WriteAllText($chemin, [string]$html, [System.Text.Encoding]::UTF8)
                     $nbSauv++
                     foreach ($pj in $item.Attachments) {
                         if ($pj.FileName -like "*.pdf") {
