@@ -3363,7 +3363,10 @@ try {
         foreach ($item in $items) {
             if ($item.Class -ne 43) { continue }
             # PJ requise SAUF pour une reponse de relance (texte seul, pas de PDF)
-            if ($item.Attachments.Count -eq 0 -and -not (Test-EstReponseRelance $item)) { continue }
+            # ou un courriel dont le sujet contient un mot-cle de confirmation
+            # (certains fournisseurs comme BMI envoient des confirmations en HTML sans PJ)
+            if ($item.Attachments.Count -eq 0 -and -not (Test-EstReponseRelance $item) -and
+                $item.Subject -notmatch '(?i)(confirmation|order.?ack|sales.?order|accus.+r.+ception)') { continue }
             $liste += [PSCustomObject]@{
                 Sujet       = $item.Subject
                 Expediteur  = $item.SenderName
