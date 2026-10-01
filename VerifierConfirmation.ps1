@@ -1961,6 +1961,17 @@ function Invoke-TraiterComparaison {
         $VerifierCorps = (Get-StatutCorpsConnu $expediteur) -eq "CORPS"
     }
 
+    # Si aucun PDF en piece jointe, forcer le mode CORPS (ex: BMI envoie
+    # ses confirmations de prix directement en HTML sans PJ)
+    $aPJPdfGlobal = $false
+    foreach ($pj in $MailConfirmation.Attachments) {
+        if ($pj.FileName -like "*.pdf") { $aPJPdfGlobal = $true; break }
+    }
+    if (-not $aPJPdfGlobal -and -not $VerifierCorps) {
+        Write-Log "INFO  Aucun PDF en PJ -- basculement force en mode CORPS."
+        $VerifierCorps = $true
+    }
+
     if ($VerifierCorps) {
         # --- MODE CORPS: les ecarts sont dans le texte du courriel, pas dans
         # un PDF chiffre. Le PDF joint (s'il y en a un) n'est qu'une copie de
