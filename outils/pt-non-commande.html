@@ -178,8 +178,14 @@
   <div class="actions">
     <button id="processBtn">Traiter et comparer</button>
     <button id="downloadBtn" class="secondary" disabled>Télécharger les fichiers Excel (.zip)</button>
-    <button id="clearExclBtn" class="secondary" style="margin-left:auto;">Réinitialiser les exclusions</button>
+    <button id="viewExclBtn" class="secondary" style="margin-left:auto;">Voir les exclusions</button>
+    <button id="clearExclBtn" class="secondary">Réinitialiser les exclusions</button>
     <span id="status"></span>
+  </div>
+
+  <div id="exclusionPanel" style="display:none;background:#1B232E;border:1px solid #2C394A;border-radius:8px;padding:16px;margin-bottom:16px;">
+    <h2 style="margin:0 0 12px;font-size:1.05rem;">Exclusions mémorisées</h2>
+    <div id="exclusionList"></div>
   </div>
 
   <div id="summary">
@@ -505,6 +511,39 @@ function toggleVendorPanel(vendor, vendorTr) {
     });
   });
 }
+
+document.getElementById('viewExclBtn').addEventListener('click', () => {
+  const panel = document.getElementById('exclusionPanel');
+  const list = document.getElementById('exclusionList');
+  if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+  let excl = {};
+  try { excl = JSON.parse(localStorage.getItem('gromec_pt_exclusions') || '{}'); } catch(e) {}
+  const vendors = Object.keys(excl).sort();
+  if (vendors.length === 0) {
+    list.innerHTML = '<p style="color:#8C9BAE;font-size:0.85rem;">Aucune exclusion mémorisée.</p>';
+  } else {
+    let html = '<table class="results"><thead><tr><th>Vendeur</th><th>Code article exclu</th><th></th></tr></thead><tbody>';
+    vendors.forEach(v => {
+      const codes = Object.keys(excl[v]).sort();
+      codes.forEach(code => {
+        html += `<tr><td>${esc(v)}</td><td>${esc(code)}</td><td><button class="secondary" style="padding:3px 8px;font-size:0.75rem;" data-vendor="${esc(v)}" data-code="${esc(code)}">Retirer</button></td></tr>`;
+      });
+    });
+    html += '</tbody></table>';
+    list.innerHTML = html;
+    list.querySelectorAll('button[data-vendor]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const v = btn.dataset.vendor, c = btn.dataset.code;
+        if (excl[v]) { delete excl[v][c]; if (Object.keys(excl[v]).length === 0) delete excl[v]; }
+        try { localStorage.setItem('gromec_pt_exclusions', JSON.stringify(excl)); } catch(e) {}
+        window.__gromecExclusions = excl;
+        btn.closest('tr').remove();
+        if (window.__gromecResult) renderVendorTable();
+      });
+    });
+  }
+  panel.style.display = 'block';
+});
 
 document.getElementById('clearExclBtn').addEventListener('click', () => {
   if (!confirm('Réinitialiser toutes les exclusions mémorisées ?')) return;
