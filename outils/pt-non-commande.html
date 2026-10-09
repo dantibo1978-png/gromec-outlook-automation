@@ -178,6 +178,7 @@
   <div class="actions">
     <button id="processBtn">Traiter et comparer</button>
     <button id="downloadBtn" class="secondary" disabled>Télécharger les fichiers Excel (.zip)</button>
+    <button id="clearExclBtn" class="secondary" style="margin-left:auto;">Réinitialiser les exclusions</button>
     <span id="status"></span>
   </div>
 
@@ -334,7 +335,7 @@ document.getElementById('processBtn').addEventListener('click', () => {
     byVendor.get(vendor).push(row);
   });
 
-  window.__gromecExclusions = window.__gromecExclusions || {};
+  try { window.__gromecExclusions = JSON.parse(localStorage.getItem('gromec_pt_exclusions') || '{}'); } catch(e) { window.__gromecExclusions = {}; }
   window.__gromecMerges = window.__gromecMerges || {};
   window.__gromecResult = { sapRows, remaining, removed, byVendor };
 
@@ -497,11 +498,20 @@ function toggleVendorPanel(vendor, vendorTr) {
         window.__gromecExclusions[vendor][cb.dataset.code] = true;
       } else {
         delete window.__gromecExclusions[vendor][cb.dataset.code];
+        if (Object.keys(window.__gromecExclusions[vendor]).length === 0) delete window.__gromecExclusions[vendor];
       }
+      try { localStorage.setItem('gromec_pt_exclusions', JSON.stringify(window.__gromecExclusions)); } catch(e) {}
       renderVendorTable();
     });
   });
 }
+
+document.getElementById('clearExclBtn').addEventListener('click', () => {
+  if (!confirm('Réinitialiser toutes les exclusions mémorisées ?')) return;
+  window.__gromecExclusions = {};
+  try { localStorage.removeItem('gromec_pt_exclusions'); } catch(e) {}
+  if (window.__gromecResult) renderVendorTable();
+});
 
 function sanitizeFilename(name) {
   return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'vendeur';
