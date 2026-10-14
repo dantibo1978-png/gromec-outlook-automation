@@ -325,7 +325,7 @@ function Set-FirebaseValue {
 }
 
 function Write-FirebaseHistorique {
-    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande, [string]$EntryID = "", [string]$StoreID = "", [string]$HistoriqueId = "", $Entete = $null, [string]$ModeAnalyse = "")
+    param([string]$Fournisseur, [string]$Sujet, [string]$StatutGlobal, $Resultats, [string]$Devise, [string]$NumeroCommande, [string]$EntryID = "", [string]$StoreID = "", [string]$HistoriqueId = "", $Entete = $null, [string]$ModeAnalyse = "", [datetime]$DateReception = [datetime]::MinValue)
 
     if ($Resultats.Count -eq 0) { return }
 
@@ -353,8 +353,9 @@ function Write-FirebaseHistorique {
     $nbEcarts = ($Resultats | Where-Object { $_.Statut -eq "ECART" }).Count
     $nbNonTrouves = ($Resultats | Where-Object { $_.Statut -eq "NON_TROUVE" }).Count
 
+    $dateAffichee = if ($DateReception -ne [datetime]::MinValue) { $DateReception.ToString("yyyy-MM-ddTHH:mm:ss") } else { (Get-Date -Format "yyyy-MM-ddTHH:mm:ss") }
     $entree = @{
-        date         = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
+        date         = $dateAffichee
         fournisseur  = $Fournisseur
         sujet        = $Sujet
         statut       = $StatutGlobal
@@ -1858,8 +1859,9 @@ function Write-FirebaseEchec {
         return
     }
 
+    $dateRecueNA = try { $MailConfirmation.ReceivedTime.ToString("yyyy-MM-ddTHH:mm:ss") } catch { (Get-Date -Format "yyyy-MM-ddTHH:mm:ss") }
     $entree = @{
-        date            = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
+        date            = $dateRecueNA
         fournisseur     = if ($NomFournisseurDetecte -ne "") { $NomFournisseurDetecte } else { (Get-AdresseSMTP $MailConfirmation) }
         sujet           = $MailConfirmation.Subject
         statut          = "NON_APPARIE"
@@ -2373,7 +2375,8 @@ function Invoke-TraiterComparaison {
 
     Write-RapportExcel $nomFourn $sujet $statutLabel $resultats $devise $numeroBC
     $modeStr = if ($VerifierCorps) { "CORPS" } else { "PDF" }
-    Write-FirebaseHistorique $nomFourn $sujet $statutLabel $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP -ModeAnalyse $modeStr
+    $dateRecue = try { $MailConfirmation.ReceivedTime } catch { [datetime]::MinValue }
+    Write-FirebaseHistorique $nomFourn $sujet $statutLabel $resultats $devise $numeroBC $MailConfirmation.EntryID $MailConfirmation.Parent.StoreID $HistoriqueId $enteteSAP -ModeAnalyse $modeStr -DateReception $dateRecue
 
     Save-CopieConfirmation $MailConfirmation $numeroBC $sujet
 }
