@@ -1136,7 +1136,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-15 13:00";
+const DERNIERE_MAJ_CODE = "2026-10-15 13:15";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -1179,7 +1179,7 @@ async function chargerDonnees(){
   const btn = document.getElementById('refreshBtn');
   btn.classList.add('spinning');
   try{
-    const rep = await fetch(FIREBASE_URL + 'gromec_vba/historique.json?orderBy="$key"&limitToLast=100');
+    const rep = await fetch(FIREBASE_URL + 'gromec_vba/historique.json?orderBy="$key"&limitToLast=50');
     const json = await rep.json();
     donneesMap = {};
     if (json){
@@ -2052,8 +2052,10 @@ document.querySelectorAll('.filter-chip').forEach(chip => {
   });
 });
 
+// Chargement initial en parallele pour accelerer l'affichage
+Promise.all([chargerDonnees(), chargerLogs(), chargerEtatProgramme()]).catch(()=>{});
 demarrerPollingHistorique();
-chargerEtatProgramme();
+demarrerPollingLogs();
 
 async function declencherConfirmationFournisseur(id, btnEl){
   if (btnEl.classList.contains('confirmer-envoye') || btnEl.classList.contains('confirmer-attente')) return;
@@ -2239,8 +2241,6 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
     document.addEventListener('mouseup', onUp);
   });
 })();
-
-demarrerPollingLogs();
 </script>
 
 <script>
