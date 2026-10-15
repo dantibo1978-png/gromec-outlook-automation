@@ -104,17 +104,30 @@ try {
 } catch {}
 # ──────────────────────────────────────────────────────────────────────────────
 
+$Script:LogBuffer = [System.Collections.ArrayList]::new()
+$Script:DernierFlushLogs = Get-Date
+
 function Write-Log {
     param([string]$Message, [string]$Cle = "", [string]$BC = "")
     $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     Write-Host "[$ts] $Message"
+    $niveau = if ($Message -like "ERREUR*") { "erreur" } elseif ($Message -like "WARN*") { "warn" } else { "info" }
+    $entry = @{ ts = $ts; msg = $Message; niveau = $niveau; source = "SyncDTW" }
+    if ($Cle -ne "") { $entry["cle"] = $Cle }
+    if ($BC -ne "")  { $entry["bc"]  = $BC }
+    [void]$Script:LogBuffer.Add($entry)
+    if ($niveau -eq "erreur") { Flush-Logs }
+}
+
+function Flush-Logs {
+    if ($Script:LogBuffer.Count -eq 0) { return }
     try {
-        $niveau = if ($Message -like "ERREUR*") { "erreur" } elseif ($Message -like "WARN*") { "warn" } else { "info" }
-        $body = @{ ts = $ts; msg = $Message; niveau = $niveau; source = "SyncDTW" }
-        if ($Cle -ne "") { $body["cle"] = $Cle }
-        if ($BC -ne "")  { $body["bc"]  = $BC }
-        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json" -Method Post -Body ($body | ConvertTo-Json -Compress) -ContentType "application/json" -TimeoutSec 3 | Out-Null
+        $batch = @{}
+        foreach ($e in $Script:LogBuffer) { $batch[(New-Guid).ToString("N")] = $e }
+        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json" -Method Patch -Body ($batch | ConvertTo-Json -Compress -Depth 3) -ContentType "application/json" -TimeoutSec 5 | Out-Null
     } catch {}
+    $Script:LogBuffer.Clear()
+    $Script:DernierFlushLogs = Get-Date
 }
 
 function Invoke-PurgeVieuxLogs {
@@ -1052,6 +1065,7 @@ try {
 }
 
 $Script:DernierCheckBrouillons = [datetime]::MinValue
+$Script:DernierCheckQueues = [datetime]::MinValue
 $Script:ListeNoDelivro = @()
 
 function Sync-ListeNoDelivro {
@@ -1153,8 +1167,11 @@ $Script:DernierCheckActif = [datetime]::MinValue
 
 while ($true) {
   try {
-    # Verifier le flag programme_actif toutes les 30s
-    if (((Get-Date) - $Script:DernierCheckActif).TotalSeconds -ge 30) {
+    # Flush les logs bufferises toutes les 60s
+    if (((Get-Date) - $Script:DernierFlushLogs).TotalSeconds -ge 60) { Flush-Logs }
+
+    # Verifier le flag programme_actif toutes les 60s
+    if (((Get-Date) - $Script:DernierCheckActif).TotalSeconds -ge 60) {
         try {
             $valActif = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/valeurs/programme_actif.json" -Method Get -TimeoutSec 5
             $Script:ProgrammeActif = ($valActif -ne $false)
@@ -1322,9 +1339,14 @@ while ($true) {
         }
     }
 
+    # ── Queues DTW : verifiees toutes les 180s avec shallow read d'abord ────────
+    $checkQueues = (((Get-Date) - $Script:DernierCheckQueues).TotalSeconds -ge 180)
+    if ($checkQueues) { $Script:DernierCheckQueues = Get-Date }
+
     # ── Import prix depuis le dashboard (drop zone) ────────────────────────────
-    try {
-        $importsPrix = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix.json" -Method Get -TimeoutSec 10
+    if ($checkQueues) { try {
+        $shallowPrix = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix.json?shallow=true" -Method Get -TimeoutSec 5
+        $importsPrix = if ($null -ne $shallowPrix -and $shallowPrix -ne "null") { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix.json" -Method Get -TimeoutSec 10 } else { $null }
         if ($null -ne $importsPrix -and $importsPrix -ne "null") {
             foreach ($cleIP in $importsPrix.PSObject.Properties.Name) {
                 $imp = $importsPrix.$cleIP
@@ -1368,11 +1390,12 @@ while ($true) {
         }
     } catch {
         Write-Log "WARN  Erreur lecture noeud imports_prix : $($_.Exception.Message)"
-    }
+    } }
 
     # ── Import LeadTime depuis l'outil delais-produits ──────────────────────────
-    try {
-        $importsLT = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw.json" -Method Get -TimeoutSec 10
+    if ($checkQueues) { try {
+        $shallowLT = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw.json?shallow=true" -Method Get -TimeoutSec 5
+        $importsLT = if ($null -ne $shallowLT -and $shallowLT -ne "null") { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw.json" -Method Get -TimeoutSec 10 } else { $null }
         if ($null -ne $importsLT -and $importsLT -ne "null") {
             foreach ($cleLT in $importsLT.PSObject.Properties.Name) {
                 $impLT = $importsLT.$cleLT
@@ -1434,17 +1457,12 @@ while ($true) {
         }
     } catch {
         Write-Log "WARN  Erreur lecture noeud leadtime_dtw : $($_.Exception.Message)"
-    }
+    } }
 
     # ── Sync ShipDate (dates de livraison confirmees par relance) ──────────────
-    # Alimente par VerifierConfirmation.ps1 (Invoke-TraiterReponseRelance) quand
-    # un fournisseur repond a une relance avec une date precise.
-    # SECURITE : desactive par defaut (parametres.activer_sync_shipdate) tant
-    # que le format de date attendu par le scenario DTW n'a pas ete valide
-    # manuellement -- une mauvaise correspondance ecrirait une mauvaise date
-    # de livraison dans des bons de commande SAP reels.
-    try {
-        $jobsShipDate = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser.json" -Method Get -TimeoutSec 10
+    if ($checkQueues) { try {
+        $shallowSD = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser.json?shallow=true" -Method Get -TimeoutSec 5
+        $jobsShipDate = if ($null -ne $shallowSD -and $shallowSD -ne "null") { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser.json" -Method Get -TimeoutSec 10 } else { $null }
         if ($null -ne $jobsShipDate -and $jobsShipDate -ne "null") {
             $clesEnAttente = @($jobsShipDate.PSObject.Properties | Where-Object { $_.Value.statut -eq 'attente' })
 
@@ -1548,11 +1566,12 @@ while ($true) {
         }
     } catch {
         Write-Log "WARN  Erreur lecture noeud sap_shipdate_a_synchroniser : $($_.Exception.Message)"
-    }
+    } }
 
     # ── Import Fullbox (PurPackUn + QryGroup26) depuis le dashboard ────────────
-    try {
-        $importsFB = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox.json" -Method Get -TimeoutSec 10
+    if ($checkQueues) { try {
+        $shallowFB = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox.json?shallow=true" -Method Get -TimeoutSec 5
+        $importsFB = if ($null -ne $shallowFB -and $shallowFB -ne "null") { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox.json" -Method Get -TimeoutSec 10 } else { $null }
         if ($null -ne $importsFB -and $importsFB -ne "null") {
             foreach ($cleFB in $importsFB.PSObject.Properties.Name) {
                 $impFB = $importsFB.$cleFB
@@ -1595,12 +1614,13 @@ while ($true) {
         }
     } catch {
         Write-Log "WARN  Erreur lecture noeud imports_fullbox : $($_.Exception.Message)"
-    }
+    } }
   } catch {
     # Filet de securite : une exception non geree ailleurs dans l'iteration ne doit
     # jamais tuer le processus (il tourne en continu, sans superviseur externe).
     Write-Log "ERREUR FATALE boucle principale (iteration ignoree) : $($_.Exception.Message)"
   }
 
+    Flush-Logs
     Start-Sleep -Seconds $IntervalleSecondes
 }
