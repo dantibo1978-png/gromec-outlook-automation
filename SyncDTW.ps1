@@ -78,7 +78,7 @@ $DossierCachePO     = "U:\GromecOutlook\cache_po"  # meme cache que VerifierConf
 
 # Parametres configurables charges depuis Firebase
 $Script:ParamPurgeLogsJours       = 3
-$Script:ParamPurgeHistoriqueJours = 7
+$Script:ParamPurgeHistoriqueJours = 2
 $Script:ParamNomAcheteur          = "Daniel Thibault"
 $Script:ParamAdresse1             = "1911 Rue des Outardes"
 $Script:ParamAdresse2             = "Chicoutimi QC G7K 1C3"
@@ -147,7 +147,8 @@ function Invoke-PurgeHistoriqueTraite {
             if ($dateEntree -gt $cutoff) { continue }
 
             $traite = $false
-            if ($entree.statut -eq 'OK' -and $entree.syncSAP -eq $true) { $traite = $true }
+            if ($entree.statut -eq 'OK' -or $entree.statut -eq 'OK_PARTIEL') { $traite = $true }
+            if ($entree.resolu -eq $true) { $traite = $true }
             if ($entree.statut -eq 'NON_APPARIE' -and $entree.resolu -eq $true) { $traite = $true }
 
             if ($traite) {
@@ -155,7 +156,7 @@ function Invoke-PurgeHistoriqueTraite {
                 $nb++
             }
         }
-        if ($nb -gt 0) { Write-Log "INFO  Purge historique : $nb entree(s) traitee(s) de plus de 7 jours supprimee(s)." }
+        if ($nb -gt 0) { Write-Log "INFO  Purge historique : $nb entree(s) traitee(s) de plus de $($Script:ParamPurgeHistoriqueJours) jour(s) supprimee(s)." }
     } catch {}
 }
 

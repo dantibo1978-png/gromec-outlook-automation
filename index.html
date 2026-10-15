@@ -1136,7 +1136,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-14 10:45";
+const DERNIERE_MAJ_CODE = "2026-10-15 09:00";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -1162,7 +1162,9 @@ function fmtPrix(v, devise){
 
 // ── Chargement historique (SSE temps réel) ──────────────────────────────
 let donneesMap = {};
-let sseHistorique = null;
+let sseHistorique = null; // legacy — remplacé par polling
+let pollHistoriqueTimer = null;
+let pollLogsTimer = null;
 
 function trierDonnees(){
   donnees = Object.values(donneesMap);
@@ -1193,7 +1195,12 @@ async function chargerDonnees(){
   rendreTout();
 }
 
-function demarrerSSEHistorique(){
+function demarrerPollingHistorique(){
+  if (pollHistoriqueTimer) clearInterval(pollHistoriqueTimer);
+  pollHistoriqueTimer = setInterval(chargerDonnees, 30000);
+}
+
+function demarrerSSEHistorique_LEGACY(){
   if (sseHistorique) sseHistorique.close();
   const url = FIREBASE_URL + 'gromec_vba/historique.json?orderBy="$key"&limitToLast=100';
   sseHistorique = new EventSource(url);
@@ -2045,7 +2052,7 @@ document.querySelectorAll('.filter-chip').forEach(chip => {
   });
 });
 
-demarrerSSEHistorique();
+demarrerPollingHistorique();
 chargerEtatProgramme();
 
 async function declencherConfirmationFournisseur(id, btnEl){
@@ -2120,39 +2127,9 @@ function chargerLogs(){
     .catch(() => {});
 }
 
-function demarrerSSELogs(){
-  if (sseLogs) sseLogs.close();
-  const url = FIREBASE_URL + 'gromec_vba/logs.json?orderBy="$key"&limitToLast=300';
-  sseLogs = new EventSource(url);
-  let initRecu = false;
-  sseLogs.addEventListener('put', ev => {
-    try {
-      const msg = JSON.parse(ev.data);
-      if (msg.path === '/') {
-        if (initRecu) return;
-        initRecu = true;
-        logsData = msg.data || {};
-      } else {
-        const cle = msg.path.split('/').filter(Boolean)[0];
-        if (msg.data === null) { delete logsData[cle]; }
-        else { logsData[cle] = msg.data; }
-      }
-      rendreLogs();
-    } catch(e) {}
-  });
-  sseLogs.addEventListener('patch', ev => {
-    try {
-      const msg = JSON.parse(ev.data);
-      const cle = msg.path.split('/').filter(Boolean)[0];
-      if (cle && logsData[cle] && msg.data) Object.assign(logsData[cle], msg.data);
-      else if (msg.path === '/' && msg.data) Object.assign(logsData, msg.data);
-      rendreLogs();
-    } catch(e) {}
-  });
-  sseLogs.onerror = () => {
-    sseLogs.close();
-    setTimeout(demarrerSSELogs, 15000);
-  };
+function demarrerPollingLogs(){
+  if (pollLogsTimer) clearInterval(pollLogsTimer);
+  pollLogsTimer = setInterval(chargerLogs, 30000);
 }
 
 function rendreLogs(){
@@ -2263,7 +2240,7 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
   });
 })();
 
-demarrerSSELogs();
+demarrerPollingLogs();
 </script>
 
 <script>
