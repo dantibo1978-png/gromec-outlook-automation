@@ -1136,7 +1136,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-15 09:00";
+const DERNIERE_MAJ_CODE = "2026-10-15 12:30";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -1197,7 +1197,7 @@ async function chargerDonnees(){
 
 function demarrerPollingHistorique(){
   if (pollHistoriqueTimer) clearInterval(pollHistoriqueTimer);
-  pollHistoriqueTimer = setInterval(chargerDonnees, 30000);
+  pollHistoriqueTimer = setInterval(chargerDonnees, 60000);
 }
 
 function demarrerSSEHistorique_LEGACY(){
@@ -2118,7 +2118,7 @@ function toggleLogPanel(){
 let sseLogs = null;
 
 function chargerLogs(){
-  fetch(FIREBASE_URL + 'gromec_vba/logs.json?orderBy="$key"&limitToLast=300')
+  fetch(FIREBASE_URL + 'gromec_vba/logs.json?orderBy="$key"&limitToLast=50')
     .then(r => r.json())
     .then(json => {
       logsData = json || {};
@@ -2129,7 +2129,7 @@ function chargerLogs(){
 
 function demarrerPollingLogs(){
   if (pollLogsTimer) clearInterval(pollLogsTimer);
-  pollLogsTimer = setInterval(chargerLogs, 30000);
+  pollLogsTimer = setInterval(chargerLogs, 60000);
 }
 
 function rendreLogs(){

@@ -1181,8 +1181,8 @@ while ($true) {
         catch { Write-Log "ERREUR Invoke-EnvoiRelancesAutomatiques : $($_.Exception.Message)" }
     }
 
-    # Verifier les brouillons Outlook pour ajouter "NE PAS UTILISER DELIVRO" (toutes les 10s)
-    if (((Get-Date) - $Script:DernierCheckBrouillons).TotalSeconds -ge 10) {
+    # Verifier les brouillons Outlook pour ajouter "NE PAS UTILISER DELIVRO" (toutes les 60s)
+    if (((Get-Date) - $Script:DernierCheckBrouillons).TotalSeconds -ge 60) {
         Sync-ListeNoDelivro
         $outlookBrouillon = if ($Script:OutlookRelance) { $Script:OutlookRelance } else { try { New-Object -ComObject Outlook.Application } catch { $null } }
         if ($outlookBrouillon) {
