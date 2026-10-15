@@ -549,6 +549,25 @@
     background:var(--ecart-bg);
     animation:none;
   }
+  .dtw-btn.recommande{
+    animation:pulse-recommande 1.5s ease-in-out infinite;
+    border-color:var(--accent);
+    box-shadow:0 0 8px rgba(94,168,255,0.3);
+  }
+  @keyframes pulse-recommande{
+    0%,100%{ background:rgba(94,168,255,0.08); }
+    50%{ background:rgba(94,168,255,0.25); }
+  }
+  .prix-edit{
+    width:75px;
+    background:var(--panel-2);
+    border:1px solid var(--rule);
+    border-radius:4px;
+    color:var(--text);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    padding:2px 5px;
+  }
 
   .dtw-statut-msg{
     font-family:'IBM Plex Mono', monospace;
@@ -1136,7 +1155,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-15 13:15";
+const DERNIERE_MAJ_CODE = "2026-10-15 13:45";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -1605,7 +1624,7 @@ function rendreFiche(d){
       <td class="desc">${a.sapDesc ?? ''}</td>
       <td>${a.sapQty ?? ''} / <input type="number" class="qty-edit" value="${a.pdfQty ?? 0}" onclick="event.stopPropagation()" onchange="modifierQuantite(event, '${d.id}', ${a.sapLigne}, this.value)"></td>
       <td class="${diffQtyClass}">${a.diffQty ?? 0}</td>
-      <td>${fmtPrix(a.sapPrix, d.devise)} / ${fmtPrix(a.pdfPrix, d.devise)}</td>
+      <td>${fmtPrix(a.sapPrix, d.devise)} / <input type="number" step="0.0001" class="prix-edit" value="${a.pdfPrix ?? 0}" onclick="event.stopPropagation()" onchange="modifierPrix(event, '${d.id}', ${a.sapLigne}, this.value)"></td>
       <td class="${diffUnitClass}">${a.diffUnit ? a.diffUnit.toFixed(4) : '0.0000'}</td>
       <td class="${(() => { const pct = (a.sapPrix && a.sapPrix !== 0) ? ((a.pdfPrix - a.sapPrix) / a.sapPrix * 100) : 0; return Math.abs(pct) > 0.01 ? 'diff-pos' : 'diff-zero'; })()}">${(() => { const pct = (a.sapPrix && a.sapPrix !== 0) ? ((a.pdfPrix - a.sapPrix) / a.sapPrix * 100) : 0; return pct.toFixed(2) + ' %'; })()}</td>
       <td>${tagHtml}</td>
@@ -1711,15 +1730,24 @@ function rendreFiche(d){
         ${resoluHtml}
         ${totauxHtml}
         <div class="dtw-row">
-          <button class="${classeBtnDtw(true,false)}" onclick="declencherDTW('${d.id}', true, false, this)">
+          ${(() => {
+            const ecarts = articles.filter(a => a.statut === 'ECART');
+            const aPrix = ecarts.some(a => a.diffUnit && Math.abs(a.diffUnit) > 0.0001);
+            const aQty = ecarts.some(a => a.diffQty && a.diffQty !== 0);
+            const rPrix = !dtwStatut && aPrix && !aQty ? ' recommande' : '';
+            const rQty = !dtwStatut && !aPrix && aQty ? ' recommande' : '';
+            const rDeux = !dtwStatut && aPrix && aQty ? ' recommande' : '';
+            return `
+          <button class="${classeBtnDtw(true,false)}${rPrix}" onclick="declencherDTW('${d.id}', true, false, this)">
             ${labelBtnDtw('Copier les prix vers SAP', true, false)}
           </button>
-          <button class="${classeBtnDtw(false,true)}" onclick="declencherDTW('${d.id}', false, true, this)">
+          <button class="${classeBtnDtw(false,true)}${rQty}" onclick="declencherDTW('${d.id}', false, true, this)">
             ${labelBtnDtw('Copier les quantités vers SAP', false, true)}
           </button>
-          <button class="${classeBtnDtw(true,true)}" onclick="declencherDTW('${d.id}', true, true, this)">
+          <button class="${classeBtnDtw(true,true)}${rDeux}" onclick="declencherDTW('${d.id}', true, true, this)">
             ${labelBtnDtw('Copier les 2 vers SAP', true, true)}
-          </button>
+          </button>`;
+          })()}
         </div>
         <div class="confirmer-row">
           <button class="confirmer-btn ${d.envoyer_confirmation === 'envoye' ? 'confirmer-envoye' : d.envoyer_confirmation === 'en_attente' ? 'confirmer-attente' : ''}" onclick="event.stopPropagation(); declencherConfirmationFournisseur('${d.id}', this)">
@@ -1868,6 +1896,37 @@ async function modifierQuantite(event, ficheId, ligne, nouvelleValeur){
     });
   }catch(e){
     console.error('Erreur lors de la mise à jour de la quantité', e);
+  }
+}
+
+async function modifierPrix(event, ficheId, ligne, nouvelleValeur){
+  event.stopPropagation();
+  const entree = donnees.find(d => d.id === ficheId);
+  if (!entree || !entree.articles) return;
+
+  const nouveauPrix = parseFloat(nouvelleValeur);
+  if (isNaN(nouveauPrix)) return;
+
+  const articles = entree.articles.map(a => {
+    if (a.sapLigne !== ligne) return a;
+    const diffUnit = nouveauPrix - (a.sapPrix ?? 0);
+    const diffQtyNonZero = a.diffQty && a.diffQty !== 0;
+    const statut = (Math.abs(diffUnit) > 0.0001 || diffQtyNonZero) ? 'ECART' : 'OK';
+    return { ...a, pdfPrix: nouveauPrix, diffUnit, statut };
+  });
+
+  entree.articles = articles;
+  entree.nbEcarts = articles.filter(a => a.statut === 'ECART').length;
+  rendreTout();
+
+  try{
+    await fetch(FIREBASE_URL + 'gromec_vba/historique/' + ficheId + '.json', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ articles, nbEcarts: entree.nbEcarts })
+    });
+  }catch(e){
+    console.error('Erreur lors de la mise à jour du prix', e);
   }
 }
 
