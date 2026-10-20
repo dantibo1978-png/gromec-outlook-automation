@@ -1155,7 +1155,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-20 20:15";
+const DERNIERE_MAJ_CODE = "2026-10-20 20:30";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -3095,7 +3095,8 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
   let escompteMap = new Map();
   let fournisseurDetecte = null;
 
-  document.getElementById('btnPrixFournisseur').addEventListener('click', () => {
+  const btnPF = document.getElementById('btnPrixFournisseur');
+  if (btnPF) btnPF.addEventListener('click', () => {
     overlay.classList.add('open');
     resetPLF();
     if (!sapZone.value.trim()) {
