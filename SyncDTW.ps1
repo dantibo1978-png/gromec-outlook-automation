@@ -1339,8 +1339,8 @@ while ($true) {
         }
     }
 
-    # ── Queues DTW : verifiees toutes les 180s avec shallow read d'abord ────────
-    $checkQueues = (((Get-Date) - $Script:DernierCheckQueues).TotalSeconds -ge 180)
+    # ── Queues DTW : verifiees toutes les 60s avec shallow read d'abord ────────
+    $checkQueues = (((Get-Date) - $Script:DernierCheckQueues).TotalSeconds -ge 60)
     if ($checkQueues) { $Script:DernierCheckQueues = Get-Date }
 
     # ── Import prix depuis le dashboard (drop zone) ────────────────────────────
