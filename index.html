@@ -1155,7 +1155,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-20 09:30";
+const DERNIERE_MAJ_CODE = "2026-10-20 09:45";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2403,9 +2403,15 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
     btnSend.style.opacity = btnSend.disabled ? '0.5' : '1';
     status.style.display = texteBrut.trim() ? 'block' : 'none';
     status.style.color = transforme ? 'var(--ok)' : 'var(--muted)';
-    status.textContent = transforme
-      ? (nbArticles + ' article(s) detecte(s) — pret pour import DTW (Liste 02).')
-      : (texteBrut.trim() ? 'Format non reconnu. Utilisez un tableau SAP ou 2 colonnes (prix + code article).' : '');
+    if (transforme) {
+      status.textContent = nbArticles + ' article(s) detecte(s) — pret pour import DTW (Liste 02).';
+    } else if (texteBrut.trim()) {
+      const dbgLignes = texteBrut.split(/\r?\n/).filter(l => l.trim() !== '');
+      const dbgEntetes = dbgLignes.length > 0 ? dbgLignes[0].split('\t').map(h => h.trim()) : [];
+      status.textContent = 'Format non reconnu. En-tetes: [' + dbgEntetes.slice(0,8).join(', ') + ']. Colonnes: ' + dbgEntetes.length;
+    } else {
+      status.textContent = '';
+    }
   }
   pasteZone.addEventListener('input', majPasteZone);
   pasteZone.addEventListener('paste', () => setTimeout(majPasteZone, 50));
