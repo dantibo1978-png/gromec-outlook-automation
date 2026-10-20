@@ -1155,7 +1155,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-15 13:45";
+const DERNIERE_MAJ_CODE = "2026-10-20 09:30";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2345,8 +2345,9 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
     if (lignes.length < 1) return null;
 
     const entetes = lignes[0].split('\t').map(h => h.trim());
-    const idxArticle = entetes.findIndex(h => h === "Numéro d'article");
-    const idxPrix = entetes.findIndex(h => h === 'Prix coûtant');
+    function norm(s){ return s.normalize('NFC').toLowerCase().replace(/[‘’`´]/g, "'").replace(/\s+/g,' '); }
+    const idxArticle = entetes.findIndex(h => norm(h).includes("num") && norm(h).includes("article"));
+    const idxPrix = entetes.findIndex(h => norm(h) === 'prix coûtant' || norm(h) === 'prix coutant' || norm(h).includes('prix co'));
 
     const sortie = [
       'ParentKey\tLineNum\tPriceList\tPrice\tCurrency\tBasePriceList\tFactor\tManual\tAutoUpdate',
