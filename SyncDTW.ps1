@@ -945,6 +945,12 @@ function Invoke-TraiterReclassification {
     Write-Log "INFO  Reclassification manuelle : $expediteur -> $classification"
 
     try {
+        # Supprimer la reclassification de Firebase EN PREMIER pour eviter une boucle
+        # infinie si VerifierConfirmation.ps1 crashe avant la fin du traitement.
+        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassifications/$CleFirebase.json" `
+            -Method Delete -TimeoutSec 15 | Out-Null
+        Write-Log "INFO  Reclassification '$CleFirebase' supprimee de Firebase (pre-traitement)."
+
         # Mettre a jour fournisseurs_appris.csv
         Set-ReponseFournisseur -Adresse $expediteur -EstConfirmation $estConfirmation
 
@@ -955,11 +961,16 @@ function Invoke-TraiterReclassification {
             $ps1Path = "U:\GromecOutlook\VerifierConfirmation.ps1"
 
             Write-Log "INFO  Retraitement force : lancement de VerifierConfirmation.ps1 pour $sujet"
-            Start-Process -FilePath "powershell.exe" `
+            $proc = Start-Process -FilePath "powershell.exe" `
                 -ArgumentList "-ExecutionPolicy Bypass -File `"$ps1Path`" -EntryID `"$entryID`" -StoreID `"$storeID`" -Force" `
                 -WindowStyle Hidden `
-                -Wait
-            Write-Log "INFO  Retraitement termine pour : $sujet"
+                -PassThru
+            if (-not $proc.WaitForExit(300000)) {
+                Write-Log "WARN  Retraitement timeout (5 min) pour : $sujet -- processus tue."
+                try { $proc.Kill() } catch {}
+            } else {
+                Write-Log "INFO  Retraitement termine pour : $sujet"
+            }
         }
 
         # Enregistrer comme correction pour le few-shot learning
@@ -982,15 +993,11 @@ function Invoke-TraiterReclassification {
             Write-Log "WARN  Impossible d'enregistrer la correction : $($_.Exception.Message)"
         }
 
-        # Effacer cette entree specifique dans Firebase (pas toute la liste)
-        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassifications/$CleFirebase.json" `
-            -Method Delete `
-            -TimeoutSec 15 | Out-Null
-
         Write-Log "INFO  Reclassification '$CleFirebase' traitee avec succes."
 
     } catch {
         Write-Log "ERREUR reclassification '$CleFirebase' : $($_.Exception.Message)"
+        try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassifications/$CleFirebase.json" -Method Delete -TimeoutSec 10 | Out-Null } catch {}
     }
 }
 
