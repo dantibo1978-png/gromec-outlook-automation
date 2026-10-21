@@ -1295,7 +1295,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-21 09:25";
+const DERNIERE_MAJ_CODE = "2026-10-21 09:35";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2294,65 +2294,7 @@ async function verifierFilesAttente(){
 }
 function demarrerPollingQueues(){ setInterval(verifierFilesAttente, 15000); }
 
-// ── NOTES POST-IT ──────────────────────────────────────────────────────────
-let mesNotes = [];
-async function chargerNotes(){
-  try {
-    const rep = await fetch(FIREBASE_URL + 'gromec_vba/notes.json');
-    const data = await rep.json();
-    mesNotes = [];
-    if (data && typeof data === 'object') {
-      for (const [k,v] of Object.entries(data)) { mesNotes.push({ id:k, ...v }); }
-    }
-    mesNotes.sort((a,b) => (b.ts||'').localeCompare(a.ts||''));
-    rendreNotes();
-  } catch(e){}
-}
-function rendreNotes(){
-  const c = document.getElementById('notesContainer');
-  if (!c) return;
-  c.innerHTML = mesNotes.map(n => {
-    const d = n.ts ? new Date(n.ts) : null;
-    const ds = d ? d.toLocaleDateString('fr-CA',{day:'numeric',month:'short'}) + ' ' + d.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}) : '';
-    return `<div class="note-card" data-id="${n.id}">
-      <button class="note-del" onclick="supprimerNote('${n.id}')" title="Supprimer">✕</button>
-      <div class="note-text" contenteditable="true" onblur="sauvegarderNote('${n.id}', this.textContent)">${esc(n.texte||'')}</div>
-      ${ds ? `<div class="note-ts">${ds}</div>` : ''}
-    </div>`;
-  }).join('');
-}
-async function ajouterNote(){
-  const ts = new Date().toISOString();
-  try {
-    const rep = await fetch(FIREBASE_URL + 'gromec_vba/notes.json', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ texte:'', ts })
-    });
-    const data = await rep.json();
-    mesNotes.unshift({ id: data.name, texte:'', ts });
-    rendreNotes();
-    const first = document.querySelector('#notesContainer .note-text');
-    if (first) first.focus();
-  } catch(e){}
-}
-async function sauvegarderNote(id, texte){
-  try {
-    await fetch(FIREBASE_URL + 'gromec_vba/notes/' + id + '.json', {
-      method:'PATCH', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ texte })
-    });
-    const n = mesNotes.find(n => n.id === id);
-    if (n) n.texte = texte;
-  } catch(e){}
-}
-async function supprimerNote(id){
-  try {
-    await fetch(FIREBASE_URL + 'gromec_vba/notes/' + id + '.json', { method:'DELETE' });
-    mesNotes = mesNotes.filter(n => n.id !== id);
-    rendreNotes();
-  } catch(e){}
-}
-chargerNotes();
+// notes chargées dans un script séparé en bas de page
 
 async function declencherConfirmationFournisseur(id, btnEl){
   if (btnEl.classList.contains('confirmer-envoye') || btnEl.classList.contains('confirmer-attente')) return;
@@ -4145,6 +4087,61 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
     }
   });
 })();
+</script>
+
+<script>
+// ── NOTES POST-IT ──────────────────────────────────────────────────────────
+var mesNotes = [];
+var NOTES_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/gromec_vba/notes";
+function escNote(s){ var d=document.createElement('span'); d.textContent=s; return d.innerHTML; }
+function chargerNotes(){
+  fetch(NOTES_URL + '.json').then(function(r){return r.json();}).then(function(data){
+    mesNotes = [];
+    if (data && typeof data === 'object') {
+      Object.keys(data).forEach(function(k){ mesNotes.push({id:k, texte:data[k].texte||'', ts:data[k].ts||''}); });
+    }
+    mesNotes.sort(function(a,b){ return (b.ts||'').localeCompare(a.ts||''); });
+    rendreNotes();
+  }).catch(function(){});
+}
+function rendreNotes(){
+  var c = document.getElementById('notesContainer');
+  if (!c) return;
+  c.innerHTML = mesNotes.map(function(n){
+    var d = n.ts ? new Date(n.ts) : null;
+    var ds = d ? d.toLocaleDateString('fr-CA',{day:'numeric',month:'short'}) + ' ' + d.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}) : '';
+    return '<div class="note-card" data-id="'+n.id+'">' +
+      '<button class="note-del" onclick="supprimerNote(\''+n.id+'\')" title="Supprimer">✕</button>' +
+      '<div class="note-text" contenteditable="true" onblur="sauvegarderNote(\''+n.id+'\', this.textContent)">'+escNote(n.texte)+'</div>' +
+      (ds ? '<div class="note-ts">'+ds+'</div>' : '') +
+    '</div>';
+  }).join('');
+}
+function ajouterNote(){
+  var ts = new Date().toISOString();
+  fetch(NOTES_URL + '.json', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({texte:'', ts:ts})
+  }).then(function(r){return r.json();}).then(function(data){
+    mesNotes.unshift({id:data.name, texte:'', ts:ts});
+    rendreNotes();
+    var first = document.querySelector('#notesContainer .note-text');
+    if (first) first.focus();
+  }).catch(function(e){ alert('Erreur: '+e.message); });
+}
+function sauvegarderNote(id, texte){
+  fetch(NOTES_URL + '/' + id + '.json', {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({texte:texte})
+  }).catch(function(){});
+}
+function supprimerNote(id){
+  fetch(NOTES_URL + '/' + id + '.json', {method:'DELETE'}).then(function(){
+    mesNotes = mesNotes.filter(function(n){return n.id !== id;});
+    rendreNotes();
+  }).catch(function(){});
+}
+chargerNotes();
 </script>
 
 </body>
