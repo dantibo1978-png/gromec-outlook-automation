@@ -42,9 +42,83 @@
     *{animation-duration:0.01ms !important; transition-duration:0.01ms !important;}
   }
 
+  /* ---------- SIDEBAR ---------- */
+  .sidebar{
+    position:fixed; top:0; left:0; bottom:0; width:230px;
+    background:var(--panel); border-right:1px solid var(--rule);
+    display:flex; flex-direction:column; z-index:15;
+    overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--rule) transparent;
+  }
+  .sidebar-brand{
+    padding:20px 18px 14px;
+    border-bottom:1px solid var(--rule);
+  }
+  .sidebar-brand .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; letter-spacing:0.1em;
+    color:var(--accent); text-transform:uppercase; margin:0 0 4px;
+  }
+  .sidebar-brand h2{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:15px; font-weight:700; margin:0 0 2px; color:var(--text);
+  }
+  .sidebar-brand .derniere-maj{
+    font-size:10px; color:var(--muted); font-family:'IBM Plex Mono',monospace;
+  }
+  .sidebar-section{
+    padding:14px 14px 8px;
+  }
+  .sidebar-section-title{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--muted-2); margin:0 0 8px; padding:0 4px;
+  }
+  .sidebar-link{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 12px; border-radius:7px; margin-bottom:3px;
+    font-size:13px; color:var(--muted); text-decoration:none;
+    transition:background .12s, color .12s; cursor:pointer;
+    border:none; background:none; width:100%; text-align:left;
+    font-family:'Inter',sans-serif;
+  }
+  .sidebar-link:hover{ background:rgba(255,255,255,0.06); color:var(--text); }
+  .sidebar-link svg{ width:16px; height:16px; flex-shrink:0; opacity:0.6; }
+  .sidebar-link:hover svg{ opacity:1; }
+  .sidebar-link-accent{ color:var(--accent); }
+  .sidebar-link-accent svg{ opacity:0.8; }
+  .sidebar-link-warn{ color:#f59e0b; }
+  .sidebar-link-warn svg{ opacity:0.8; }
+  .sidebar-toggle-row{
+    padding:14px 18px; border-top:1px solid var(--rule); margin-top:auto;
+  }
+  .sidebar-queue{
+    padding:10px 14px; border-top:1px solid var(--rule);
+  }
+  .sidebar-queue-title{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--muted-2); margin:0 0 8px; padding:0 4px;
+  }
+  .sq-chip{
+    display:flex; align-items:center; gap:8px;
+    padding:5px 10px; margin-bottom:4px; border-radius:6px;
+    font-size:12px; color:var(--warn);
+    font-family:'IBM Plex Mono',monospace;
+    background:rgba(224,169,62,0.06);
+  }
+  .sq-chip .q-dot{
+    width:6px; height:6px; border-radius:50%; background:var(--warn);
+    animation:pulse-queue 1.2s ease-in-out infinite; flex-shrink:0;
+  }
+
+  /* ---------- MAIN LAYOUT ---------- */
+  .app-content{
+    margin-left:230px;
+  }
+
   /* ---------- HEADER ---------- */
   header{
-    padding:24px 32px 20px;
+    padding:18px 32px 14px;
     max-width:1400px;
     margin:0 auto;
     border-bottom:1px solid var(--rule);
@@ -52,49 +126,32 @@
     top:0;
     z-index:10;
     background:var(--bg);
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
   }
-  .eyebrow{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:14px;
-    letter-spacing:0.12em;
-    color:var(--accent);
-    text-transform:uppercase;
-    margin:0 0 8px;
-  }
-  .derniere-maj{
-    color:var(--muted);
-    text-transform:none;
-    letter-spacing:normal;
-    font-weight:400;
-  }
-  h1{
+  .header-left{ flex:1; min-width:0; }
+  .header-left h1{
     font-family:'Space Grotesk', sans-serif;
-    font-size:28px;
-    font-weight:700;
-    margin:0 0 6px;
-    letter-spacing:-0.01em;
+    font-size:22px; font-weight:700; margin:0 0 2px; letter-spacing:-0.01em;
   }
-  .subtitle{
-    color:var(--muted);
-    font-size:14.5px;
-    margin:0;
+  .header-left .subtitle{
+    color:var(--muted); font-size:13px; margin:0;
   }
   .stat-row{
     display:flex;
-    gap:12px;
-    margin-top:22px;
+    gap:10px;
     flex-wrap:wrap;
+    flex-shrink:0;
   }
   .stat-pill{
     font-family:'IBM Plex Mono', monospace;
-    font-size:14px;
-    padding:7px 14px;
+    font-size:13px;
+    padding:5px 12px;
     border-radius:6px;
     border:1px solid var(--rule);
     background:var(--panel);
     display:flex;
     align-items:center;
-    gap:8px;
+    gap:7px;
   }
   .stat-pill .dot{width:7px;height:7px;border-radius:50%;}
   .dot-ok{background:var(--ok);}
@@ -108,28 +165,19 @@
   .stat-pill-clickable:hover{background:rgba(255,255,255,0.08);}
   @keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:0.3;}}
 
-  /* ---------- FILE D'ATTENTE ---------- */
-  .queue-bar{
-    max-width:1400px; margin:10px auto 0; padding:0 32px;
-    display:none; align-items:center; gap:10px; flex-wrap:wrap;
+  @media (max-width:900px){
+    .sidebar{ width:56px; }
+    .sidebar-brand h2, .sidebar-brand .derniere-maj, .sidebar-section-title,
+    .sidebar-link span, .sidebar-queue-title, .sq-chip span{ display:none; }
+    .sidebar-link{ justify-content:center; padding:10px; }
+    .sidebar-toggle-row .toggle-label{ display:none; }
+    .app-content{ margin-left:56px; }
   }
-  .queue-bar.visible{display:flex;}
-  .queue-chip{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:13px; padding:5px 12px; border-radius:6px;
-    border:1px solid var(--rule); background:var(--panel);
-    display:inline-flex; align-items:center; gap:7px;
-    color:var(--warn);
-  }
-  .queue-chip .q-dot{
-    width:7px; height:7px; border-radius:50%; background:var(--warn);
-    animation:pulse-queue 1.2s ease-in-out infinite;
-  }
+
   @keyframes pulse-queue{
     0%,100%{opacity:1; transform:scale(1);}
     50%{opacity:0.4; transform:scale(0.7);}
   }
-  .queue-chip .q-age{color:var(--muted); font-size:11px; margin-left:4px;}
 
   .panneau-dtw{background:var(--card); border:1px solid var(--border); border-radius:8px; margin:0 0 12px 0; overflow:hidden;}
   .panneau-dtw-ligne{display:flex; justify-content:space-between; align-items:center; padding:8px 14px; border-bottom:1px solid var(--border); gap:10px;}
@@ -157,14 +205,14 @@
   .toolbar{
     max-width:1400px;
     margin:0 auto;
-    padding:12px 32px;
+    padding:10px 32px;
     position:sticky;
     top:0;
     z-index:9;
     background:var(--bg);
     border-bottom:1px solid var(--rule);
     display:flex;
-    gap:10px;
+    gap:8px;
     flex-wrap:wrap;
     align-items:center;
   }
@@ -670,7 +718,7 @@
   .log-panel{
     position:fixed;
     bottom:0;
-    left:0;
+    left:230px;
     right:0;
     height:200px;
     background:#0d1117;
@@ -778,26 +826,17 @@
   @media (max-width:600px){
     .fiche-meta{display:none;}
     th:nth-child(6), td:nth-child(6), th:nth-child(7), td:nth-child(7), th:nth-child(8), td:nth-child(8){display:none;}
-    .log-panel{ height:150px; }
+    .log-panel{ height:150px; left:56px; }
   }
-  .outils-row{
-    display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; align-items:center;
-  }
-  .outil-btn{
-    font-family:'IBM Plex Mono',monospace; font-size:13px;
-    padding:9px 16px; border-radius:8px;
-    border:1px solid var(--rule); background:var(--panel-2); color:var(--text);
-    text-decoration:none; white-space:nowrap; transition:border-color .15s, background .15s;
-  }
-  .outil-btn:hover{ border-color:var(--accent); color:var(--accent); background:var(--panel); }
+  .outils-row{ display:none; }
   .btn-settings{
-    width:38px; height:38px; border-radius:8px; border:1px solid var(--rule);
-    background:var(--panel-2); color:var(--muted); cursor:pointer;
+    width:34px; height:34px; border-radius:7px; border:1px solid var(--rule);
+    background:var(--panel); color:var(--muted); cursor:pointer;
     display:flex; align-items:center; justify-content:center;
-    transition:border-color .15s, color .15s, background .15s; margin-left:auto;
+    transition:border-color .15s, color .15s, background .15s; flex-shrink:0;
   }
-  .btn-settings:hover{ border-color:var(--accent); color:var(--accent); background:var(--panel); }
-  .btn-settings svg{ width:18px; height:18px; }
+  .btn-settings:hover{ border-color:var(--accent); color:var(--accent); }
+  .btn-settings svg{ width:16px; height:16px; }
 
   /* ---------- MODAL PARAMETRES ---------- */
   .modal-overlay{
@@ -925,30 +964,80 @@
 </head>
 <body>
 
-<header>
-  <p class="eyebrow">Gromec Inc. — Achats <span id="derniereMaj" class="derniere-maj"></span></p>
-  <h1>Vérification des commandes / Remplacement de Charles St-Laurent</h1>
-  <p class="subtitle">Confirmations fournisseurs comparées automatiquement aux bons de commande envoyés.</p>
-  <div class="stat-row" id="statRow"></div>
-  <div id="panneauDTW" class="panneau-dtw" style="display:none"></div>
-  <div id="queueBar" class="queue-bar"></div>
-  <div class="outils-row">
-    <a class="outil-btn" href="/outils/relance-fournisseur.html" target="_blank" rel="noopener">📄 Relance fournisseur</a>
-    <a class="outil-btn" href="/outils/analyseur-sap.html" target="_blank" rel="noopener">📦 Analyseur commandes SAP</a>
-    <a class="outil-btn" href="/outils/pt-non-commande.html" target="_blank" rel="noopener">✅ Vérification PT non commandés</a>
-    <a class="outil-btn" href="/outils/recherche-commandes.html" target="_blank" rel="noopener">🔍 Recherche commandes envoyées</a>
-    <a class="outil-btn" href="/outils/delais-produits.html" target="_blank" rel="noopener">⏱ Délais produits (LeadTime)</a>
-    <button class="btn-settings" id="btnSettings" title="Paramètres">
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <p class="eyebrow">Gromec Inc.</p>
+    <h2>Achats</h2>
+    <span class="derniere-maj" id="derniereMaj"></span>
+  </div>
+
+  <div class="sidebar-section">
+    <p class="sidebar-section-title">Outils</p>
+    <a class="sidebar-link" href="/outils/relance-fournisseur.html" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span>Relance fournisseur</span>
+    </a>
+    <a class="sidebar-link" href="/outils/analyseur-sap.html" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+      <span>Analyseur SAP</span>
+    </a>
+    <a class="sidebar-link" href="/outils/pt-non-commande.html" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <span>PT non commandés</span>
+    </a>
+    <a class="sidebar-link" href="/outils/recherche-commandes.html" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <span>Recherche commandes</span>
+    </a>
+    <a class="sidebar-link" href="/outils/delais-produits.html" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span>Délais produits</span>
+    </a>
+  </div>
+
+  <div class="sidebar-section">
+    <p class="sidebar-section-title">Imports DTW</p>
+    <button class="sidebar-link sidebar-link-accent" id="btnImportPrix">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <span>Import prix</span>
+    </button>
+    <button class="sidebar-link sidebar-link-accent" id="btnMatchListe1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      <span>Import Allpriser</span>
+    </button>
+    <button class="sidebar-link sidebar-link-warn" id="btnFullbox">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      <span>Import fullbox</span>
+    </button>
+  </div>
+
+  <div class="sidebar-queue" id="queueBar" style="display:none"></div>
+
+  <div class="sidebar-toggle-row">
+    <div class="toggle-programme" id="toggleProgramme" onclick="basculerProgramme()" title="Activer/désactiver le traitement automatique Outlook">
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <span class="toggle-label">Chargement…</span>
+    </div>
+    <button class="btn-settings" id="btnSettings" title="Paramètres" style="margin-top:10px;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
   </div>
+</nav>
+
+<!-- APP CONTENT -->
+<div class="app-content">
+
+<header>
+  <div class="header-left">
+    <h1>Vérification des commandes</h1>
+    <p class="subtitle">Confirmations fournisseurs vs bons de commande</p>
+  </div>
+  <div class="stat-row" id="statRow"></div>
 </header>
+<div id="panneauDTW" class="panneau-dtw" style="display:none;max-width:1400px;margin:0 auto;"></div>
 
 <div class="toolbar">
-  <div class="toggle-programme" id="toggleProgramme" onclick="basculerProgramme()" title="Activer/désactiver le traitement automatique Outlook">
-    <div class="toggle-track"><div class="toggle-thumb"></div></div>
-    <span class="toggle-label">Chargement…</span>
-  </div>
   <input type="text" class="search-box" id="searchBox" placeholder="Filtrer par fournisseur ou sujet…">
   <button class="filter-chip active" data-filter="tous">Tous</button>
   <button class="filter-chip" data-filter="ecart">Écarts</button>
@@ -957,18 +1046,6 @@
   <button class="refresh-btn" id="refreshBtn">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
     Actualiser
-  </button>
-  <button class="filter-chip" id="btnImportPrix" style="margin-left:auto;border-color:var(--accent);color:var(--accent);">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-    Import prix de liste ou facteur
-  </button>
-  <button class="filter-chip" id="btnMatchListe1" style="border-color:var(--accent);color:var(--accent);">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-    Import Allpriser
-  </button>
-  <button class="filter-chip" id="btnFullbox" style="border-color:#f59e0b;color:#f59e0b;">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-    Import fullbox
   </button>
 </div>
 
@@ -1173,17 +1250,17 @@
   </div>
 </main>
 
-<footer>Mis à jour automatiquement depuis Firebase — données poussées par VerifierConfirmation.ps1</footer>
+</div><!-- /app-content -->
 
 <script>
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-21 08:30";
+const DERNIERE_MAJ_CODE = "2026-10-21 09:00";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
-  if (majEl) majEl.textContent = '· Dernière mise à jour du site : ' + DERNIERE_MAJ_CODE;
+  if (majEl) majEl.textContent = 'MAJ ' + DERNIERE_MAJ_CODE;
 });
 
 let donnees = [];
@@ -2166,13 +2243,14 @@ async function verifierFilesAttente(){
   if (confAttente > 0) chips.push({ label: 'Confirmation fournisseur', count: confAttente });
 
   if (chips.length === 0) {
-    bar.classList.remove('visible');
+    bar.style.display = 'none';
     bar.innerHTML = '';
   } else {
-    bar.innerHTML = chips.map(c =>
-      `<div class="queue-chip"><span class="q-dot"></span>${c.count} ${c.label} en attente</div>`
-    ).join('');
-    bar.classList.add('visible');
+    bar.innerHTML = '<p class="sidebar-queue-title">File d\'attente</p>' +
+      chips.map(c =>
+        `<div class="sq-chip"><span class="q-dot"></span><span>${c.count} ${c.label}</span></div>`
+      ).join('');
+    bar.style.display = '';
   }
 }
 function demarrerPollingQueues(){ setInterval(verifierFilesAttente, 15000); }
