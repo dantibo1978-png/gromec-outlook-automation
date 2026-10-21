@@ -1295,7 +1295,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-21 09:35";
+const DERNIERE_MAJ_CODE = "2026-10-21 09:40";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -4104,6 +4104,19 @@ function chargerNotes(){
     rendreNotes();
   }).catch(function(){});
 }
+function syncNotesFromDOM(){
+  var cards = document.querySelectorAll('#notesContainer .note-card');
+  cards.forEach(function(card){
+    var id = card.getAttribute('data-id');
+    var txt = card.querySelector('.note-text');
+    if (!id || !txt) return;
+    var n = mesNotes.find(function(m){return m.id===id;});
+    if (n && txt.textContent !== n.texte) {
+      n.texte = txt.textContent;
+      sauvegarderNote(id, n.texte);
+    }
+  });
+}
 function rendreNotes(){
   var c = document.getElementById('notesContainer');
   if (!c) return;
@@ -4118,6 +4131,7 @@ function rendreNotes(){
   }).join('');
 }
 function ajouterNote(){
+  syncNotesFromDOM();
   var ts = new Date().toISOString();
   fetch(NOTES_URL + '.json', {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -4136,6 +4150,7 @@ function sauvegarderNote(id, texte){
   }).catch(function(){});
 }
 function supprimerNote(id){
+  syncNotesFromDOM();
   fetch(NOTES_URL + '/' + id + '.json', {method:'DELETE'}).then(function(){
     mesNotes = mesNotes.filter(function(n){return n.id !== id;});
     rendreNotes();
