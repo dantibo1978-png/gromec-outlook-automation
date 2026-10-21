@@ -108,6 +108,29 @@
   .stat-pill-clickable:hover{background:rgba(255,255,255,0.08);}
   @keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:0.3;}}
 
+  /* ---------- FILE D'ATTENTE ---------- */
+  .queue-bar{
+    max-width:1400px; margin:10px auto 0; padding:0 32px;
+    display:none; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  .queue-bar.visible{display:flex;}
+  .queue-chip{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px; padding:5px 12px; border-radius:6px;
+    border:1px solid var(--rule); background:var(--panel);
+    display:inline-flex; align-items:center; gap:7px;
+    color:var(--warn);
+  }
+  .queue-chip .q-dot{
+    width:7px; height:7px; border-radius:50%; background:var(--warn);
+    animation:pulse-queue 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse-queue{
+    0%,100%{opacity:1; transform:scale(1);}
+    50%{opacity:0.4; transform:scale(0.7);}
+  }
+  .queue-chip .q-age{color:var(--muted); font-size:11px; margin-left:4px;}
+
   .panneau-dtw{background:var(--card); border:1px solid var(--border); border-radius:8px; margin:0 0 12px 0; overflow:hidden;}
   .panneau-dtw-ligne{display:flex; justify-content:space-between; align-items:center; padding:8px 14px; border-bottom:1px solid var(--border); gap:10px;}
   .panneau-dtw-ligne:last-child{border-bottom:none;}
@@ -908,6 +931,7 @@
   <p class="subtitle">Confirmations fournisseurs comparées automatiquement aux bons de commande envoyés.</p>
   <div class="stat-row" id="statRow"></div>
   <div id="panneauDTW" class="panneau-dtw" style="display:none"></div>
+  <div id="queueBar" class="queue-bar"></div>
   <div class="outils-row">
     <a class="outil-btn" href="/outils/relance-fournisseur.html" target="_blank" rel="noopener">📄 Relance fournisseur</a>
     <a class="outil-btn" href="/outils/analyseur-sap.html" target="_blank" rel="noopener">📦 Analyseur commandes SAP</a>
@@ -1155,7 +1179,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-20 19:50";
+const DERNIERE_MAJ_CODE = "2026-10-21 08:30";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2112,9 +2136,46 @@ document.querySelectorAll('.filter-chip').forEach(chip => {
 });
 
 // Chargement initial en parallele pour accelerer l'affichage
-Promise.all([chargerDonnees(), chargerLogs(), chargerEtatProgramme()]).catch(()=>{});
+Promise.all([chargerDonnees(), chargerLogs(), chargerEtatProgramme(), verifierFilesAttente()]).catch(()=>{});
 demarrerPollingHistorique();
 demarrerPollingLogs();
+demarrerPollingQueues();
+
+// ── FILE D'ATTENTE : polling des queues Firebase ────────────────────────────
+async function verifierFilesAttente(){
+  const bar = document.getElementById('queueBar');
+  if (!bar) return;
+  const queues = [
+    { noeud: 'imports_prix', label: 'Import prix' },
+    { noeud: 'imports_fullbox', label: 'Import Fullbox' },
+    { noeud: 'reclassifications', label: 'Reclassification' }
+  ];
+  const chips = [];
+  for (const q of queues) {
+    try {
+      const rep = await fetch(FIREBASE_URL + 'gromec_vba/' + q.noeud + '.json?shallow=true', { signal: AbortSignal.timeout(5000) });
+      const data = await rep.json();
+      if (data && typeof data === 'object') {
+        const n = Object.keys(data).length;
+        if (n > 0) chips.push({ label: q.label, count: n });
+      }
+    } catch(e) {}
+  }
+  // Also count envoyer_confirmation en_attente from loaded data
+  const confAttente = donnees.filter(d => d.envoyer_confirmation === 'en_attente').length;
+  if (confAttente > 0) chips.push({ label: 'Confirmation fournisseur', count: confAttente });
+
+  if (chips.length === 0) {
+    bar.classList.remove('visible');
+    bar.innerHTML = '';
+  } else {
+    bar.innerHTML = chips.map(c =>
+      `<div class="queue-chip"><span class="q-dot"></span>${c.count} ${c.label}${c.count>1?'s':''} en attente</div>`
+    ).join('');
+    bar.classList.add('visible');
+  }
+}
+function demarrerPollingQueues(){ setInterval(verifierFilesAttente, 15000); }
 
 async function declencherConfirmationFournisseur(id, btnEl){
   if (btnEl.classList.contains('confirmer-envoye') || btnEl.classList.contains('confirmer-attente')) return;
