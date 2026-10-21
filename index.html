@@ -414,7 +414,10 @@
     font-size:15px;
     color:var(--muted);
     font-family:'IBM Plex Mono', monospace;
-    flex-wrap:wrap;
+    flex-wrap:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
   }
   .fiche-meta .sep{color:var(--muted-2);}
 
@@ -1314,7 +1317,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-21 09:55";
+const DERNIERE_MAJ_CODE = "2026-10-21 10:00";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
