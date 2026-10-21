@@ -1317,7 +1317,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-21 10:00";
+const DERNIERE_MAJ_CODE = "2026-10-20 22:41";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2291,10 +2291,10 @@ async function verifierFilesAttente(){
   const chips = [];
   for (const q of queues) {
     try {
-      const rep = await fetch(FIREBASE_URL + 'gromec_vba/' + q.noeud + '.json?shallow=true', { signal: AbortSignal.timeout(5000) });
+      const rep = await fetch(FIREBASE_URL + 'gromec_vba/' + q.noeud + '.json', { signal: AbortSignal.timeout(5000) });
       const data = await rep.json();
       if (data && typeof data === 'object') {
-        const n = Object.keys(data).length;
+        const n = Object.values(data).filter(v => v && (v.statut === 'en_attente' || v.statut === 'en_cours')).length;
         if (n > 0) chips.push({ label: q.label, count: n });
       }
     } catch(e) {}
