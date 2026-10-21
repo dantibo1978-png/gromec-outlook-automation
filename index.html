@@ -44,7 +44,7 @@
 
   /* ---------- SIDEBAR ---------- */
   .sidebar{
-    position:fixed; top:0; left:0; bottom:0; width:230px;
+    position:fixed; top:0; left:0; bottom:0; width:280px;
     background:var(--panel); border-right:1px solid var(--rule);
     display:flex; flex-direction:column; z-index:15;
     overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--rule) transparent;
@@ -113,7 +113,7 @@
 
   /* ---------- MAIN LAYOUT ---------- */
   .app-content{
-    margin-left:230px;
+    margin-left:280px;
   }
 
   /* ---------- HEADER ---------- */
@@ -748,7 +748,7 @@
   .log-panel{
     position:fixed;
     bottom:0;
-    left:230px;
+    left:280px;
     right:0;
     height:200px;
     background:#0d1117;
@@ -1045,7 +1045,7 @@
   <div class="sidebar-section sidebar-notes-section">
     <p class="sidebar-section-title">Notes</p>
     <div id="notesContainer"></div>
-    <button class="sidebar-link" id="btnAddNote" style="color:var(--accent);font-size:12px;">
+    <button class="sidebar-link" onclick="ajouterNote()" style="color:var(--accent);font-size:12px;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       <span>Ajouter une note</span>
     </button>
@@ -1295,7 +1295,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-21 09:15";
+const DERNIERE_MAJ_CODE = "2026-10-21 09:25";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2352,7 +2352,6 @@ async function supprimerNote(id){
     rendreNotes();
   } catch(e){}
 }
-document.getElementById('btnAddNote').addEventListener('click', ajouterNote);
 chargerNotes();
 
 async function declencherConfirmationFournisseur(id, btnEl){
