@@ -2170,7 +2170,7 @@ async function verifierFilesAttente(){
     bar.innerHTML = '';
   } else {
     bar.innerHTML = chips.map(c =>
-      `<div class="queue-chip"><span class="q-dot"></span>${c.count} ${c.label}${c.count>1?'s':''} en attente</div>`
+      `<div class="queue-chip"><span class="q-dot"></span>${c.count} ${c.label} en attente</div>`
     ).join('');
     bar.classList.add('visible');
   }
