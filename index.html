@@ -371,13 +371,8 @@
   }
   .stamp-ok{color:var(--ok); border-color:var(--ok); background:var(--ok-bg);}
   .stamp-ecart{color:var(--ecart); border-color:var(--ecart); background:var(--ecart-bg);}
-  .stamp-confirme{color:#a78bfa; border-color:#a78bfa; background:rgba(167,139,250,0.1);}
+
   .stamp-po-revise{color:#f59e0b; border-color:#f59e0b; background:rgba(245,158,11,0.1); font-size:0.7em;}
-  .confirmer-row{margin-top:10px;}
-  .confirmer-btn{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:6px 16px;border-radius:6px;border:1px solid #a78bfa;background:transparent;color:#a78bfa;cursor:pointer;transition:opacity .2s,background .15s;}
-  .confirmer-btn:hover{background:rgba(167,139,250,0.1);}
-  .confirmer-btn.confirmer-attente{opacity:0.6;cursor:default;}
-  .confirmer-btn.confirmer-envoye{border-color:var(--ok);color:var(--ok);cursor:default;}
   .stamp-attente{color:var(--warn); border-color:var(--warn); background:var(--warn-bg);}
   .stamp-conteste{color:#f59e0b; border-color:#f59e0b; background:rgba(245,158,11,0.1);}
 
@@ -1317,7 +1312,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-20 22:41";
+const DERNIERE_MAJ_CODE = "2026-10-22 11:05";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -1871,7 +1866,7 @@ function rendreFiche(d){
   return `
   <div class="fiche" data-id="${d.id}">
     <div class="fiche-head" onclick="toggleFiche('${d.id}')">
-      <span class="stamp ${d.statut === 'RECLASSE_IGNORER' ? 'stamp-conteste' : d.contestation ? 'stamp-conteste' : d.envoyer_confirmation === 'envoye' ? 'stamp-confirme' : estOK ? 'stamp-ok' : 'stamp-ecart'}">${d.statut === 'RECLASSE_IGNORER' ? 'IGNORÉ (reclassé)' : d.contestation ? 'CONTESTÉ' : d.envoyer_confirmation === 'envoye' ? 'CONFIRMÉ' : estOK ? (d.statut === 'OK_PARTIEL' ? 'CONFORME (partiel)' : 'CONFORME') : 'ÉCART'}</span>
+      <span class="stamp ${d.statut === 'RECLASSE_IGNORER' ? 'stamp-conteste' : d.contestation ? 'stamp-conteste' : estOK ? 'stamp-ok' : 'stamp-ecart'}">${d.statut === 'RECLASSE_IGNORER' ? 'IGNORÉ (reclassé)' : d.contestation ? 'CONTESTÉ' : estOK ? (d.statut === 'OK_PARTIEL' ? 'CONFORME (partiel)' : 'CONFORME') : 'ÉCART'}</span>
       ${d.poReviseRequis ? '<span class="stamp stamp-po-revise">Confirmation requise</span>' : ''}
       <div class="fiche-info">
         <p class="fiche-fournisseur">${d.fournisseur || 'Fournisseur inconnu'}</p>
@@ -1910,11 +1905,6 @@ function rendreFiche(d){
             ${labelBtnDtw('Copier les 2 vers SAP', true, true)}
           </button>`;
           })()}
-        </div>
-        <div class="confirmer-row">
-          <button class="confirmer-btn ${d.envoyer_confirmation === 'envoye' ? 'confirmer-envoye' : d.envoyer_confirmation === 'en_attente' ? 'confirmer-attente' : ''}" onclick="event.stopPropagation(); declencherConfirmationFournisseur('${d.id}', this)">
-            ${d.envoyer_confirmation === 'envoye' ? '&#x2713; Courriel envoyé au fournisseur' : d.envoyer_confirmation === 'en_attente' ? '&#x23F3; En attente...' : '&#128231; Confirmer au fournisseur'}
-          </button>
         </div>
         ${msgStatutHtml}
         <div class="table-scroll">
@@ -2299,9 +2289,6 @@ async function verifierFilesAttente(){
       }
     } catch(e) {}
   }
-  // Also count envoyer_confirmation en_attente from loaded data
-  const confAttente = donnees.filter(d => d.envoyer_confirmation === 'en_attente').length;
-  if (confAttente > 0) chips.push({ label: 'Confirmation fournisseur', count: confAttente });
 
   if (chips.length === 0) {
     bar.style.display = 'none';
@@ -2318,55 +2305,6 @@ function demarrerPollingQueues(){ setInterval(verifierFilesAttente, 15000); }
 
 // notes chargées dans un script séparé en bas de page
 
-async function declencherConfirmationFournisseur(id, btnEl){
-  if (btnEl.classList.contains('confirmer-envoye') || btnEl.classList.contains('confirmer-attente')) return;
-  if (!confirm('Envoyer la confirmation au fournisseur avec le bon de commande révisé en pièce jointe ?')) return;
-
-  btnEl.classList.add('confirmer-attente');
-  btnEl.innerHTML = '&#x23F3; En attente...';
-
-  try {
-    await fetch(FIREBASE_URL + 'gromec_vba/historique/' + id + '.json', {
-      method: 'PATCH',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ envoyer_confirmation: 'en_attente', envoyer_confirmation_le: new Date().toISOString(), actionRequise: true })
-    });
-    const entree = donnees.find(d => d.id === id);
-    if (entree) entree.envoyer_confirmation = 'en_attente';
-  } catch(e) {
-    btnEl.classList.remove('confirmer-attente');
-    btnEl.innerHTML = '&#128231; Confirmer au fournisseur';
-    alert('Erreur réseau : ' + e.message);
-    return;
-  }
-
-  // Poll toutes les 3s pour détecter quand le PS1 a traité (max 120s)
-  let tentatives = 0;
-  const interval = setInterval(async () => {
-    tentatives++;
-    try {
-      const rep = await fetch(FIREBASE_URL + 'gromec_vba/historique/' + id + '/envoyer_confirmation.json');
-      const statut = await rep.json();
-      if (statut === 'envoye') {
-        clearInterval(interval);
-        btnEl.classList.remove('confirmer-attente');
-        btnEl.classList.add('confirmer-envoye');
-        btnEl.innerHTML = '&#x2713; Brouillon créé dans Outlook';
-        const entree = donnees.find(d => d.id === id);
-        if (entree) entree.envoyer_confirmation = 'envoye';
-      } else if (statut === 'erreur') {
-        clearInterval(interval);
-        btnEl.classList.remove('confirmer-attente');
-        btnEl.innerHTML = '&#128231; Confirmer au fournisseur';
-        alert('Erreur lors de la création du brouillon. Vérifiez le journal PS1.');
-      } else if (tentatives >= 40) {
-        clearInterval(interval);
-        btnEl.classList.remove('confirmer-attente');
-        btnEl.innerHTML = '&#128231; Confirmer au fournisseur';
-      }
-    } catch(e) { /* erreur réseau temporaire */ }
-  }, 3000);
-}
 
 // ── LOG CONSOLE ──────────────────────────────────────────────────────────
 let logsData = {};
