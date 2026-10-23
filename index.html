@@ -44,8 +44,8 @@
 
   /* ---------- SIDEBAR ---------- */
   .sidebar{
-    position:fixed; top:0; left:0; bottom:0; width:280px;
-    background:var(--panel); border-right:1px solid var(--rule);
+    position:fixed; top:0; right:0; bottom:0; width:280px;
+    background:var(--panel); border-left:1px solid var(--rule);
     display:flex; flex-direction:column; z-index:15;
     overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--rule) transparent;
   }
@@ -113,7 +113,7 @@
 
   /* ---------- MAIN LAYOUT ---------- */
   .app-content{
-    margin-left:280px; margin-right:260px;
+    margin-left:260px; margin-right:280px;
   }
 
   /* ---------- HEADER ---------- */
@@ -167,8 +167,8 @@
 
   @media (max-width:1200px){
     .notes-panel{ display:none; }
-    .app-content{ margin-right:0; }
-    .log-panel{ right:0; }
+    .app-content{ margin-left:0; }
+    .log-panel{ left:0; }
   }
   @media (max-width:900px){
     .sidebar{ width:56px; }
@@ -176,13 +176,13 @@
     .sidebar-link span, .sidebar-queue-title, .sq-chip span{ display:none; }
     .sidebar-link{ justify-content:center; padding:10px; }
     .sidebar-toggle-row .toggle-label{ display:none; }
-    .app-content{ margin-left:56px; }
+    .app-content{ margin-right:56px; }
   }
 
   /* ---------- NOTES PANEL (RIGHT) ---------- */
   .notes-panel{
-    position:fixed; top:0; right:0; bottom:0; width:260px;
-    background:var(--panel); border-left:1px solid var(--rule);
+    position:fixed; top:0; left:0; bottom:0; width:260px;
+    background:var(--panel); border-right:1px solid var(--rule);
     display:flex; flex-direction:column; z-index:15;
     overflow:hidden;
   }
@@ -212,7 +212,6 @@
     min-height:32px;
   }
   .note-card:hover{ border-color:#6b6530; }
-  .note-card:hover .note-del{ opacity:1; }
   .note-text{
     outline:none; cursor:text; word-break:break-word;
     min-height:16px;
@@ -220,13 +219,17 @@
   .note-text:empty::before{
     content:'Cliquez pour écrire…'; color:#6b6530; font-style:italic;
   }
-  .note-del{
-    position:absolute; top:6px; right:6px;
-    background:none; border:none; color:#6b6530; cursor:pointer;
-    font-size:14px; line-height:1; padding:0 2px;
-    opacity:0; transition:opacity .15s;
+  .note-actions{
+    position:absolute; top:5px; right:5px;
+    display:flex; gap:2px; opacity:0; transition:opacity .15s;
   }
-  .note-del:hover{ color:var(--ecart); }
+  .note-card:hover .note-actions{ opacity:1; }
+  .note-act{
+    background:none; border:none; color:#6b6530; cursor:pointer;
+    font-size:12px; line-height:1; padding:2px 3px;
+  }
+  .note-act:hover{ color:var(--text); }
+  .note-act.note-del:hover{ color:var(--ecart); }
   .note-ts{
     font-size:10px; color:#5a5530; margin-top:5px;
     font-family:'IBM Plex Mono',monospace;
@@ -774,8 +777,8 @@
   .log-panel{
     position:fixed;
     bottom:0;
-    left:280px;
-    right:260px;
+    left:260px;
+    right:280px;
     height:200px;
     background:#0d1117;
     border-top:2px solid var(--accent);
@@ -882,7 +885,7 @@
   @media (max-width:600px){
     .fiche-meta{display:none;}
     th:nth-child(6), td:nth-child(6), th:nth-child(7), td:nth-child(7), th:nth-child(8), td:nth-child(8){display:none;}
-    .log-panel{ height:150px; left:56px; }
+    .log-panel{ height:150px; right:56px; }
   }
   .outils-row{ display:none; }
   .btn-settings{
@@ -1312,7 +1315,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-22 11:05";
+const DERNIERE_MAJ_CODE = "2026-10-23 08:20";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -4089,11 +4092,17 @@ function syncNotesFromDOM(){
 function rendreNotes(){
   var c = document.getElementById('notesContainer');
   if (!c) return;
-  c.innerHTML = mesNotes.map(function(n){
+  c.innerHTML = mesNotes.map(function(n,i){
     var d = n.ts ? new Date(n.ts) : null;
     var ds = d ? d.toLocaleDateString('fr-CA',{day:'numeric',month:'short'}) + ' ' + d.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}) : '';
+    var isFirst = (i === 0);
+    var isLast = (i === mesNotes.length - 1);
     return '<div class="note-card" data-id="'+n.id+'">' +
-      '<button class="note-del" onclick="supprimerNote(\''+n.id+'\')" title="Supprimer">✕</button>' +
+      '<div class="note-actions">' +
+        (isFirst ? '' : '<button class="note-act" onclick="deplacerNote(\''+n.id+'\',-1)" title="Monter">▲</button>') +
+        (isLast ? '' : '<button class="note-act" onclick="deplacerNote(\''+n.id+'\',1)" title="Descendre">▼</button>') +
+        '<button class="note-act note-del" onclick="supprimerNote(\''+n.id+'\')" title="Supprimer">✕</button>' +
+      '</div>' +
       '<div class="note-text" contenteditable="true" onblur="sauvegarderNote(\''+n.id+'\', this.textContent)">'+escNote(n.texte)+'</div>' +
       (ds ? '<div class="note-ts">'+ds+'</div>' : '') +
     '</div>';
@@ -4117,6 +4126,27 @@ function sauvegarderNote(id, texte){
     method:'PATCH', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({texte:texte})
   }).catch(function(){});
+}
+function deplacerNote(id, dir){
+  syncNotesFromDOM();
+  var idx = mesNotes.findIndex(function(n){return n.id===id;});
+  if (idx < 0) return;
+  var newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= mesNotes.length) return;
+  var tmp = mesNotes[idx];
+  mesNotes[idx] = mesNotes[newIdx];
+  mesNotes[newIdx] = tmp;
+  rendreNotes();
+  // Save order by updating ts so sort order persists
+  var now = Date.now();
+  mesNotes.forEach(function(n, i){
+    var newTs = new Date(now - i * 1000).toISOString();
+    n.ts = newTs;
+    fetch(NOTES_URL + '/' + n.id + '.json', {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ts: newTs})
+    }).catch(function(){});
+  });
 }
 function supprimerNote(id){
   syncNotesFromDOM();
