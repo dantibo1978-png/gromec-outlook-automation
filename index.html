@@ -166,28 +166,31 @@
   @keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:0.3;}}
 
   .panel-toggle{
-    position:absolute; top:50%; background:var(--panel); border:1px solid var(--rule);
-    width:20px; height:36px; display:flex; align-items:center; justify-content:center;
-    cursor:pointer; font-size:12px; color:var(--muted); z-index:16;
-    transition:color .15s;
+    position:fixed; top:50%; background:var(--panel); border:1px solid var(--rule);
+    width:22px; height:40px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:13px; color:var(--muted); z-index:20;
+    transition:color .15s, left .15s, right .15s;
+    transform:translateY(-50%);
   }
-  .panel-toggle:hover{ color:var(--text); }
-  .notes-toggle{ right:-21px; border-left:none; border-radius:0 5px 5px 0; transform:translateY(-50%); }
-  .sidebar-toggle-btn{ left:-21px; border-right:none; border-radius:5px 0 0 5px; transform:translateY(-50%); }
+  .panel-toggle:hover{ color:var(--text); background:var(--card); }
+  .notes-toggle{ left:260px; border-left:none; border-radius:0 5px 5px 0; }
+  .sidebar-toggle-btn{ right:280px; border-right:none; border-radius:5px 0 0 5px; }
   .notes-panel.collapsed{ width:0; border:none; overflow:hidden; }
-  .notes-panel.collapsed .notes-toggle{ right:-21px; }
   .sidebar.collapsed{ width:0; border:none; overflow:hidden; }
-  .sidebar.collapsed .sidebar-toggle-btn{ left:-21px; }
 
   @media (max-width:1500px){
     .notes-panel{ width:200px; }
     .sidebar{ width:220px; }
+    .notes-toggle{ left:200px; }
+    .sidebar-toggle-btn{ right:220px; }
     .app-content{ margin-left:200px; margin-right:220px; }
     .log-panel{ left:200px; right:220px; }
   }
   @media (max-width:1300px){
     .notes-panel{ display:none; }
+    .notes-toggle{ display:none; }
     .sidebar{ width:200px; }
+    .sidebar-toggle-btn{ right:200px; }
     .app-content{ margin-left:0; margin-right:200px; }
     .log-panel{ left:0; right:200px; }
   }
@@ -1046,8 +1049,8 @@
 <body>
 
 <!-- SIDEBAR -->
+<div class="panel-toggle sidebar-toggle-btn" id="sidebarToggle" onclick="togglePanel('sidebar')">▶</div>
 <nav class="sidebar" id="sidebarPanel">
-  <div class="panel-toggle sidebar-toggle-btn" onclick="togglePanel('sidebar')">◀</div>
   <div class="sidebar-brand">
     <p class="eyebrow">Gromec Inc.</p>
     <h2>Achats</h2>
@@ -1338,7 +1341,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-27 07:57";
+const DERNIERE_MAJ_CODE = "2026-10-27 08:11";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2334,17 +2337,21 @@ function togglePanel(which){
   var logPanel = document.querySelector('.log-panel');
   if (which === 'notes') {
     var np = document.getElementById('notesPanel');
+    var btn = document.getElementById('notesToggle');
     np.classList.toggle('collapsed');
     var hidden = np.classList.contains('collapsed');
-    np.querySelector('.notes-toggle').textContent = hidden ? '▶' : '◀';
+    btn.textContent = hidden ? '▶' : '◀';
+    btn.style.left = hidden ? '0px' : '';
     content.style.marginLeft = hidden ? '0px' : '';
     if (logPanel) logPanel.style.left = hidden ? '0px' : '';
     localStorage.setItem('notesPanelCollapsed', hidden ? '1' : '0');
   } else {
     var sb = document.getElementById('sidebarPanel');
+    var btn2 = document.getElementById('sidebarToggle');
     sb.classList.toggle('collapsed');
     var hidden2 = sb.classList.contains('collapsed');
-    sb.querySelector('.sidebar-toggle-btn').textContent = hidden2 ? '▶' : '◀';
+    btn2.textContent = hidden2 ? '◀' : '▶';
+    btn2.style.right = hidden2 ? '0px' : '';
     content.style.marginRight = hidden2 ? '0px' : '';
     if (logPanel) logPanel.style.right = hidden2 ? '0px' : '';
     localStorage.setItem('sidebarCollapsed', hidden2 ? '1' : '0');
@@ -2439,8 +2446,8 @@ function escLog(s){
 </script>
 
 <!-- NOTES PANEL (RIGHT) -->
+<div class="panel-toggle notes-toggle" id="notesToggle" onclick="togglePanel('notes')">◀</div>
 <aside class="notes-panel" id="notesPanel">
-  <div class="panel-toggle notes-toggle" onclick="togglePanel('notes')">▶</div>
   <div class="notes-panel-header">
     <h3>Notes</h3>
     <button class="notes-add-btn" onclick="ajouterNote()">+ Ajouter</button>
