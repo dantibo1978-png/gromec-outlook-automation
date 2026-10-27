@@ -165,6 +165,20 @@
   .stat-pill-clickable:hover{background:rgba(255,255,255,0.08);}
   @keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:0.3;}}
 
+  .panel-toggle{
+    position:absolute; top:50%; background:var(--panel); border:1px solid var(--rule);
+    width:20px; height:36px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:12px; color:var(--muted); z-index:16;
+    transition:color .15s;
+  }
+  .panel-toggle:hover{ color:var(--text); }
+  .notes-toggle{ right:-21px; border-left:none; border-radius:0 5px 5px 0; transform:translateY(-50%); }
+  .sidebar-toggle-btn{ left:-21px; border-right:none; border-radius:5px 0 0 5px; transform:translateY(-50%); }
+  .notes-panel.collapsed{ width:0; border:none; overflow:hidden; }
+  .notes-panel.collapsed .notes-toggle{ right:-21px; }
+  .sidebar.collapsed{ width:0; border:none; overflow:hidden; }
+  .sidebar.collapsed .sidebar-toggle-btn{ left:-21px; }
+
   @media (max-width:1500px){
     .notes-panel{ width:200px; }
     .sidebar{ width:220px; }
@@ -1032,7 +1046,8 @@
 <body>
 
 <!-- SIDEBAR -->
-<nav class="sidebar">
+<nav class="sidebar" id="sidebarPanel">
+  <div class="panel-toggle sidebar-toggle-btn" onclick="togglePanel('sidebar')">◀</div>
   <div class="sidebar-brand">
     <p class="eyebrow">Gromec Inc.</p>
     <h2>Achats</h2>
@@ -1323,7 +1338,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-27 07:38";
+const DERNIERE_MAJ_CODE = "2026-10-27 07:57";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2314,6 +2329,34 @@ async function verifierFilesAttente(){
 }
 function demarrerPollingQueues(){ setInterval(verifierFilesAttente, 15000); }
 
+function togglePanel(which){
+  var content = document.querySelector('.app-content');
+  var logPanel = document.querySelector('.log-panel');
+  if (which === 'notes') {
+    var np = document.getElementById('notesPanel');
+    np.classList.toggle('collapsed');
+    var hidden = np.classList.contains('collapsed');
+    np.querySelector('.notes-toggle').textContent = hidden ? '▶' : '◀';
+    content.style.marginLeft = hidden ? '0px' : '';
+    if (logPanel) logPanel.style.left = hidden ? '0px' : '';
+    localStorage.setItem('notesPanelCollapsed', hidden ? '1' : '0');
+  } else {
+    var sb = document.getElementById('sidebarPanel');
+    sb.classList.toggle('collapsed');
+    var hidden2 = sb.classList.contains('collapsed');
+    sb.querySelector('.sidebar-toggle-btn').textContent = hidden2 ? '▶' : '◀';
+    content.style.marginRight = hidden2 ? '0px' : '';
+    if (logPanel) logPanel.style.right = hidden2 ? '0px' : '';
+    localStorage.setItem('sidebarCollapsed', hidden2 ? '1' : '0');
+  }
+}
+(function(){
+  try {
+    if (localStorage.getItem('notesPanelCollapsed') === '1') togglePanel('notes');
+    if (localStorage.getItem('sidebarCollapsed') === '1') togglePanel('sidebar');
+  } catch(e){}
+})();
+
 // notes chargées dans un script séparé en bas de page
 
 
@@ -2396,7 +2439,8 @@ function escLog(s){
 </script>
 
 <!-- NOTES PANEL (RIGHT) -->
-<aside class="notes-panel">
+<aside class="notes-panel" id="notesPanel">
+  <div class="panel-toggle notes-toggle" onclick="togglePanel('notes')">▶</div>
   <div class="notes-panel-header">
     <h3>Notes</h3>
     <button class="notes-add-btn" onclick="ajouterNote()">+ Ajouter</button>
