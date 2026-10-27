@@ -165,23 +165,19 @@
   .stat-pill-clickable:hover{background:rgba(255,255,255,0.08);}
   @keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:0.3;}}
 
-  @media (max-width:1400px){
+  @media (max-width:1500px){
     .notes-panel{ width:200px; }
     .sidebar{ width:220px; }
     .app-content{ margin-left:200px; margin-right:220px; }
     .log-panel{ left:200px; right:220px; }
   }
-  @media (max-width:1100px){
-    .notes-panel{ width:160px; }
-    .sidebar{ width:180px; }
-    .sidebar-brand h2{ font-size:16px; }
-    .app-content{ margin-left:160px; margin-right:180px; }
-    .log-panel{ left:160px; right:180px; }
-  }
-  @media (max-width:900px){
+  @media (max-width:1300px){
     .notes-panel{ display:none; }
-    .app-content{ margin-left:0; }
-    .log-panel{ left:0; }
+    .sidebar{ width:200px; }
+    .app-content{ margin-left:0; margin-right:200px; }
+    .log-panel{ left:0; right:200px; }
+  }
+  @media (max-width:1000px){
     .sidebar{ width:56px; }
     .sidebar-brand h2, .sidebar-brand .derniere-maj, .sidebar-section-title,
     .sidebar-link span, .sidebar-queue-title, .sq-chip span{ display:none; }
@@ -1327,7 +1323,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-27 07:33";
+const DERNIERE_MAJ_CODE = "2026-10-27 07:38";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
