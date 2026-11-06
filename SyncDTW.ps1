@@ -1358,13 +1358,14 @@ while ($true) {
         if ($null -ne $importsPrix -and $importsPrix -ne "null") {
             foreach ($cleIP in $importsPrix.PSObject.Properties.Name) {
                 $imp = $importsPrix.$cleIP
-                if ($imp.statut -ne 'en_attente') {
-                    # Nettoyer les imports deja traites (ok ou erreur) de plus de 5 min
-                    if ($imp.statut -eq 'ok' -or $imp.statut -eq 'erreur') {
-                        try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {}
-                    }
+                if ($imp.statut -eq 'ok' -or $imp.statut -eq 'erreur') {
+                    try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {}
                     continue
                 }
+                if ($imp.statut -eq 'en_cours') {
+                    Write-Log "INFO  Import prix '$($imp.fichier)' coince en_cours - nouvelle tentative."
+                }
+                if ($imp.statut -ne 'en_attente' -and $imp.statut -ne 'en_cours') { continue }
 
                 $nomFichier = $imp.fichier
                 Write-Log "INFO  Import prix dashboard : $nomFichier (cle: $cleIP)"
@@ -1413,7 +1414,10 @@ while ($true) {
         if ($null -ne $importsLT -and $importsLT -ne "null") {
             foreach ($cleLT in $importsLT.PSObject.Properties.Name) {
                 $impLT = $importsLT.$cleLT
-                if ($impLT.statut -ne 'en_attente') { continue }
+                if ($impLT.statut -eq 'en_cours') {
+                    Write-Log "INFO  Import LeadTime coince en_cours - nouvelle tentative."
+                }
+                if ($impLT.statut -ne 'en_attente' -and $impLT.statut -ne 'en_cours') { continue }
 
                 $nbProduits = $impLT.nbProduits
                 Write-Log "INFO  Import LeadTime : $nbProduits produit(s) (cle: $cleLT)"
@@ -1589,12 +1593,14 @@ while ($true) {
         if ($null -ne $importsFB -and $importsFB -ne "null") {
             foreach ($cleFB in $importsFB.PSObject.Properties.Name) {
                 $impFB = $importsFB.$cleFB
-                if ($impFB.statut -ne 'en_attente') {
-                    if ($impFB.statut -eq 'ok' -or $impFB.statut -eq 'erreur') {
-                        try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {}
-                    }
+                if ($impFB.statut -eq 'ok' -or $impFB.statut -eq 'erreur') {
+                    try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {}
                     continue
                 }
+                if ($impFB.statut -eq 'en_cours') {
+                    Write-Log "INFO  Import Fullbox coince en_cours - nouvelle tentative."
+                }
+                if ($impFB.statut -ne 'en_attente' -and $impFB.statut -ne 'en_cours') { continue }
 
                 Write-Log "INFO  Import Fullbox : $($impFB.nbArticles) article(s) (cle: $cleFB)"
 
