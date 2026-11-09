@@ -259,6 +259,46 @@
     font-size:10px; color:#5a5530; margin-top:5px;
     font-family:'IBM Plex Mono',monospace;
   }
+  .note-rappel-row{
+    display:flex; align-items:center; gap:6px; margin-top:5px;
+  }
+  .note-rappel-btn{
+    background:none; border:1px solid #3a3518; color:#6b6530; cursor:pointer;
+    font-size:11px; padding:2px 6px; border-radius:4px;
+    font-family:'IBM Plex Mono',monospace; transition:color .15s, border-color .15s;
+  }
+  .note-rappel-btn:hover{ color:var(--accent); border-color:var(--accent); }
+  .note-rappel-tag{
+    font-size:10px; color:var(--accent); font-family:'IBM Plex Mono',monospace;
+  }
+  .note-rappel-clear{
+    background:none; border:none; color:#6b6530; cursor:pointer; font-size:10px; padding:0 2px;
+  }
+  .note-rappel-clear:hover{ color:var(--ecart); }
+  @keyframes flash-rappel{
+    0%,100%{ background:#1a1a10; border-color:#3a3518; }
+    50%{ background:#3a2a00; border-color:#f0a030; }
+  }
+  .note-card.flashing{
+    animation: flash-rappel 0.8s ease-in-out infinite;
+  }
+  .note-card.flashing .note-rappel-tag{ color:#f0a030; font-weight:700; }
+  .rappel-overlay{
+    position:fixed; top:0; left:0; right:0; bottom:0; z-index:9999;
+    background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center;
+  }
+  .rappel-popup{
+    background:var(--panel); border:2px solid #f0a030; border-radius:12px;
+    padding:24px 32px; max-width:420px; width:90%; text-align:center;
+    animation: flash-rappel 1s ease-in-out infinite;
+  }
+  .rappel-popup h3{ color:#f0a030; margin:0 0 12px; font-family:'Space Grotesk',sans-serif; font-size:18px; }
+  .rappel-popup p{ color:var(--text); font-size:14px; margin:0 0 16px; line-height:1.5; }
+  .rappel-popup button{
+    background:#f0a030; color:#111; border:none; border-radius:6px;
+    padding:8px 24px; font-size:14px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-weight:600;
+  }
+  .rappel-popup button:hover{ background:#d48a20; }
 
   @keyframes pulse-queue{
     0%,100%{opacity:1; transform:scale(1);}
@@ -1341,7 +1381,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-10-27 08:11";
+const DERNIERE_MAJ_CODE = "2026-11-09 11:44";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -4129,7 +4169,7 @@ function chargerNotes(){
   fetch(NOTES_URL + '.json').then(function(r){return r.json();}).then(function(data){
     mesNotes = [];
     if (data && typeof data === 'object') {
-      Object.keys(data).forEach(function(k){ mesNotes.push({id:k, texte:data[k].texte||'', ts:data[k].ts||''}); });
+      Object.keys(data).forEach(function(k){ mesNotes.push({id:k, texte:data[k].texte||'', ts:data[k].ts||'', rappel:data[k].rappel||''}); });
     }
     mesNotes.sort(function(a,b){ return (b.ts||'').localeCompare(a.ts||''); });
     rendreNotes();
@@ -4156,7 +4196,21 @@ function rendreNotes(){
     var ds = d ? d.toLocaleDateString('fr-CA',{day:'numeric',month:'short'}) + ' ' + d.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}) : '';
     var isFirst = (i === 0);
     var isLast = (i === mesNotes.length - 1);
-    return '<div class="note-card" data-id="'+n.id+'">' +
+    var rappelHtml = '';
+    if (n.rappel) {
+      var rd = new Date(n.rappel);
+      var rs = rd.toLocaleDateString('fr-CA',{day:'numeric',month:'short',year:'numeric'}) + ' ' + rd.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'});
+      rappelHtml = '<div class="note-rappel-row">' +
+        '<span class="note-rappel-tag">⏰ '+rs+'</span>' +
+        '<button class="note-rappel-clear" onclick="clearRappel(\''+n.id+'\')" title="Retirer rappel">✕</button>' +
+      '</div>';
+    } else {
+      rappelHtml = '<div class="note-rappel-row">' +
+        '<button class="note-rappel-btn" onclick="setRappel(\''+n.id+'\')">⏰ Rappel</button>' +
+      '</div>';
+    }
+    var isFlashing = n.rappel && new Date(n.rappel) <= new Date();
+    return '<div class="note-card'+(isFlashing?' flashing':'')+'" data-id="'+n.id+'">' +
       '<div class="note-actions">' +
         (isFirst ? '' : '<button class="note-act" onclick="deplacerNote(\''+n.id+'\',-1)" title="Monter">▲</button>') +
         (isLast ? '' : '<button class="note-act" onclick="deplacerNote(\''+n.id+'\',1)" title="Descendre">▼</button>') +
@@ -4164,6 +4218,7 @@ function rendreNotes(){
       '</div>' +
       '<div class="note-text" contenteditable="true" onblur="sauvegarderNote(\''+n.id+'\', this.textContent)">'+escNote(n.texte)+'</div>' +
       (ds ? '<div class="note-ts">'+ds+'</div>' : '') +
+      rappelHtml +
     '</div>';
   }).join('');
 }
@@ -4214,6 +4269,63 @@ function supprimerNote(id){
     rendreNotes();
   }).catch(function(){});
 }
+function setRappel(id){
+  syncNotesFromDOM();
+  var now = new Date();
+  now.setMinutes(now.getMinutes() + 30);
+  var defVal = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')+'T'+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  var input = prompt('Date et heure du rappel (AAAA-MM-JJ HH:MM) :', defVal.replace('T',' '));
+  if (!input) return;
+  var val = input.trim().replace(' ','T');
+  var d = new Date(val);
+  if (isNaN(d.getTime())){ alert('Format invalide'); return; }
+  var iso = d.toISOString();
+  var n = mesNotes.find(function(m){return m.id===id;});
+  if (n) n.rappel = iso;
+  fetch(NOTES_URL + '/' + id + '.json', {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({rappel:iso})
+  }).then(function(){ rendreNotes(); }).catch(function(){});
+}
+function clearRappel(id){
+  var n = mesNotes.find(function(m){return m.id===id;});
+  if (n) n.rappel = '';
+  fetch(NOTES_URL + '/' + id + '.json', {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({rappel:''})
+  }).then(function(){ rendreNotes(); }).catch(function(){});
+}
+var rappelsAffiches = {};
+function verifierRappels(){
+  var now = new Date();
+  mesNotes.forEach(function(n){
+    if (!n.rappel || rappelsAffiches[n.id]) return;
+    var d = new Date(n.rappel);
+    if (d <= now) {
+      rappelsAffiches[n.id] = true;
+      rendreNotes();
+      afficherPopupRappel(n);
+    }
+  });
+}
+function afficherPopupRappel(n){
+  var overlay = document.createElement('div');
+  overlay.className = 'rappel-overlay';
+  var txt = n.texte || '(note vide)';
+  if (txt.length > 120) txt = txt.substring(0,120) + '…';
+  overlay.innerHTML = '<div class="rappel-popup">' +
+    '<h3>⏰ Rappel!</h3>' +
+    '<p>'+escNote(txt)+'</p>' +
+    '<button onclick="fermerRappel(this)">OK</button>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  try { new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAgICAgICAgICAgICA').play(); } catch(e){}
+}
+function fermerRappel(btn){
+  var ov = btn.closest('.rappel-overlay');
+  if (ov) ov.remove();
+}
+setInterval(verifierRappels, 15000);
 chargerNotes();
 </script>
 
