@@ -1381,7 +1381,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-11-09 11:44";
+const DERNIERE_MAJ_CODE = "2026-11-10 14:39";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -4282,6 +4282,7 @@ function setRappel(id){
   var iso = d.toISOString();
   var n = mesNotes.find(function(m){return m.id===id;});
   if (n) n.rappel = iso;
+  delete rappelsAffiches[id];
   fetch(NOTES_URL + '/' + id + '.json', {
     method:'PATCH', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({rappel:iso})
@@ -4290,6 +4291,7 @@ function setRappel(id){
 function clearRappel(id){
   var n = mesNotes.find(function(m){return m.id===id;});
   if (n) n.rappel = '';
+  delete rappelsAffiches[id];
   fetch(NOTES_URL + '/' + id + '.json', {
     method:'PATCH', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({rappel:''})
