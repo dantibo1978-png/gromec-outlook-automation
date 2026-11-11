@@ -455,9 +455,10 @@ function Clear-CategorieConfirmation {
     param($MailItem)
     $catOK = "Confirmation OK"
     $catEcart = "Confirmation - Ecart"
+    $catNonTrouve = "Confirmation - Non trouve"
     $cats = $MailItem.Categories
     if ([string]::IsNullOrEmpty($cats)) { return }
-    $cats = $cats -replace [regex]::Escape($catOK), "" -replace [regex]::Escape($catEcart), ""
+    $cats = $cats -replace [regex]::Escape($catOK), "" -replace [regex]::Escape($catEcart), "" -replace [regex]::Escape($catNonTrouve), ""
     $cats = ($cats -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }) -join ", "
     $MailItem.Categories = $cats
     $MailItem.Save()
@@ -1594,17 +1595,32 @@ function Save-PDFConfirmationFournisseur {
 }
 
 function Set-CategorieConfirmation {
-    param($MailItem, [bool]$EstOK)
+    param($MailItem, [bool]$EstOK, [string]$Statut = "")
 
     $catOK = "Confirmation OK"
     $catEcart = "Confirmation - Ecart"
+    $catNonTrouve = "Confirmation - Non trouve"
 
     $catsActuelles = $MailItem.Categories
     if ([string]::IsNullOrEmpty($catsActuelles)) { $catsActuelles = "" }
-    $catsActuelles = $catsActuelles -replace [regex]::Escape($catOK), "" -replace [regex]::Escape($catEcart), ""
+    $catsActuelles = $catsActuelles -replace [regex]::Escape($catOK), "" -replace [regex]::Escape($catEcart), "" -replace [regex]::Escape($catNonTrouve), ""
     $catsActuelles = ($catsActuelles -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }) -join ", "
 
-    $nouvelleCategorie = if ($EstOK) { $catOK } else { $catEcart }
+    if ($Statut -eq "NON_TROUVE") {
+        $nouvelleCategorie = $catNonTrouve
+    } elseif ($EstOK) {
+        $nouvelleCategorie = $catOK
+    } else {
+        $nouvelleCategorie = $catEcart
+    }
+
+    try {
+        $ns = $MailItem.Application.GetNamespace("MAPI")
+        $existe = $false
+        foreach ($cat in $ns.Categories) { if ($cat.Name -eq $catNonTrouve) { $existe = $true; break } }
+        if (-not $existe) { $ns.Categories.Add($catNonTrouve, 14) }  # 14 = olCategoryColorYellow
+    } catch {}
+
     if ($catsActuelles -ne "") {
         $MailItem.Categories = "$catsActuelles, $nouvelleCategorie"
     } else {
@@ -2362,7 +2378,8 @@ function Invoke-TraiterComparaison {
         }
     }
 
-    Set-CategorieConfirmation $MailConfirmation $estOK
+    $catStatut = if ($nbNonTrouves -gt 0 -and $nbEcarts -eq 0) { "NON_TROUVE" } else { "" }
+    Set-CategorieConfirmation $MailConfirmation $estOK -Statut $catStatut
     $statutLabel = if ($estOK -and $estPartiel) { "OK_PARTIEL" } elseif ($estOK) { "OK" } else { "ECART" }
     Write-JournalEntry $expediteur $statutLabel "Ecarts:$nbEcarts NonTrouves:$nbNonTrouves OK:$nbOK Partiel:$estPartiel"
 

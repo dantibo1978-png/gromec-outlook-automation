@@ -594,9 +594,10 @@ function Set-CategorieOutlook {
 
         $catOK    = "Confirmation OK"
         $catEcart = "Confirmation - Ecart"
+        $catNonTrouve = "Confirmation - Non trouve"
         $cats = $mail.Categories
         if ([string]::IsNullOrEmpty($cats)) { $cats = "" }
-        $cats = $cats -replace [regex]::Escape($catOK), "" -replace [regex]::Escape($catEcart), ""
+        $cats = $cats -replace [regex]::Escape($catOK), "" -replace [regex]::Escape($catEcart), "" -replace [regex]::Escape($catNonTrouve), ""
         $cats = ($cats -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }) -join ", "
         $nouvelleCat = if ($EstOK) { $catOK } else { $catEcart }
         $mail.Categories = if ($cats -ne "") { "$cats, $nouvelleCat" } else { $nouvelleCat }
