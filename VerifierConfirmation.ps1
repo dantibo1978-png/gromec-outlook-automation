@@ -2418,27 +2418,13 @@ function Save-CopieConfirmation {
                 }
             }
         }
-        if ($nbSauv -eq 0) {
-            $sujetClean = if ($Sujet) { $Sujet } else { "Confirmation" }
-            $sujetClean = ($sujetClean -replace '[\\/:*?"<>|]', '_')
-            if ($sujetClean.Length -gt 80) { $sujetClean = $sujetClean.Substring(0, 80) }
-            $cheminPDF = Join-Path $dossier "$sujetClean.pdf"
-            if (-not (Test-Path $cheminPDF)) {
-                $htmlTemp = Join-Path $env:TEMP "conf_$([guid]::NewGuid().ToString('N').Substring(0,8)).html"
-                $MailItem.HTMLBody | Set-Content $htmlTemp -Encoding UTF8
-                $word = $null
-                try {
-                    $word = New-Object -ComObject Word.Application
-                    $word.Visible = $false
-                    $doc = $word.Documents.Open($htmlTemp)
-                    $doc.SaveAs2($cheminPDF, 17)
-                    $doc.Close($false)
-                    $nbSauv++
-                } finally {
-                    if ($word) { $word.Quit(); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null }
-                    Remove-Item $htmlTemp -Force -ErrorAction SilentlyContinue
-                }
-            }
+        $sujetClean = if ($Sujet) { $Sujet } else { "Confirmation" }
+        $sujetClean = ($sujetClean -replace '[\\/:*?"<>|]', '_')
+        if ($sujetClean.Length -gt 80) { $sujetClean = $sujetClean.Substring(0, 80) }
+        $cheminMsg = Join-Path $dossier "$sujetClean.msg"
+        if (-not (Test-Path $cheminMsg)) {
+            $MailItem.SaveAs($cheminMsg, 3)  # 3 = olMSG
+            $nbSauv++
         }
         if ($nbSauv -gt 0) {
             Write-Log "INFO  $nbSauv fichier(s) sauvegarde(s) dans $dossier"
@@ -2455,11 +2441,38 @@ function Save-SiContientBC {
     param($MailItem)
     try {
         $texte = "$($MailItem.Subject) $($MailItem.Body)"
-        $matches = [regex]::Matches($texte, '\b(9\d{6})\b')
-        if ($matches.Count -eq 0) { return }
-        $bcTrouves = @($matches | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+        $bcMatches = [regex]::Matches($texte, '\b(9\d{6})\b')
+        if ($bcMatches.Count -eq 0) { return }
+        $bcTrouves = @($bcMatches | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+        $annee = (Get-Date).ToString("yyyy")
         foreach ($bc in $bcTrouves) {
-            Save-CopieConfirmation $MailItem $bc $MailItem.Subject
+            $dossier = "P:\CONFIRMATION DE COMMANDE FOURNISSEUR\$annee\$bc"
+            if (-not (Test-Path $dossier)) {
+                New-Item -Path $dossier -ItemType Directory -Force | Out-Null
+            }
+            # Sauvegarder les PDF en PJ
+            $nbSauv = 0
+            foreach ($pj in $MailItem.Attachments) {
+                if ($pj.FileName -like "*.pdf") {
+                    $nomPJ = $pj.FileName -replace '[\\/:*?"<>|]', '_'
+                    $chemin = Join-Path $dossier $nomPJ
+                    if (-not (Test-Path $chemin)) {
+                        $pj.SaveAsFile($chemin)
+                        $nbSauv++
+                    }
+                }
+            }
+            # Sauvegarder le .msg (pas de conversion Word)
+            $sujetClean = ($MailItem.Subject -replace '[\\/:*?"<>|]', '_')
+            if ($sujetClean.Length -gt 80) { $sujetClean = $sujetClean.Substring(0, 80) }
+            $cheminMsg = Join-Path $dossier "$sujetClean.msg"
+            if (-not (Test-Path $cheminMsg)) {
+                $MailItem.SaveAs($cheminMsg, 3)  # 3 = olMSG
+                $nbSauv++
+            }
+            if ($nbSauv -gt 0) {
+                Write-Log "INFO  BC $bc : $nbSauv fichier(s) sauvegarde(s) dans $dossier (non-confirmation)"
+            }
         }
     } catch {
         Write-Log "WARN  Save-SiContientBC : $($_.Exception.Message)"
