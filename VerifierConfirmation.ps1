@@ -2451,6 +2451,21 @@ function Save-CopieConfirmation {
     }
 }
 
+function Save-SiContientBC {
+    param($MailItem)
+    try {
+        $texte = "$($MailItem.Subject) $($MailItem.Body)"
+        $matches = [regex]::Matches($texte, '\b(9\d{6})\b')
+        if ($matches.Count -eq 0) { return }
+        $bcTrouves = @($matches | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+        foreach ($bc in $bcTrouves) {
+            Save-CopieConfirmation $MailItem $bc $MailItem.Subject
+        }
+    } catch {
+        Write-Log "WARN  Save-SiContientBC : $($_.Exception.Message)"
+    }
+}
+
 function Save-EmailsLiesBC {
     param($MailConfirmation, [string]$NumeroBC, [string]$Dossier)
     try {
@@ -3035,6 +3050,7 @@ function Invoke-TraiterNouveauCourriel {
     # Filtre domaine exclu avant d'appeler Haiku
     if (Test-DomaineExclu $adresseExp) {
         Write-Log "INFO  Domaine exclu -- courriel ignore : $adresseExp"
+        Save-SiContientBC $MailItem
         return
     }
 
@@ -3042,6 +3058,7 @@ function Invoke-TraiterNouveauCourriel {
     foreach ($motif in $Script:SujetsExclus) {
         if ($motif -and $MailItem.Subject -like "*$motif*") {
             Write-Log "INFO  Sujet exclu ($motif) -- courriel ignore : $($MailItem.Subject)"
+            Save-SiContientBC $MailItem
             return
         }
     }
@@ -3065,6 +3082,7 @@ function Invoke-TraiterNouveauCourriel {
             }
             if ($gromecEnCC -and -not $gromecEnTO -and $autreTiersEnTO) {
                 Write-Log "INFO  Gromec en CC seulement (TO = tiers) -- courriel ignore : $($MailItem.Subject)"
+                Save-SiContientBC $MailItem
                 return
             }
         } catch {}
@@ -3146,12 +3164,14 @@ function Invoke-TraiterNouveauCourriel {
             Set-ReponseFournisseur $adresseExp $false
             Set-PrefixeSujet $MailItem "[X $pctAffiche%]"
             Write-Log "INFO  Skip auto (IGNORER a ${pctAffiche}%) : $($MailItem.Subject)"
+            Save-SiContientBC $MailItem
             return
 
         } elseif ($analyse.TexteBrut -like "ERREUR:*") {
             # Erreur API Sonnet -- ne pas traiter comme confirmation, ignorer
             Set-PrefixeSujet $MailItem "[ERR]"
             Write-Log "WARN  Erreur API Sonnet, courriel ignore : $($analyse.TexteBrut) -- $($MailItem.Subject)"
+            Save-SiContientBC $MailItem
             return
 
         } else {
