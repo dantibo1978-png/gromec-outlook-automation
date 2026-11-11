@@ -2428,9 +2428,15 @@ function Save-CopieConfirmation {
         $sujetClean = if ($Sujet) { $Sujet } else { "Confirmation" }
         $sujetClean = ($sujetClean -replace '[\\/:*?"<>|]', '_')
         if ($sujetClean.Length -gt 80) { $sujetClean = $sujetClean.Substring(0, 80) }
-        $cheminMsg = Join-Path $dossier "$sujetClean.msg"
-        if (-not (Test-Path $cheminMsg)) {
-            $MailItem.SaveAs($cheminMsg, 3)  # 3 = olMSG
+        $cheminHtml = Join-Path $dossier "$sujetClean.html"
+        if (-not (Test-Path $cheminHtml)) {
+            $expediteur = try { $MailItem.SenderName } catch { "" }
+            $destinataires = try { $MailItem.To } catch { "" }
+            $dateEmail = try { $MailItem.ReceivedTime.ToString("yyyy-MM-dd HH:mm") } catch { "" }
+            $entete = "<div style='background:#f0f0f0;padding:10px;margin-bottom:10px;font-family:Calibri,sans-serif;font-size:13px;border-bottom:2px solid #ccc;'>" +
+                "<b>De:</b> $expediteur<br><b>A:</b> $destinataires<br><b>Date:</b> $dateEmail<br><b>Objet:</b> $($MailItem.Subject)</div>"
+            $html = "<html><head><meta charset='utf-8'><title>$($MailItem.Subject)</title></head><body>$entete$($MailItem.HTMLBody)</body></html>"
+            [System.IO.File]::WriteAllText($cheminHtml, [string]$html, [System.Text.Encoding]::UTF8)
             $nbSauv++
         }
         if ($nbSauv -gt 0) {
@@ -2469,12 +2475,18 @@ function Save-SiContientBC {
                     }
                 }
             }
-            # Sauvegarder le .msg (pas de conversion Word)
+            # Sauvegarder en .html (pas de SaveAs qui declenche l'alerte securite Outlook)
             $sujetClean = ($MailItem.Subject -replace '[\\/:*?"<>|]', '_')
             if ($sujetClean.Length -gt 80) { $sujetClean = $sujetClean.Substring(0, 80) }
-            $cheminMsg = Join-Path $dossier "$sujetClean.msg"
-            if (-not (Test-Path $cheminMsg)) {
-                $MailItem.SaveAs($cheminMsg, 3)  # 3 = olMSG
+            $cheminHtml = Join-Path $dossier "$sujetClean.html"
+            if (-not (Test-Path $cheminHtml)) {
+                $expediteur = try { $MailItem.SenderName } catch { "" }
+                $destinataires = try { $MailItem.To } catch { "" }
+                $dateEmail = try { $MailItem.ReceivedTime.ToString("yyyy-MM-dd HH:mm") } catch { "" }
+                $entete = "<div style='background:#f0f0f0;padding:10px;margin-bottom:10px;font-family:Calibri,sans-serif;font-size:13px;border-bottom:2px solid #ccc;'>" +
+                    "<b>De:</b> $expediteur<br><b>A:</b> $destinataires<br><b>Date:</b> $dateEmail<br><b>Objet:</b> $($MailItem.Subject)</div>"
+                $html = "<html><head><meta charset='utf-8'><title>$($MailItem.Subject)</title></head><body>$entete$($MailItem.HTMLBody)</body></html>"
+                [System.IO.File]::WriteAllText($cheminHtml, [string]$html, [System.Text.Encoding]::UTF8)
                 $nbSauv++
             }
             if ($nbSauv -gt 0) {
