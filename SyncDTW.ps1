@@ -1242,7 +1242,11 @@ while ($true) {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cleR.json" `
                         -Method Patch -Body '{"aReessayer":false,"actionRequise":false}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
                     $scriptPath = "U:\GromecOutlook\VerifierConfirmation.ps1"
-                    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force" -WindowStyle Hidden
+                    $procR = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force" -WindowStyle Hidden -PassThru
+                    if (-not $procR.WaitForExit(300000)) {
+                        Write-Log "WARN  Reessai timeout (5 min) pour BC $($entreeR.numeroBCManuel) -- processus tue."
+                        try { $procR.Kill() } catch {}
+                    }
                 }
 
                 if ($entreeR.aReessayer -eq $true -and $entreeR.contestation.type -eq 'mauvais_mode' -and $entreeR.entryID) {
@@ -1257,7 +1261,11 @@ while ($true) {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cleR.json" `
                         -Method Patch -Body '{"aReessayer":false}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
                     $scriptPath = "U:\GromecOutlook\VerifierConfirmation.ps1"
-                    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -Force" -WindowStyle Hidden
+                    $procC = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -Force" -WindowStyle Hidden -PassThru
+                    if (-not $procC.WaitForExit(300000)) {
+                        Write-Log "WARN  Contestation timeout (5 min) pour $expediteurR -- processus tue."
+                        try { $procC.Kill() } catch {}
+                    }
                 }
             }
         } catch {
