@@ -87,6 +87,13 @@ function Update-ScriptSiNecessaire {
 
 Update-ScriptSiNecessaire
 
+# --- Une seule instance a la fois (les autres attendent leur tour) ---
+$Script:MutexVC = New-Object System.Threading.Mutex($false, "Global\GromecVerifierConfirmation")
+$acquis = $Script:MutexVC.WaitOne(120000)  # attendre max 2 min
+if (-not $acquis) {
+    exit 0
+}
+
 # --- Chemin du dossier de donnees (meme que la version VBA) ---
 $DataFolder = "U:\GromecOutlook\"
 $ConfigPath = Join-Path $DataFolder "config.json"
@@ -3489,4 +3496,5 @@ try {
     }
     if ($outlook) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook) | Out-Null }
     [System.GC]::Collect()
+    if ($Script:MutexVC) { try { $Script:MutexVC.ReleaseMutex() } catch {} }
 }
