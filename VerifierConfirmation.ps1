@@ -89,8 +89,11 @@ Update-ScriptSiNecessaire
 
 # --- Une seule instance a la fois (les autres attendent leur tour) ---
 $Script:MutexVC = New-Object System.Threading.Mutex($false, "Global\GromecVerifierConfirmation")
-$acquis = $Script:MutexVC.WaitOne(120000)  # attendre max 2 min
+$acquis = $Script:MutexVC.WaitOne(600000)  # attendre max 10 min
 if (-not $acquis) {
+    $logPath = Join-Path "U:\GromecOutlook" "VerifierConfirmation.log"
+    $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    Add-Content $logPath "$ts AVERT  Mutex timeout 10 min - email non traite (EntryID=$EntryID)"
     exit 0
 }
 
