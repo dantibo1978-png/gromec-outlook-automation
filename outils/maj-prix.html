@@ -762,14 +762,14 @@ function buildSpecialPrixPayload(rows, label) {
     const prixStr = prix % 1 === 0 ? String(prix) : String(prix);
     const listeNum = r.listeNumInterne || '';
 
-    headerLines.push(`${r.codeArticle}\t${r.codePartenaire}\t\t\t\t${listeNum}\ttNO\t`);
-
     const hasDates = !!(r.nouveauDu || r.du || r.nouveauAu || r.au);
     if (hasDates) {
+      headerLines.push(`${r.codeArticle}\t${r.codePartenaire}\t\t\t\t${listeNum}\ttNO\t`);
       const dateTo = fromDateVal(r.nouveauAu || toDateVal(r.au));
       const dateFrom = fromDateVal(r.nouveauDu || toDateVal(r.du));
       dataLines.push(`${r.codeArticle}\t${r.codePartenaire}\t\t$\ttNO\t${dateTo}\t${remise}\t${prixStr}\t${dateFrom}\t\t`);
     } else {
+      headerLines.push(`${r.codeArticle}\t${r.codePartenaire}\t${prixStr}\t$\t${remise}\t${listeNum}\ttNO\t`);
       dataLines.push(`${r.codeArticle}\t${r.codePartenaire}\t\t$\ttNO\t\t${remise}\t${prixStr}\t\t\t`);
     }
   }
