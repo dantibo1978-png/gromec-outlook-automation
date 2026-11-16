@@ -494,18 +494,23 @@ function renderTable() {
     const rows = groupedData[group];
     const groupId = group.replace(/[^a-zA-Z]/g, '_');
     const isSpecGroup = isSpecialSource(rows[0]?.source || '');
-    const dateControls = isSpecGroup ? `
+    const groupControls = `
       <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        Liste liée: <input type="number" min="0" class="prix-input" id="gliste-${groupId}" style="width:60px;font-size:12px" placeholder="no">
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="applyGroupListe('${groupId}')">Appliquer</button>
+        ${isSpecGroup ? `
+        <span style="margin-left:8px;border-left:1px solid var(--rule);padding-left:8px">
         Du: <input type="date" class="date-input" id="gdu-${groupId}" style="width:120px">
         Au: <input type="date" class="date-input" id="gau-${groupId}" style="width:120px">
         <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="applyGroupDates('${groupId}')">Appliquer dates</button>
-      </span>` : '';
+        </span>` : ''}
+      </span>`;
 
     html += `<tr class="group-header"><td colspan="14">
       <div style="display:flex;align-items:center;width:100%">
         <label><input type="checkbox" data-group="${groupId}" onchange="toggleGroup('${groupId}', this.checked)">
         ${group} <span style="color:var(--muted);font-weight:400">(${rows.length})</span></label>
-        ${dateControls}
+        ${groupControls}
       </div>
     </td></tr>`;
 
@@ -591,6 +596,27 @@ function applyGroupDates(groupId) {
   });
   renderTable();
   // Restore checkboxes
+  parsedRows.forEach((r, i) => {
+    if (r.checked) {
+      const cb = document.querySelector(`input[type=checkbox][data-idx="${i}"]`);
+      if (cb) cb.checked = true;
+    }
+  });
+  updateFooter();
+}
+
+function applyGroupListe(groupId) {
+  const val = document.getElementById('gliste-' + groupId)?.value;
+  if (!val) return;
+  const num = parseInt(val);
+  if (isNaN(num)) return;
+  document.querySelectorAll(`tr[data-group="${groupId}"][data-idx]`).forEach(tr => {
+    const idx = parseInt(tr.dataset.idx);
+    if (parsedRows[idx].checked) {
+      parsedRows[idx].listeNumInterne = num;
+    }
+  });
+  renderTable();
   parsedRows.forEach((r, i) => {
     if (r.checked) {
       const cb = document.querySelector(`input[type=checkbox][data-idx="${i}"]`);
