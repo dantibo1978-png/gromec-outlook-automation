@@ -238,7 +238,38 @@
 const FIREBASE_URL = 'https://gromec-outlook-vba-default-rtdb.firebaseio.com/';
 let parsedRows = [];
 let groupedData = {};
-let listeNameToNum = {}; // map list name (e.g. "_30-PLOMBIERS") → internal SAP number (e.g. 4)
+const LISTE_PRIX_SAP = {
+  ".Prix détail":1, "Prix fournisseur":2, "Octo":3, "_30-PLOMBIERS":4,
+  "_10-RIO TINTO (LIBRE-SERVICE)":5, "_15-INGENIEURS":6, "_20-PATES & PAPIERS":7,
+  "_21-MINES":8, "_25-QUINCAILLERIE & MARCHAND":9, "_26-BOUTIQUES":10,
+  "COUTANT MOYEN":11, "_23-ARMOIRES QUINCAILLERIES":12, "_31-PLOMBIERS BOUTIQUE":13,
+  "_32-TUYAUTEURS":14, "_35-ATELIERS DE MECANIQUE":15, "_40-ENTREPRENEURS GENERAUX":16,
+  "_50-PARTICULIERS & AUTRES":17, "_60-CIES SPECIALISES":18, "_70-HOPITAUX":19,
+  "_75-MUNICIPALITES":20, "_80-COMMISSIONS SCOLAIRES":21, "_85-ORGANISMES GOUVERNEMENTAUX":22,
+  "_99-DIVERS":23, "_90-INSTITUTIONS":24, "_52-PRIX SALLE DE MONTRE":25, "_12-ALUMINERIES":26,
+  "_C027299-PLOMB PARADIS":27, "_C010070-BIRON INC 9170-7570 QUE":28,
+  "_C019410-FJORD-TECH INDUSTRIE IN":29, "_C020281-GAUDREAULT J.O. LTEE":30,
+  "_C021051-PGS EXPERTS INC.":31, "_C022515-J.P.LAROUCHE ET FILS IN":32,
+  "_C026253-PLOMB CHAUFFAGE GB 9319":33, "_C026750-PLOMB EPG":34,
+  "_C026797-PLOMB CHIBOUGAMAU INC":35, "_C026808-PLOMB JDR INC.":36,
+  "_C026815-PLOMB CLAVEAU":37, "_C027250-PLOMB ASB BOUTIQUE ET M":38,
+  "_C027275-PLOMB ROCHEFORT 9232-83":39, "_C027292-PLOMBERIE P3B PROJET:HO":40,
+  "_C027296-PLOMB LATULIPPE 9205-67":41, "_C027297-PLOMBERIE P3B COMPTE RE":42,
+  "_C027327-PLOMB DU FJORD":43, "_C027370-PLOMB TREMBLAY & FILS I":44,
+  "_C027371-PLOMB TREMBLAY & FILS I":45, "_C027372-PLOMB TREMBLAY & FILS I":46,
+  "_C027409-PLOMB A. TRUCHON":47, "_C027901-PRO-SAG MECANIQUE INC":48,
+  "_C027905-PROSAG PLOMBERIE & CHAU":49, "_C028400-ROY ALMA PLOMBERIE LTEE":50,
+  "_C030192-TECHNOSOUDE INC":51, "_C021063-PGS INDUSTRIEL INC.":52,
+  "_C027514-ATLANTIS POMPE STE-FOY":53, "_C022205-HYDRO-QUEBEC":54,
+  "_C021045-MACONNEX CHICOUTIMI":55, "_C028127-RAMONAGE ALMA ENR.":56,
+  "_C029417-SERVICES CHEMINEX":57, "_C027416-INSTALLATION DU NORD":58,
+  "_C032056-VILLE DE SAGUENAY":59, "_C012591-RIO TINTO ALCAN INC.":60,
+  "_C032043-VIEILLE GARDE INC":61, "_C018441-DKO DESING SIGNATURE":62,
+  "_PROMOTIONS ET SPECIAL CHAUFFAGE":63, "_29-PLOMB ET ARMOIRE PRIVILEGE":64,
+  "_C018625-EAU SALLE DE BAIN":65, "_C029075-CONSTRUCTION SHUKAN":66,
+  "_C027825-PROCOMBUSTION INC.":67
+};
+let listeNameToNum = {};
 
 document.getElementById('btnParse').addEventListener('click', parseTable);
 document.getElementById('pasteArea').addEventListener('keydown', e => {
@@ -372,12 +403,11 @@ function parseTable() {
     return;
   }
 
-  // Build list name → internal number map from "Liste de prix" rows
-  listeNameToNum = {};
+  // Build list name → internal number map: start with hardcoded, augment with parsed
+  listeNameToNum = Object.assign({}, LISTE_PRIX_SAP);
   for (const r of parsedRows) {
     if (r.source.match(/liste de prix/i) && r.listeNo && r.detailListeName) {
       listeNameToNum[r.detailListeName.trim()] = r.listeNo;
-      // Also map with the full detail (e.g. "4 _30-PLOMBIERS")
       if (r.detail) listeNameToNum[r.detail.trim()] = r.listeNo;
     }
   }
