@@ -244,6 +244,42 @@ document.getElementById('pasteArea').addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.ctrlKey) parseTable();
 });
 
+function detectColumns(headerCols) {
+  const map = {};
+  const patterns = {
+    codeArticle: /code.?article/i,
+    source: /^source$/i,
+    detail: /^d[eé]tail/i,
+    codePartenaire: /code.?partenaire/i,
+    prix: /^prix$/i,
+    devise: /devise/i,
+    remise: /remise/i,
+    du: /^du$/i,
+    au: /^au$/i,
+    reference: /r[eé]f[eé]rence/i,
+    listeBase: /liste.?de.?base/i,
+    prixSource: /prix.?source/i,
+    facteur: /facteur/i,
+    majAuto: /maj.?auto/i
+  };
+  for (let i = 0; i < headerCols.length; i++) {
+    const h = headerCols[i].trim();
+    for (const [key, re] of Object.entries(patterns)) {
+      if (re.test(h) && map[key] === undefined) map[key] = i;
+    }
+  }
+  return map;
+}
+
+// Fallback column maps for the two known SAP formats
+const FORMAT_A = {codeArticle:0,source:1,detail:2,codePartenaire:3,prix:4,devise:5,remise:6,du:7,au:8,reference:9,listeBase:10,prixSource:11,facteur:12,majAuto:13};
+const FORMAT_B = {detail:0,source:1,codePartenaire:2,prix:3,remise:4,du:5,au:6,reference:7,listeBase:8,prixSource:9,facteur:10,codeArticle:11};
+
+function col(cols, map, key) {
+  const idx = map[key];
+  return (idx !== undefined && idx < cols.length) ? cols[idx].trim() : '';
+}
+
 function parseTable() {
   const raw = document.getElementById('pasteArea').value.trim();
   if (!raw) return;
@@ -251,56 +287,77 @@ function parseTable() {
   const lines = raw.split('\n').map(l => l.split('\t'));
   parsedRows = [];
 
+  // Detect columns from first line
+  let colMap = null;
   let startIdx = 0;
-  if (lines[0] && lines[0][0] && lines[0][0].match(/code.?article/i)) startIdx = 1;
+  const firstLine = lines[0].map(c => c.trim().toLowerCase());
+  const hasHeader = firstLine.some(c => /code.?article|source|detail|partenaire|prix|liste.?de.?base/i.test(c));
+
+  if (hasHeader) {
+    colMap = detectColumns(lines[0]);
+    startIdx = 1;
+    // Check if we got enough columns detected
+    if (colMap.source === undefined || colMap.prix === undefined) {
+      colMap = firstLine.includes('code article') || firstLine[0].match(/code/i) ? FORMAT_A : FORMAT_B;
+    }
+  } else {
+    // No header — guess format by checking if last column looks like article code
+    const lastCol = (lines[0][lines[0].length - 1] || '').trim();
+    const firstCol = (lines[0][0] || '').trim();
+    if (lastCol.match(/^\d{5,7}$/) && !firstCol.match(/^\d{5,7}$/)) {
+      colMap = FORMAT_B;
+    } else {
+      colMap = FORMAT_A;
+    }
+  }
 
   for (let i = startIdx; i < lines.length; i++) {
     const cols = lines[i];
-    if (cols.length < 5) continue;
+    if (cols.length < 4) continue;
 
-    const source = (cols[1] || '').trim();
+    const source = col(cols, colMap, 'source');
     if (source.match(/fiche article/i)) continue;
     if (source.match(/dernier achat/i)) continue;
 
-    const prixStr = (cols[4] || '0').replace(/\s/g, '').replace(',', '.');
+    const prixStr = col(cols, colMap, 'prix').replace(/\s/g, '').replace(',', '.');
     const prix = parseFloat(prixStr) || 0;
 
-    const listeBase = (cols[10] || '').trim();
+    const listeBase = col(cols, colMap, 'listeBase');
     const listeMatch = listeBase.match(/Liste no (\d+)/i);
     const listeNo = listeMatch ? parseInt(listeMatch[1]) : null;
 
-    // Extract detail for list name (e.g. "32 Plombier" → "Plombier")
-    const detail = (cols[2] || '').trim();
+    const detail = col(cols, colMap, 'detail');
     const detailListeMatch = detail.match(/^\d+\s+(.+)/);
     const detailListeName = detailListeMatch ? detailListeMatch[1] : detail;
 
-    const remiseStr = (cols[6] || '0').replace(',', '.').replace('%', '').trim();
+    const remiseStr = col(cols, colMap, 'remise').replace(',', '.').replace('%', '');
     const remise = parseFloat(remiseStr) || 0;
 
+    const codeArticle = col(cols, colMap, 'codeArticle');
+    if (!codeArticle && !source) continue;
+
     const row = {
-      codeArticle: (cols[0] || '').trim(),
+      codeArticle: codeArticle,
       source: source,
       detail: detail,
       detailListeName: detailListeName,
-      codePartenaire: (cols[3] || '').trim(),
+      codePartenaire: col(cols, colMap, 'codePartenaire'),
       prix: prix,
-      devise: (cols[5] || '$').trim(),
+      devise: col(cols, colMap, 'devise') || '$',
       remise: remise,
-      du: (cols[7] || '').trim(),
-      au: (cols[8] || '').trim(),
-      reference: (cols[9] || '').trim(),
+      du: col(cols, colMap, 'du'),
+      au: col(cols, colMap, 'au'),
+      reference: col(cols, colMap, 'reference'),
       listeBase: listeBase,
       listeNo: listeNo,
-      prixSource: (cols[11] || '').trim(),
-      facteur: (cols[12] || '').trim(),
-      majAuto: (cols[13] || '').trim(),
-      // Editable fields
+      prixSource: col(cols, colMap, 'prixSource'),
+      facteur: col(cols, colMap, 'facteur'),
+      majAuto: col(cols, colMap, 'majAuto'),
       nouveauPrix: null,
       nouvelleRemise: null,
       nouveauDu: null,
       nouveauAu: null,
       checked: false,
-      // Target: 'liste_liee' = update linked price list, 'direct' = update special price directly
       cible: (listeNo && isSpecialSource(source)) ? 'liste_liee' : 'direct'
     };
     parsedRows.push(row);
