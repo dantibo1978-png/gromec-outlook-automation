@@ -356,6 +356,7 @@ function parseTable() {
       majAuto: col(cols, colMap, 'majAuto'),
       nouveauPrix: null,
       nouvelleRemise: null,
+      nouveauFacteur: null,
       nouveauDu: null,
       nouveauAu: null,
       checked: false,
@@ -480,6 +481,7 @@ function renderTable() {
       <th>Remise %</th>
       <th>Cible import</th>
       <th>Liste liée (no)</th>
+      <th>Facteur</th>
       <th>Du</th>
       <th>Au</th>
     </tr></thead><tbody>`;
@@ -566,7 +568,8 @@ function renderTable() {
         <td style="text-align:right" id="diff-${idx}">${diffHtml(r)}</td>
         <td>${remiseHtml}</td>
         <td>${cibleHtml}</td>
-        <td>${isSpec ? `<input type="number" min="0" class="prix-input" style="width:60px;font-size:12px" data-idx="${idx}" value="${r.listeNumInterne || ''}" placeholder="" title="${esc(r.listeBase)}" oninput="setListeNum(${idx}, this.value)">` : `<span style="font-size:12px;color:var(--muted)">${r.listeBase || ''}</span>`}</td>
+        <td><input type="number" min="0" class="prix-input" style="width:60px;font-size:12px" data-idx="${idx}" value="${r.listeNumInterne || r.listeNo || ''}" placeholder="" title="${esc(r.listeBase)}" oninput="setListeNum(${idx}, this.value)"></td>
+        <td><input type="number" step="0.01" min="0" class="prix-input" style="width:60px;font-size:12px" data-idx="${idx}" value="${r.nouveauFacteur !== null ? r.nouveauFacteur : ''}" placeholder="${r.facteur || ''}" oninput="setFacteur(${idx}, this.value)"></td>
         <td>${duHtml}</td>
         <td>${auHtml}</td>
       </tr>`;
@@ -633,6 +636,11 @@ function setCible(idx, val) {
 function setListeNum(idx, val) {
   const v = parseInt(val);
   parsedRows[idx].listeNumInterne = isNaN(v) ? null : v;
+}
+
+function setFacteur(idx, val) {
+  const v = parseFloat(val);
+  parsedRows[idx].nouveauFacteur = isNaN(v) ? null : v;
 }
 
 function setRemise(idx, val) {
@@ -731,8 +739,14 @@ function buildListePrixPayload(listeNum, rows) {
     'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
   ];
   for (const r of rows) {
+    const facteur = r.nouveauFacteur !== null ? r.nouveauFacteur : (r.facteur ? parseFloat(r.facteur) : null);
     const prix = r.nouveauPrix !== null ? r.nouveauPrix.toFixed(2) : r.prix.toFixed(2);
-    dtwLines.push(`${r.codeArticle}\t0\t${listeNum}\t${prix}\t\t\t\t\t`);
+    if (facteur && facteur !== 1) {
+      const baseList = r.listeNo || '';
+      dtwLines.push(`${r.codeArticle}\t0\t${listeNum}\t\t\t${baseList}\t${facteur}\t\t`);
+    } else {
+      dtwLines.push(`${r.codeArticle}\t0\t${listeNum}\t${prix}\t\t\t\t\t`);
+    }
   }
   return {
     type: 'import_prix',
@@ -803,8 +817,7 @@ function buildSendPlan() {
     const gt = getGroupType(r);
 
     if (gt === 'liste') {
-      // Liste de prix → always goes to its own list
-      const ln = r.listeNo || parseInt(r.detail);
+      const ln = r.listeNumInterne || r.listeNo || parseInt(r.detail);
       if (ln) {
         if (!listeRows[ln]) listeRows[ln] = { name: r.detail, rows: [] };
         listeRows[ln].rows.push(r);
