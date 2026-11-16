@@ -412,10 +412,9 @@ function parseTable() {
     }
   }
 
-  // Resolve listeNumInterne for special price rows
+  // Resolve listeNumInterne for all rows
   for (const r of parsedRows) {
     if (isSpecialSource(r.source)) {
-      // listeBase contains the list name (e.g. "_30-PLOMBIERS") — resolve to internal number
       const baseName = (r.listeBase || '').trim();
       if (baseName && listeNameToNum[baseName]) {
         r.listeNumInterne = listeNameToNum[baseName];
@@ -424,6 +423,13 @@ function parseTable() {
         r.listeNumInterne = r.listeNo;
       } else {
         r.listeNumInterne = null;
+      }
+    } else if (r.source.match(/liste de prix/i)) {
+      const name = (r.detailListeName || '').trim();
+      if (name && listeNameToNum[name]) {
+        r.listeNumInterne = listeNameToNum[name];
+      } else if (r.listeNo) {
+        r.listeNumInterne = r.listeNo;
       }
     }
   }
