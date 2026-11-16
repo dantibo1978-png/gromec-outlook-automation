@@ -636,11 +636,37 @@ function setCible(idx, val) {
 function setListeNum(idx, val) {
   const v = parseInt(val);
   parsedRows[idx].listeNumInterne = isNaN(v) ? null : v;
+  if (parsedRows[idx].nouveauFacteur) recalcFacteur(idx);
+}
+
+function findPrixListe(codeArticle, listeNum) {
+  for (const r of parsedRows) {
+    if (r.codeArticle === codeArticle && r.source === 'Liste de prix' && parseInt(r.listeNo) === listeNum) {
+      return r.nouveauPrix !== null ? r.nouveauPrix : r.prix;
+    }
+  }
+  return null;
+}
+
+function recalcFacteur(idx) {
+  const r = parsedRows[idx];
+  const listeRef = r.listeNumInterne || r.listeNo;
+  const facteur = r.nouveauFacteur;
+  if (!listeRef || !facteur) return;
+  const prixBase = findPrixListe(r.codeArticle, parseInt(listeRef));
+  if (prixBase === null) return;
+  const nouveauPrix = Math.round(prixBase * facteur * 100) / 100;
+  r.nouveauPrix = nouveauPrix;
+  const inp = document.querySelector(`.prix-input[data-idx="${idx}"]`);
+  if (inp) inp.value = nouveauPrix.toFixed(2);
+  const diffEl = document.getElementById('diff-' + idx);
+  if (diffEl) diffEl.innerHTML = diffHtml(r);
 }
 
 function setFacteur(idx, val) {
   const v = parseFloat(val);
   parsedRows[idx].nouveauFacteur = isNaN(v) ? null : v;
+  if (v) recalcFacteur(idx);
 }
 
 function setRemise(idx, val) {
