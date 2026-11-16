@@ -70,6 +70,9 @@ $DTW_FichierLeadTime   = "$DTW_Dossier\import_leadtime.txt"
 $DTW_ScenarioLeadTime  = "$DTW_Dossier\UpdateLeadTime_PROD.xml"
 $DTW_FichierFullbox    = "$DTW_Dossier\import_fullbox.txt"
 $DTW_ScenarioFullbox   = "$DTW_Dossier\UpdateFullbox_PROD.xml"
+$DTW_FichierSpecialHeader = "$DTW_Dossier\special_prices_header.txt"
+$DTW_FichierSpecialLines  = "$DTW_Dossier\special_prices_lines.txt"
+$DTW_ScenarioSpecial      = "$DTW_Dossier\UpdateSpecialPrices_PROD.xml"
 $IntervalleSecondes = 60
 $DTW_TimeoutSecondes = 600  # DTW.exe est tue si bloque plus de 10 min (ex: dialogue SAP cache)
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
@@ -1383,9 +1386,16 @@ while ($true) {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
                         -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
 
-                    [System.IO.File]::WriteAllText($DTW_FichierPrix, $imp.contenu, [System.Text.Encoding]::Unicode)
+                    $typeImport = if ($imp.type) { $imp.type } else { 'import_prix' }
 
-                    $resPrix = Invoke-DTW -ScenarioXml $DTW_ScenarioPrix
+                    if ($typeImport -eq 'import_prix_special') {
+                        [System.IO.File]::WriteAllText($DTW_FichierSpecialHeader, $imp.contenu, [System.Text.Encoding]::Unicode)
+                        [System.IO.File]::WriteAllText($DTW_FichierSpecialLines, $imp.contenu2, [System.Text.Encoding]::Unicode)
+                        $resPrix = Invoke-DTW -ScenarioXml $DTW_ScenarioSpecial
+                    } else {
+                        [System.IO.File]::WriteAllText($DTW_FichierPrix, $imp.contenu, [System.Text.Encoding]::Unicode)
+                        $resPrix = Invoke-DTW -ScenarioXml $DTW_ScenarioPrix
+                    }
                     $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
 
                     if ($resPrix.Succes) {
