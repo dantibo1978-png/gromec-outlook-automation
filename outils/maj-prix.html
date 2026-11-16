@@ -412,18 +412,21 @@ function parseTable() {
     }
   }
 
-  // Resolve listeNumInterne for all rows
+  // Resolve listeNumInterne for all rows — reference column is the SAP list number
   for (const r of parsedRows) {
-    if (isSpecialSource(r.source)) {
+    const ref = parseInt(r.reference);
+    if (!isNaN(ref) && ref > 0) {
+      r.listeNumInterne = ref;
+    } else if (isSpecialSource(r.source)) {
       const baseName = (r.listeBase || '').trim();
       if (baseName && listeNameToNum[baseName]) {
         r.listeNumInterne = listeNameToNum[baseName];
-        if (!r.listeNo) r.cible = 'liste_liee';
       } else if (r.listeNo) {
         r.listeNumInterne = r.listeNo;
       } else {
         r.listeNumInterne = null;
       }
+      if (!r.listeNo) r.cible = 'liste_liee';
     } else if (r.source.match(/liste de prix/i)) {
       const name = (r.detailListeName || '').trim();
       if (name && listeNameToNum[name]) {
