@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAJ Prix SAP — Gromec</title>
+<style>
+  :root{
+    --bg:#11161D;
+    --panel:#1B232E;
+    --panel-2:#212B38;
+    --grid-line:#243140;
+    --rule:#2C394A;
+    --accent:#5EA8FF;
+    --ok:#3FB67F;
+    --ok-bg:rgba(63,182,127,0.12);
+    --ecart:#E2553F;
+    --ecart-bg:rgba(226,85,63,0.12);
+    --warn:#E0A93E;
+    --warn-bg:rgba(224,169,62,0.12);
+    --text:#E7ECF2;
+    --muted:#8C9BAE;
+    --muted-2:#5C6B7E;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:
+      linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0/40px 40px,
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0/40px 40px,
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    font-size:15px;
+    min-height:100vh;
+  }
+  .wrap{max-width:1400px;margin:0 auto;padding:24px 24px 80px}
+  a.back{
+    font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--accent);
+    text-decoration:none;display:inline-block;margin-bottom:18px;
+  }
+  a.back:hover{text-decoration:underline}
+  header h1{font-family:'Space Grotesk',sans-serif;font-size:1.5rem;margin:0 0 4px;font-weight:700}
+  header p{color:var(--muted);margin:0 0 20px;font-size:14px}
+
+  .step{
+    background:var(--panel);border:1px solid var(--rule);border-radius:10px;
+    padding:18px 20px 20px;margin-bottom:16px;
+  }
+  .step h2{font-family:'Space Grotesk',sans-serif;font-size:1.05rem;margin:0 0 8px;font-weight:600}
+  .hint{font-size:.84rem;color:var(--muted);margin:2px 0 12px}
+
+  textarea.paste-area{
+    width:100%;height:180px;background:var(--panel-2);border:2px dashed var(--rule);
+    border-radius:10px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;
+    padding:12px;resize:vertical;outline:none;transition:.15s;
+  }
+  textarea.paste-area:focus{border-color:var(--accent);background:rgba(94,168,255,0.04)}
+  textarea.paste-area::placeholder{color:var(--muted-2)}
+
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 18px;border-radius:8px;font-size:14px;font-weight:600;
+    cursor:pointer;border:none;transition:.15s;
+  }
+  .btn-primary{background:var(--accent);color:#0B1120}
+  .btn-primary:hover{filter:brightness(1.1)}
+  .btn-primary:disabled{opacity:.4;cursor:default;filter:none}
+  .btn-secondary{background:var(--panel-2);color:var(--text);border:1px solid var(--rule)}
+  .btn-secondary:hover{border-color:var(--accent)}
+  .btn-ok{background:var(--ok);color:#0B1120}
+  .btn-ok:hover{filter:brightness(1.1)}
+  .btn-ok:disabled{opacity:.4;cursor:default;filter:none}
+
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .toolbar .info{font-size:13px;color:var(--muted)}
+
+  .prix-input{
+    width:90px;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
+    color:var(--text);padding:4px 8px;font-size:13px;text-align:right;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .prix-input:focus{border-color:var(--accent);outline:none}
+  .prix-input.changed{border-color:var(--warn);background:var(--warn-bg)}
+
+  .prix-global{
+    width:110px;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
+    color:var(--text);padding:6px 10px;font-size:14px;text-align:right;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .prix-global:focus{border-color:var(--accent);outline:none}
+
+  table.data{width:100%;border-collapse:collapse;font-size:13px}
+  table.data th{
+    position:sticky;top:0;z-index:2;
+    background:var(--panel);color:var(--muted);font-weight:600;font-size:12px;
+    text-align:left;padding:8px 6px;border-bottom:2px solid var(--rule);
+    white-space:nowrap;
+  }
+  table.data td{
+    padding:5px 6px;border-bottom:1px solid var(--grid-line);
+    vertical-align:middle;
+  }
+  table.data tr:hover td{background:rgba(94,168,255,0.04)}
+  table.data tr.checked td{background:rgba(94,168,255,0.08)}
+  table.data tr.group-header td{
+    background:var(--panel-2);font-weight:600;padding:10px 6px;
+    border-bottom:2px solid var(--rule);font-size:13px;
+  }
+  table.data tr.group-header td label{cursor:pointer;display:flex;align-items:center;gap:8px}
+
+  .badge{
+    display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;
+    font-weight:600;white-space:nowrap;
+  }
+  .badge-liste{background:rgba(94,168,255,0.12);color:var(--accent)}
+  .badge-special{background:rgba(224,169,62,0.12);color:var(--warn)}
+  .badge-periode{background:rgba(63,182,127,0.12);color:var(--ok)}
+  .badge-autre{background:rgba(140,155,174,0.12);color:var(--muted)}
+
+  .table-wrap{max-height:70vh;overflow:auto;border:1px solid var(--rule);border-radius:10px}
+
+  .footer-bar{
+    position:fixed;bottom:0;left:0;right:0;
+    background:var(--panel);border-top:2px solid var(--rule);
+    padding:12px 24px;display:flex;align-items:center;gap:14px;
+    z-index:10;
+  }
+  .footer-bar .count{font-size:14px;font-weight:600}
+  .footer-bar .status{font-size:13px;margin-left:auto}
+
+  input[type=checkbox]{
+    width:16px;height:16px;accent-color:var(--accent);cursor:pointer;
+    margin:0;
+  }
+
+  .diff-pos{color:var(--ecart);font-weight:600}
+  .diff-neg{color:var(--ok);font-weight:600}
+  .diff-zero{color:var(--muted-2)}
+
+  #step2,#step3{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← Retour au dashboard</a>
+  <header>
+    <h1>Mise à jour de prix SAP</h1>
+    <p>Collez le tableau de prix SAP, sélectionnez les lignes à modifier, entrez le nouveau prix et envoyez vers DTW.</p>
+  </header>
+
+  <!-- Étape 1: Coller -->
+  <div class="step" id="step1">
+    <h2>1. Coller le tableau SAP</h2>
+    <p class="hint">Copiez le tableau complet depuis SAP (Ctrl+C) et collez-le ici (Ctrl+V). Les colonnes sont détectées automatiquement.</p>
+    <textarea class="paste-area" id="pasteArea" placeholder="Collez le tableau SAP ici...&#10;&#10;Code Article&#9;Source&#9;Detail&#9;Code partenaire&#9;Prix&#9;Devise&#9;Remise %&#9;Du&#9;Au&#9;Reference&#9;Liste de base&#9;Prix source&#9;Facteur&#9;MAJ auto"></textarea>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+      <button class="btn btn-primary" id="btnParse">Analyser le tableau</button>
+      <span id="parseStatus" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+  </div>
+
+  <!-- Étape 2: Sélectionner -->
+  <div class="step" id="step2">
+    <h2>2. Sélectionner et modifier les prix</h2>
+    <div class="toolbar">
+      <button class="btn btn-secondary" id="btnSelectAll">Tout cocher</button>
+      <button class="btn btn-secondary" id="btnDeselectAll">Tout décocher</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)">
+        Nouveau prix global:
+        <input type="number" step="0.01" min="0" class="prix-global" id="prixGlobal" placeholder="0.00">
+      </label>
+      <button class="btn btn-secondary" id="btnApplyGlobal">Appliquer aux cochés</button>
+      <span class="info" id="selectionInfo"></span>
+    </div>
+    <div class="table-wrap" id="tableWrap"></div>
+  </div>
+
+  <!-- Barre du bas -->
+  <div class="footer-bar" id="footerBar" style="display:none">
+    <span class="count" id="footerCount">0 ligne(s) sélectionnée(s)</span>
+    <button class="btn btn-ok" id="btnEnvoyer" disabled>Envoyer vers DTW</button>
+    <span class="status" id="footerStatus"></span>
+  </div>
+</div>
+
+<script>
+const FIREBASE_URL = 'https://gromec-outlook-vba-default-rtdb.firebaseio.com/';
+let parsedRows = [];
+let groupedData = {};
+
+document.getElementById('btnParse').addEventListener('click', parseTable);
+document.getElementById('pasteArea').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.ctrlKey) parseTable();
+});
+
+function parseTable() {
+  const raw = document.getElementById('pasteArea').value.trim();
+  if (!raw) return;
+
+  const lines = raw.split('\n').map(l => l.split('\t'));
+  parsedRows = [];
+
+  // Detect if first line is header
+  let startIdx = 0;
+  if (lines[0] && lines[0][0] && lines[0][0].match(/code.?article/i)) {
+    startIdx = 1;
+  }
+
+  for (let i = startIdx; i < lines.length; i++) {
+    const cols = lines[i];
+    if (cols.length < 5) continue;
+
+    const source = (cols[1] || '').trim();
+    // Skip "Fiche article" rows - they're info only, not updatable
+    if (source.match(/fiche article/i)) continue;
+    // Skip "Dernier achat" rows
+    if (source.match(/dernier achat/i)) continue;
+
+    const prixStr = (cols[4] || '0').replace(/\s/g, '').replace(',', '.');
+    const prix = parseFloat(prixStr) || 0;
+
+    // Extract list number from "Liste de base" column
+    const listeBase = (cols[10] || '').trim();
+    const listeMatch = listeBase.match(/Liste no (\d+)/i);
+    const listeNo = listeMatch ? parseInt(listeMatch[1]) : null;
+
+    const row = {
+      codeArticle: (cols[0] || '').trim(),
+      source: source,
+      detail: (cols[2] || '').trim(),
+      codePartenaire: (cols[3] || '').trim(),
+      prix: prix,
+      devise: (cols[5] || '$').trim(),
+      remise: (cols[6] || '0').trim(),
+      du: (cols[7] || '').trim(),
+      au: (cols[8] || '').trim(),
+      reference: (cols[9] || '').trim(),
+      listeBase: listeBase,
+      listeNo: listeNo,
+      prixSource: (cols[11] || '').trim(),
+      facteur: (cols[12] || '').trim(),
+      majAuto: (cols[13] || '').trim(),
+      nouveauPrix: null,
+      checked: false
+    };
+    parsedRows.push(row);
+  }
+
+  if (parsedRows.length === 0) {
+    document.getElementById('parseStatus').textContent = 'Aucune ligne valide trouvée.';
+    document.getElementById('parseStatus').style.color = 'var(--ecart)';
+    return;
+  }
+
+  // Group by source type
+  groupedData = {};
+  for (const r of parsedRows) {
+    let groupKey;
+    if (r.source.match(/liste de prix/i)) groupKey = 'Liste de prix';
+    else if (r.source.match(/prix special partenaire/i)) groupKey = 'Prix spécial partenaire';
+    else if (r.source.match(/prix special periode/i)) groupKey = 'Prix spécial période/volume';
+    else groupKey = r.source || 'Autre';
+
+    if (!groupedData[groupKey]) groupedData[groupKey] = [];
+    groupedData[groupKey].push(r);
+  }
+
+  document.getElementById('parseStatus').textContent = parsedRows.length + ' lignes trouvées dans ' + Object.keys(groupedData).length + ' groupe(s).';
+  document.getElementById('parseStatus').style.color = 'var(--ok)';
+
+  renderTable();
+  document.getElementById('step2').style.display = 'block';
+  document.getElementById('footerBar').style.display = 'flex';
+  updateFooter();
+}
+
+function badgeClass(source) {
+  if (source.match(/liste de prix/i)) return 'badge-liste';
+  if (source.match(/partenaire/i)) return 'badge-special';
+  if (source.match(/periode|volume/i)) return 'badge-periode';
+  return 'badge-autre';
+}
+
+function renderTable() {
+  const wrap = document.getElementById('tableWrap');
+  let html = `<table class="data">
+    <thead><tr>
+      <th style="width:30px"></th>
+      <th>Code Article</th>
+      <th>Source</th>
+      <th>Détail / Partenaire</th>
+      <th>Code</th>
+      <th style="text-align:right">Prix actuel</th>
+      <th>Dev.</th>
+      <th style="text-align:right">Nouveau prix</th>
+      <th style="text-align:right">Diff.</th>
+      <th>Liste</th>
+      <th>Du</th>
+      <th>Au</th>
+    </tr></thead><tbody>`;
+
+  const groupOrder = ['Liste de prix', 'Prix spécial partenaire', 'Prix spécial période/volume'];
+  const allGroups = Object.keys(groupedData).sort((a, b) => {
+    const ia = groupOrder.indexOf(a), ib = groupOrder.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  for (const group of allGroups) {
+    const rows = groupedData[group];
+    const groupId = group.replace(/[^a-zA-Z]/g, '_');
+    html += `<tr class="group-header"><td colspan="12">
+      <label><input type="checkbox" data-group="${groupId}" onchange="toggleGroup('${groupId}', this.checked)">
+      ${group} <span style="color:var(--muted);font-weight:400">(${rows.length})</span></label>
+    </td></tr>`;
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const idx = parsedRows.indexOf(r);
+      const listeLabel = r.listeNo ? 'L' + r.listeNo : '';
+      html += `<tr data-idx="${idx}" data-group="${groupId}" class="${r.checked ? 'checked' : ''}">
+        <td><input type="checkbox" data-idx="${idx}" ${r.checked ? 'checked' : ''} onchange="toggleRow(${idx}, this.checked)"></td>
+        <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${r.codeArticle}</td>
+        <td><span class="badge ${badgeClass(r.source)}">${r.source}</span></td>
+        <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.detail}">${r.detail}</td>
+        <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted)">${r.codePartenaire}</td>
+        <td style="text-align:right;font-family:'IBM Plex Mono',monospace">${r.prix.toFixed(2)}</td>
+        <td style="color:var(--muted)">${r.devise}</td>
+        <td><input type="number" step="0.01" min="0" class="prix-input" data-idx="${idx}" value="${r.nouveauPrix !== null ? r.nouveauPrix.toFixed(2) : ''}" placeholder="${r.prix.toFixed(2)}" oninput="setPrix(${idx}, this.value)"></td>
+        <td style="text-align:right" id="diff-${idx}">${diffHtml(r)}</td>
+        <td style="font-size:11px;color:var(--muted)">${listeLabel}</td>
+        <td style="font-size:11px;color:var(--muted)">${r.du}</td>
+        <td style="font-size:11px;color:var(--muted)">${r.au}</td>
+      </tr>`;
+    }
+  }
+
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function diffHtml(r) {
+  if (r.nouveauPrix === null) return '<span class="diff-zero">—</span>';
+  const diff = r.nouveauPrix - r.prix;
+  if (Math.abs(diff) < 0.005) return '<span class="diff-zero">0.00</span>';
+  const pct = r.prix > 0 ? ((diff / r.prix) * 100).toFixed(1) : '—';
+  if (diff > 0) return `<span class="diff-pos">+${diff.toFixed(2)} (+${pct}%)</span>`;
+  return `<span class="diff-neg">${diff.toFixed(2)} (${pct}%)</span>`;
+}
+
+function toggleRow(idx, checked) {
+  parsedRows[idx].checked = checked;
+  const tr = document.querySelector(`tr[data-idx="${idx}"]`);
+  if (tr) tr.classList.toggle('checked', checked);
+  updateGroupCheckbox(idx);
+  updateFooter();
+}
+
+function toggleGroup(groupId, checked) {
+  document.querySelectorAll(`tr[data-group="${groupId}"][data-idx]`).forEach(tr => {
+    const idx = parseInt(tr.dataset.idx);
+    parsedRows[idx].checked = checked;
+    tr.classList.toggle('checked', checked);
+    const cb = tr.querySelector('input[type=checkbox]');
+    if (cb) cb.checked = checked;
+  });
+  updateFooter();
+}
+
+function updateGroupCheckbox(idx) {
+  const row = parsedRows[idx];
+  const tr = document.querySelector(`tr[data-idx="${idx}"]`);
+  if (!tr) return;
+  const groupId = tr.dataset.group;
+  const groupRows = document.querySelectorAll(`tr[data-group="${groupId}"][data-idx]`);
+  const allChecked = Array.from(groupRows).every(r => parsedRows[parseInt(r.dataset.idx)].checked);
+  const groupCb = document.querySelector(`input[data-group="${groupId}"]`);
+  if (groupCb) groupCb.checked = allChecked;
+}
+
+function setPrix(idx, val) {
+  const v = parseFloat(val);
+  parsedRows[idx].nouveauPrix = isNaN(v) ? null : v;
+  const diffEl = document.getElementById('diff-' + idx);
+  if (diffEl) diffEl.innerHTML = diffHtml(parsedRows[idx]);
+  const inp = document.querySelector(`.prix-input[data-idx="${idx}"]`);
+  if (inp) inp.classList.toggle('changed', parsedRows[idx].nouveauPrix !== null);
+  updateFooter();
+}
+
+function updateFooter() {
+  const checked = parsedRows.filter(r => r.checked);
+  const withPrice = checked.filter(r => r.nouveauPrix !== null);
+  document.getElementById('footerCount').textContent = checked.length + ' ligne(s) cochée(s)' +
+    (withPrice.length > 0 ? ', ' + withPrice.length + ' avec nouveau prix' : '');
+  document.getElementById('btnEnvoyer').disabled = withPrice.length === 0;
+}
+
+document.getElementById('btnSelectAll').addEventListener('click', () => {
+  parsedRows.forEach((r, i) => { r.checked = true; });
+  renderTable();
+  document.querySelectorAll('input[data-group]').forEach(cb => cb.checked = true);
+  updateFooter();
+});
+
+document.getElementById('btnDeselectAll').addEventListener('click', () => {
+  parsedRows.forEach((r, i) => { r.checked = false; });
+  renderTable();
+  updateFooter();
+});
+
+document.getElementById('btnApplyGlobal').addEventListener('click', () => {
+  const val = parseFloat(document.getElementById('prixGlobal').value);
+  if (isNaN(val)) return;
+  parsedRows.forEach((r, i) => {
+    if (r.checked) {
+      r.nouveauPrix = val;
+    }
+  });
+  renderTable();
+  // Restore checkboxes after re-render
+  parsedRows.forEach((r, i) => {
+    if (r.checked) {
+      const cb = document.querySelector(`input[type=checkbox][data-idx="${i}"]`);
+      if (cb) cb.checked = true;
+    }
+  });
+  updateFooter();
+});
+
+document.getElementById('btnEnvoyer').addEventListener('click', async () => {
+  const toSend = parsedRows.filter(r => r.checked && r.nouveauPrix !== null);
+  if (toSend.length === 0) return;
+
+  // Group by list number for DTW import
+  const byList = {};
+  const noList = [];
+  for (const r of toSend) {
+    if (r.listeNo) {
+      if (!byList[r.listeNo]) byList[r.listeNo] = [];
+      byList[r.listeNo].push(r);
+    } else {
+      noList.push(r);
+    }
+  }
+
+  if (noList.length > 0) {
+    const names = noList.map(r => r.detail || r.source).join(', ');
+    if (!confirm(noList.length + ' ligne(s) sans numéro de liste seront ignorées:\n' + names + '\n\nContinuer avec les autres?')) return;
+  }
+
+  const listKeys = Object.keys(byList);
+  if (listKeys.length === 0) {
+    document.getElementById('footerStatus').textContent = 'Aucune ligne avec numéro de liste à envoyer.';
+    document.getElementById('footerStatus').style.color = 'var(--ecart)';
+    return;
+  }
+
+  const btn = document.getElementById('btnEnvoyer');
+  const status = document.getElementById('footerStatus');
+  btn.disabled = true;
+  btn.textContent = 'Envoi…';
+  status.style.color = 'var(--muted)';
+
+  let totalSent = 0;
+  let errors = [];
+
+  for (const listeNum of listKeys) {
+    const rows = byList[listeNum];
+    // Build DTW content
+    const lineNum = 0;
+    const dtwLines = [
+      'ParentKey\tLineNum\tPriceList\tPrice\tCurrency\tBasePriceList\tFactor\tManual\tAutoUpdate',
+      'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
+    ];
+    for (const r of rows) {
+      dtwLines.push(`${r.codeArticle}\t${lineNum}\t${listeNum}\t${r.nouveauPrix.toFixed(2)}\t\t\t\t\t`);
+    }
+
+    const payload = {
+      type: 'import_prix',
+      fichier: 'maj_prix_L' + listeNum + '_' + Date.now() + '.txt',
+      contenu: dtwLines.join('\r\n'),
+      date: new Date().toISOString(),
+      statut: 'en_attente',
+      source: 'maj_prix_manuel',
+      nbArticles: rows.length,
+      liste: parseInt(listeNum)
+    };
+
+    status.textContent = 'Envoi liste ' + listeNum + ' (' + rows.length + ' article(s))…';
+
+    try {
+      const rep = await fetch(FIREBASE_URL + 'gromec_vba/imports_prix.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!rep.ok) throw new Error('HTTP ' + rep.status);
+      totalSent += rows.length;
+    } catch (e) {
+      errors.push('Liste ' + listeNum + ': ' + e.message);
+    }
+  }
+
+  if (errors.length > 0) {
+    status.style.color = 'var(--ecart)';
+    status.textContent = totalSent + ' envoyé(s), ' + errors.length + ' erreur(s): ' + errors.join('; ');
+  } else {
+    status.style.color = 'var(--ok)';
+    status.textContent = totalSent + ' prix envoyé(s) vers DTW dans ' + listKeys.length + ' liste(s). SyncDTW va traiter sous peu.';
+  }
+  btn.textContent = 'Envoyé ✓';
+});
+</script>
+</body>
+</html>
