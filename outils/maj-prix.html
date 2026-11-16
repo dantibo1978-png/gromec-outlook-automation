@@ -83,6 +83,14 @@
   .prix-input:focus{border-color:var(--accent);outline:none}
   .prix-input.changed{border-color:var(--warn);background:var(--warn-bg)}
 
+  .date-input{
+    width:130px;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
+    color:var(--text);padding:5px 8px;font-size:13px;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .date-input:focus{border-color:var(--accent);outline:none}
+  .date-input.changed{border-color:var(--warn);background:var(--warn-bg)}
+
   .prix-global{
     width:110px;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
     color:var(--text);padding:6px 10px;font-size:14px;text-align:right;
@@ -242,6 +250,8 @@ function parseTable() {
       facteur: (cols[12] || '').trim(),
       majAuto: (cols[13] || '').trim(),
       nouveauPrix: null,
+      nouveauDu: null,
+      nouveauAu: null,
       checked: false
     };
     parsedRows.push(row);
@@ -273,6 +283,33 @@ function parseTable() {
   document.getElementById('step2').style.display = 'block';
   document.getElementById('footerBar').style.display = 'flex';
   updateFooter();
+}
+
+function isSpecial(r) {
+  return r.source.match(/prix special/i) || r.source.match(/partenaire/i) || r.source.match(/periode|volume/i);
+}
+
+function toDateVal(d) {
+  if (!d) return '';
+  // SAP format: DD.MM.YYYY or DD/MM/YYYY → YYYY-MM-DD
+  const m = d.match(/(\d{2})[./](\d{2})[./](\d{4})/);
+  if (m) return m[3] + '-' + m[2] + '-' + m[1];
+  // Already YYYY-MM-DD
+  if (d.match(/^\d{4}-\d{2}-\d{2}$/)) return d;
+  return '';
+}
+
+function fromDateVal(d) {
+  if (!d) return '';
+  // YYYY-MM-DD → YYYYMMDD (format DTW)
+  return d.replace(/-/g, '');
+}
+
+function setDate(idx, field, val) {
+  if (field === 'du') parsedRows[idx].nouveauDu = val || null;
+  else parsedRows[idx].nouveauAu = val || null;
+  const inp = document.querySelector(`.date-input[data-idx="${idx}"][data-field="${field}"]`);
+  if (inp) inp.classList.toggle('changed', !!val);
 }
 
 function badgeClass(source) {
@@ -329,8 +366,8 @@ function renderTable() {
         <td><input type="number" step="0.01" min="0" class="prix-input" data-idx="${idx}" value="${r.nouveauPrix !== null ? r.nouveauPrix.toFixed(2) : ''}" placeholder="${r.prix.toFixed(2)}" oninput="setPrix(${idx}, this.value)"></td>
         <td style="text-align:right" id="diff-${idx}">${diffHtml(r)}</td>
         <td style="font-size:13px;color:var(--muted)">${listeLabel}</td>
-        <td style="font-size:13px;color:var(--muted)">${r.du}</td>
-        <td style="font-size:13px;color:var(--muted)">${r.au}</td>
+        <td>${isSpecial(r) ? `<input type="date" class="date-input ${r.nouveauDu ? 'changed' : ''}" data-idx="${idx}" data-field="du" value="${toDateVal(r.nouveauDu || r.du)}" onchange="setDate(${idx},'du',this.value)">` : `<span style="font-size:13px;color:var(--muted)">${r.du}</span>`}</td>
+        <td>${isSpecial(r) ? `<input type="date" class="date-input ${r.nouveauAu ? 'changed' : ''}" data-idx="${idx}" data-field="au" value="${toDateVal(r.nouveauAu || r.au)}" onchange="setDate(${idx},'au',this.value)">` : `<span style="font-size:13px;color:var(--muted)">${r.au}</span>`}</td>
       </tr>`;
     }
   }
@@ -472,8 +509,8 @@ function buildSpecialPrixPayload(rows, label) {
     const remise = r.remise ? r.remise.replace(',', '.').replace('%', '') : '';
     const listeNum = r.listeNo || '';
     headerLines.push(`\t${r.codeArticle}\t${r.codePartenaire}\t${r.nouveauPrix.toFixed(2)}\t${currency}\t${remise}\t${listeNum}\tN\t`);
-    const dateTo = r.au || '';
-    const dateFrom = r.du || '';
+    const dateTo = fromDateVal(r.nouveauAu || toDateVal(r.au));
+    const dateFrom = fromDateVal(r.nouveauDu || toDateVal(r.du));
     dataLines.push(`\t0\t${currency}\tN\t${dateTo}\t${remise}\t${r.nouveauPrix.toFixed(2)}\t${dateFrom}\t${listeNum}\t0`);
   }
 
