@@ -428,30 +428,113 @@ document.getElementById('btnApplyGlobal').addEventListener('click', () => {
   updateFooter();
 });
 
+function getGroupType(r) {
+  if (r.source.match(/liste de prix/i)) return 'liste';
+  if (r.source.match(/prix special partenaire/i)) return 'partenaire';
+  if (r.source.match(/prix special periode/i)) return 'periode';
+  return 'autre';
+}
+
+function buildListePrixPayload(listeNum, rows) {
+  const dtwLines = [
+    'ParentKey\tLineNum\tPriceList\tPrice\tCurrency\tBasePriceList\tFactor\tManual\tAutoUpdate',
+    'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
+  ];
+  for (const r of rows) {
+    dtwLines.push(`${r.codeArticle}\t0\t${listeNum}\t${r.nouveauPrix.toFixed(2)}\t\t\t\t\t`);
+  }
+  return {
+    type: 'import_prix',
+    fichier: 'maj_prix_L' + listeNum + '_' + Date.now() + '.txt',
+    contenu: dtwLines.join('\r\n'),
+    date: new Date().toISOString(),
+    statut: 'en_attente',
+    source: 'maj_prix_manuel',
+    nbArticles: rows.length,
+    liste: parseInt(listeNum)
+  };
+}
+
+function buildSpecialPrixPayload(rows, label) {
+  // File 1: SpecialPrices (header) — one row per ItemCode+CardCode
+  const headerLines = [
+    'RecordKey\tItemCode\tCardCode\tPrice\tCurrency\tDiscountPercent\tPriceListNum\tAutoUpdate\tSourcePrice',
+    'RecordKey\tItemCode\tCardCode\tPrice\tCurrency\tDiscountPercent\tPriceListNum\tAutoUpdate\tSourcePrice'
+  ];
+  // File 2: SpecialPricesDataAreas (period lines) — one row per line
+  const dataLines = [
+    'RecordKey\tLineNum\tPriceCurrency\tAutoUpdate\tDateto\tDiscount\tSpecialPrice\tDateFrom\tPriceListNo\tRowNumber',
+    'RecordKey\tLineNum\tPriceCurrency\tAutoUpdate\tDateto\tDiscount\tSpecialPrice\tDateFrom\tPriceListNo\tRowNumber'
+  ];
+
+  for (const r of rows) {
+    const currency = r.devise === '$' ? 'CAD' : r.devise;
+    const remise = r.remise ? r.remise.replace(',', '.').replace('%', '') : '';
+    const listeNum = r.listeNo || '';
+    headerLines.push(`\t${r.codeArticle}\t${r.codePartenaire}\t${r.nouveauPrix.toFixed(2)}\t${currency}\t${remise}\t${listeNum}\tN\t`);
+    const dateTo = r.au || '';
+    const dateFrom = r.du || '';
+    dataLines.push(`\t0\t${currency}\tN\t${dateTo}\t${remise}\t${r.nouveauPrix.toFixed(2)}\t${dateFrom}\t${listeNum}\t0`);
+  }
+
+  return {
+    type: 'import_prix_special',
+    fichier: 'maj_special_' + label + '_' + Date.now() + '.txt',
+    contenu: headerLines.join('\r\n'),
+    contenu2: dataLines.join('\r\n'),
+    date: new Date().toISOString(),
+    statut: 'en_attente',
+    source: 'maj_prix_manuel',
+    nbArticles: rows.length
+  };
+}
+
 document.getElementById('btnEnvoyer').addEventListener('click', async () => {
   const toSend = parsedRows.filter(r => r.checked && r.nouveauPrix !== null);
   if (toSend.length === 0) return;
 
-  // Group by list number for DTW import
-  const byList = {};
-  const noList = [];
+  // Separate by type
+  const listeRows = {};   // grouped by list number
+  const partenaireRows = [];
+  const periodeRows = [];
+  const autreRows = [];
+
   for (const r of toSend) {
-    if (r.listeNo) {
-      if (!byList[r.listeNo]) byList[r.listeNo] = [];
-      byList[r.listeNo].push(r);
+    const t = getGroupType(r);
+    if (t === 'liste') {
+      if (r.listeNo) {
+        if (!listeRows[r.listeNo]) listeRows[r.listeNo] = [];
+        listeRows[r.listeNo].push(r);
+      } else {
+        autreRows.push(r);
+      }
+    } else if (t === 'partenaire') {
+      partenaireRows.push(r);
+    } else if (t === 'periode') {
+      periodeRows.push(r);
     } else {
-      noList.push(r);
+      autreRows.push(r);
     }
   }
 
-  if (noList.length > 0) {
-    const names = noList.map(r => r.detail || r.source).join(', ');
-    if (!confirm(noList.length + ' ligne(s) sans numéro de liste seront ignorées:\n' + names + '\n\nContinuer avec les autres?')) return;
+  if (autreRows.length > 0) {
+    const names = autreRows.map(r => r.codeArticle + ' (' + r.source + ')').join(', ');
+    if (!confirm(autreRows.length + ' ligne(s) de type non supporté seront ignorées:\n' + names + '\n\nContinuer avec les autres?')) return;
   }
 
-  const listKeys = Object.keys(byList);
-  if (listKeys.length === 0) {
-    document.getElementById('footerStatus').textContent = 'Aucune ligne avec numéro de liste à envoyer.';
+  const payloads = [];
+  for (const listeNum of Object.keys(listeRows)) {
+    payloads.push({ label: 'Liste ' + listeNum, payload: buildListePrixPayload(listeNum, listeRows[listeNum]), count: listeRows[listeNum].length });
+  }
+  if (partenaireRows.length > 0) {
+    payloads.push({ label: 'Prix spécial partenaire', payload: buildSpecialPrixPayload(partenaireRows, 'partenaire'), count: partenaireRows.length });
+  }
+  if (periodeRows.length > 0) {
+    payloads.push({ label: 'Prix spécial période', payload: buildSpecialPrixPayload(periodeRows, 'periode'), count: periodeRows.length });
+  }
+
+  if (payloads.length === 0) {
+    document.getElementById('footerStatus').textContent = 'Aucune ligne valide à envoyer.';
     document.getElementById('footerStatus').style.color = 'var(--ecart)';
     return;
   }
@@ -465,41 +548,18 @@ document.getElementById('btnEnvoyer').addEventListener('click', async () => {
   let totalSent = 0;
   let errors = [];
 
-  for (const listeNum of listKeys) {
-    const rows = byList[listeNum];
-    // Build DTW content
-    const lineNum = 0;
-    const dtwLines = [
-      'ParentKey\tLineNum\tPriceList\tPrice\tCurrency\tBasePriceList\tFactor\tManual\tAutoUpdate',
-      'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
-    ];
-    for (const r of rows) {
-      dtwLines.push(`${r.codeArticle}\t${lineNum}\t${listeNum}\t${r.nouveauPrix.toFixed(2)}\t\t\t\t\t`);
-    }
-
-    const payload = {
-      type: 'import_prix',
-      fichier: 'maj_prix_L' + listeNum + '_' + Date.now() + '.txt',
-      contenu: dtwLines.join('\r\n'),
-      date: new Date().toISOString(),
-      statut: 'en_attente',
-      source: 'maj_prix_manuel',
-      nbArticles: rows.length,
-      liste: parseInt(listeNum)
-    };
-
-    status.textContent = 'Envoi liste ' + listeNum + ' (' + rows.length + ' article(s))…';
-
+  for (const p of payloads) {
+    status.textContent = 'Envoi ' + p.label + ' (' + p.count + ' article(s))…';
     try {
       const rep = await fetch(FIREBASE_URL + 'gromec_vba/imports_prix.json', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(p.payload)
       });
       if (!rep.ok) throw new Error('HTTP ' + rep.status);
-      totalSent += rows.length;
+      totalSent += p.count;
     } catch (e) {
-      errors.push('Liste ' + listeNum + ': ' + e.message);
+      errors.push(p.label + ': ' + e.message);
     }
   }
 
@@ -508,7 +568,7 @@ document.getElementById('btnEnvoyer').addEventListener('click', async () => {
     status.textContent = totalSent + ' envoyé(s), ' + errors.length + ' erreur(s): ' + errors.join('; ');
   } else {
     status.style.color = 'var(--ok)';
-    status.textContent = totalSent + ' prix envoyé(s) vers DTW dans ' + listKeys.length + ' liste(s). SyncDTW va traiter sous peu.';
+    status.textContent = totalSent + ' prix envoyé(s) vers DTW (' + payloads.length + ' import(s)). SyncDTW va traiter sous peu.';
   }
   btn.textContent = 'Envoyé ✓';
 });
