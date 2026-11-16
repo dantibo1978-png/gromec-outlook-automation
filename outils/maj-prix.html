@@ -325,11 +325,11 @@ function parseTable() {
 
     const listeBase = col(cols, colMap, 'listeBase');
     const listeMatch = listeBase.match(/Liste no (\d+)/i);
-    const listeNo = listeMatch ? parseInt(listeMatch[1]) : null;
 
     const detail = col(cols, colMap, 'detail');
-    const detailListeMatch = detail.match(/^\d+\s+(.+)/);
-    const detailListeName = detailListeMatch ? detailListeMatch[1] : detail;
+    const detailListeMatch = detail.match(/^(\d+)\s+(.+)/);
+    const listeNo = listeMatch ? parseInt(listeMatch[1]) : (detailListeMatch ? parseInt(detailListeMatch[1]) : null);
+    const detailListeName = detailListeMatch ? detailListeMatch[2] : detail;
 
     const remiseStr = col(cols, colMap, 'remise').replace(',', '.').replace('%', '');
     const remise = parseFloat(remiseStr) || 0;
@@ -641,7 +641,9 @@ function setListeNum(idx, val) {
 
 function findPrixListe(codeArticle, listeNum) {
   for (const r of parsedRows) {
-    if (r.codeArticle === codeArticle && r.source === 'Liste de prix' && parseInt(r.listeNo) === listeNum) {
+    if (r.codeArticle !== codeArticle) continue;
+    const rListeNo = r.listeNumInterne || r.listeNo;
+    if (rListeNo && parseInt(rListeNo) === listeNum) {
       return r.nouveauPrix !== null ? r.nouveauPrix : r.prix;
     }
   }
