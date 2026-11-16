@@ -238,6 +238,7 @@
 const FIREBASE_URL = 'https://gromec-outlook-vba-default-rtdb.firebaseio.com/';
 let parsedRows = [];
 let groupedData = {};
+let listeNameToNum = {}; // map list name (e.g. "_30-PLOMBIERS") → internal SAP number (e.g. 4)
 
 document.getElementById('btnParse').addEventListener('click', parseTable);
 document.getElementById('pasteArea').addEventListener('keydown', e => {
@@ -358,6 +359,7 @@ function parseTable() {
       nouveauDu: null,
       nouveauAu: null,
       checked: false,
+      listeNumInterne: null,
       cible: (listeNo && isSpecialSource(source)) ? 'liste_liee' : 'direct'
     };
     parsedRows.push(row);
@@ -367,6 +369,32 @@ function parseTable() {
     document.getElementById('parseStatus').textContent = 'Aucune ligne valide trouvée.';
     document.getElementById('parseStatus').style.color = 'var(--ecart)';
     return;
+  }
+
+  // Build list name → internal number map from "Liste de prix" rows
+  listeNameToNum = {};
+  for (const r of parsedRows) {
+    if (r.source.match(/liste de prix/i) && r.listeNo && r.detailListeName) {
+      listeNameToNum[r.detailListeName.trim()] = r.listeNo;
+      // Also map with the full detail (e.g. "4 _30-PLOMBIERS")
+      if (r.detail) listeNameToNum[r.detail.trim()] = r.listeNo;
+    }
+  }
+
+  // Resolve listeNumInterne for special price rows
+  for (const r of parsedRows) {
+    if (isSpecialSource(r.source)) {
+      // listeBase contains the list name (e.g. "_30-PLOMBIERS") — resolve to internal number
+      const baseName = (r.listeBase || '').trim();
+      if (baseName && listeNameToNum[baseName]) {
+        r.listeNumInterne = listeNameToNum[baseName];
+        if (!r.listeNo) r.cible = 'liste_liee';
+      } else if (r.listeNo) {
+        r.listeNumInterne = r.listeNo;
+      } else {
+        r.listeNumInterne = null;
+      }
+    }
   }
 
   groupedData = {};
@@ -451,7 +479,7 @@ function renderTable() {
       <th style="text-align:right">Diff.</th>
       <th>Remise %</th>
       <th>Cible import</th>
-      <th>Liste liée</th>
+      <th>Liste liée (no)</th>
       <th>Du</th>
       <th>Au</th>
     </tr></thead><tbody>`;
@@ -489,11 +517,11 @@ function renderTable() {
 
       // Build cible dropdown for special prices
       let cibleHtml;
-      if (isSpec && r.listeNo) {
+      if (isSpec && r.listeNumInterne) {
         const selLL = r.cible === 'liste_liee' ? 'selected' : '';
         const selDir = r.cible === 'direct' ? 'selected' : '';
         cibleHtml = `<select class="cible-select" data-idx="${idx}" onchange="setCible(${idx}, this.value)">
-          <option value="liste_liee" ${selLL}>Liste ${r.listeNo} ${esc(r.detailListeName)}</option>
+          <option value="liste_liee" ${selLL}>Liste ${r.listeNumInterne} (${esc(r.listeBase || r.detailListeName)})</option>
           <option value="direct" ${selDir}>Prix spécial direct</option>
         </select>`;
       } else if (isSpec) {
@@ -533,7 +561,7 @@ function renderTable() {
         <td style="text-align:right" id="diff-${idx}">${diffHtml(r)}</td>
         <td>${remiseHtml}</td>
         <td>${cibleHtml}</td>
-        <td style="font-size:12px;color:var(--muted)">${r.listeBase || ''}</td>
+        <td>${isSpec ? `<input type="number" min="0" class="prix-input" style="width:60px;font-size:12px" data-idx="${idx}" value="${r.listeNumInterne || ''}" placeholder="" title="${esc(r.listeBase)}" oninput="setListeNum(${idx}, this.value)">` : `<span style="font-size:12px;color:var(--muted)">${r.listeBase || ''}</span>`}</td>
         <td>${duHtml}</td>
         <td>${auHtml}</td>
       </tr>`;
@@ -574,6 +602,11 @@ function applyGroupDates(groupId) {
 
 function setCible(idx, val) {
   parsedRows[idx].cible = val;
+}
+
+function setListeNum(idx, val) {
+  const v = parseInt(val);
+  parsedRows[idx].listeNumInterne = isNaN(v) ? null : v;
 }
 
 function setRemise(idx, val) {
@@ -701,10 +734,15 @@ function buildSpecialPrixPayload(rows, label) {
     const currency = r.devise === '$' ? 'CAD' : r.devise;
     const remise = r.nouvelleRemise !== null ? r.nouvelleRemise : r.remise;
     const prix = r.nouveauPrix !== null ? r.nouveauPrix.toFixed(2) : r.prix.toFixed(2);
-    const listeNum = r.listeNo || '';
+    const listeNum = r.listeNumInterne || '';
+
     headerLines.push(`\t${r.codeArticle}\t${r.codePartenaire}\t${prix}\t${currency}\t${remise}\t${listeNum}\tN\t`);
-    const dateTo = fromDateVal(r.nouveauAu || toDateVal(r.au));
-    const dateFrom = fromDateVal(r.nouveauDu || toDateVal(r.du));
+
+    // With dates → period line (Remises avec validité temporelle)
+    // Without dates → base special price (empty dates in DataAreas)
+    const hasDates = !!(r.nouveauDu || r.du || r.nouveauAu || r.au);
+    const dateTo = hasDates ? fromDateVal(r.nouveauAu || toDateVal(r.au)) : '';
+    const dateFrom = hasDates ? fromDateVal(r.nouveauDu || toDateVal(r.du)) : '';
     dataLines.push(`\t0\t${currency}\tN\t${dateTo}\t${remise}\t${prix}\t${dateFrom}\t${listeNum}\t0`);
   }
 
@@ -746,10 +784,10 @@ function buildSendPlan() {
         ignored.push(r);
       }
     } else if (gt === 'partenaire' || gt === 'periode') {
-      if (r.cible === 'liste_liee' && r.listeNo) {
+      if (r.cible === 'liste_liee' && r.listeNumInterne) {
         // User chose to update the linked price list instead
-        if (!listeRows[r.listeNo]) listeRows[r.listeNo] = { name: 'Liste ' + r.listeNo, rows: [] };
-        listeRows[r.listeNo].rows.push(r);
+        if (!listeRows[r.listeNumInterne]) listeRows[r.listeNumInterne] = { name: 'Liste ' + r.listeNumInterne, rows: [] };
+        listeRows[r.listeNumInterne].rows.push(r);
       } else {
         // Direct special price update
         specialRows.push(r);
@@ -821,6 +859,12 @@ document.getElementById('btnEnvoyer').addEventListener('click', () => {
     let details = [];
     if (prixInfo > 0) details.push(prixInfo + ' prix');
     if (remiseInfo > 0) details.push(remiseInfo + ' remise(s)');
+    if (p.type === 'special') {
+      const withDates = p.rows.filter(r => !!(r.nouveauDu || r.du || r.nouveauAu || r.au)).length;
+      const withoutDates = p.rows.length - withDates;
+      if (withoutDates > 0) details.push(withoutDates + ' prix de base');
+      if (withDates > 0) details.push(withDates + ' avec période');
+    }
 
     html += `<div class="confirm-item">
       <div class="target">${esc(p.label)}</div>
