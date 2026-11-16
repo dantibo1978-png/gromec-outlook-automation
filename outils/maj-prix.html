@@ -76,12 +76,20 @@
   .toolbar .info{font-size:13px;color:var(--muted)}
 
   .prix-input{
-    width:110px;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
-    color:var(--text);padding:6px 10px;font-size:15px;text-align:right;
+    width:100px;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
+    color:var(--text);padding:6px 8px;font-size:14px;text-align:right;
     font-family:'IBM Plex Mono',monospace;
   }
   .prix-input:focus{border-color:var(--accent);outline:none}
   .prix-input.changed{border-color:var(--warn);background:var(--warn-bg)}
+
+  .remise-input{
+    width:70px;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
+    color:var(--text);padding:6px 8px;font-size:14px;text-align:right;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .remise-input:focus{border-color:var(--accent);outline:none}
+  .remise-input.changed{border-color:var(--warn);background:var(--warn-bg)}
 
   .date-input{
     width:130px;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
@@ -91,6 +99,14 @@
   .date-input:focus{border-color:var(--accent);outline:none}
   .date-input.changed{border-color:var(--warn);background:var(--warn-bg)}
 
+  .cible-select{
+    background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
+    color:var(--text);padding:5px 6px;font-size:12px;
+    max-width:160px;cursor:pointer;
+  }
+  .cible-select:focus{border-color:var(--accent);outline:none}
+  .cible-select option{background:var(--panel);color:var(--text)}
+
   .prix-global{
     width:110px;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
     color:var(--text);padding:6px 10px;font-size:14px;text-align:right;
@@ -98,15 +114,15 @@
   }
   .prix-global:focus{border-color:var(--accent);outline:none}
 
-  table.data{width:100%;border-collapse:collapse;font-size:15px}
+  table.data{width:100%;border-collapse:collapse;font-size:14px}
   table.data th{
     position:sticky;top:0;z-index:2;
-    background:var(--panel);color:var(--muted);font-weight:600;font-size:14px;
-    text-align:left;padding:10px 8px;border-bottom:2px solid var(--rule);
+    background:var(--panel);color:var(--muted);font-weight:600;font-size:12px;
+    text-align:left;padding:8px 6px;border-bottom:2px solid var(--rule);
     white-space:nowrap;
   }
   table.data td{
-    padding:8px 8px;border-bottom:1px solid var(--grid-line);
+    padding:6px 6px;border-bottom:1px solid var(--grid-line);
     vertical-align:middle;
   }
   table.data tr:hover td{background:rgba(94,168,255,0.04)}
@@ -118,7 +134,7 @@
   table.data tr.group-header td label{cursor:pointer;display:flex;align-items:center;gap:8px}
 
   .badge{
-    display:inline-block;padding:3px 10px;border-radius:4px;font-size:13px;
+    display:inline-block;padding:3px 8px;border-radius:4px;font-size:11px;
     font-weight:600;white-space:nowrap;
   }
   .badge-liste{background:rgba(94,168,255,0.12);color:var(--accent)}
@@ -146,6 +162,24 @@
   .diff-neg{color:var(--ok);font-weight:600}
   .diff-zero{color:var(--muted-2)}
 
+  .confirm-overlay{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(0,0,0,0.6);z-index:100;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .confirm-box{
+    background:var(--panel);border:1px solid var(--rule);border-radius:12px;
+    padding:24px;max-width:600px;width:90%;max-height:80vh;overflow:auto;
+  }
+  .confirm-box h3{margin:0 0 16px;font-family:'Space Grotesk',sans-serif;font-size:1.2rem}
+  .confirm-item{
+    padding:10px 12px;margin:6px 0;border-radius:8px;
+    background:var(--panel-2);font-size:14px;
+  }
+  .confirm-item .target{color:var(--accent);font-weight:600}
+  .confirm-item .count{color:var(--muted);font-size:13px}
+  .confirm-buttons{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+
   #step2,#step3{display:none}
 </style>
 </head>
@@ -154,10 +188,9 @@
   <a class="back" href="/">← Retour au dashboard</a>
   <header>
     <h1>Mise à jour de prix SAP</h1>
-    <p>Collez le tableau de prix SAP, sélectionnez les lignes à modifier, entrez le nouveau prix et envoyez vers DTW.</p>
+    <p>Collez le tableau de prix SAP, sélectionnez les lignes, choisissez la cible (liste liée ou prix direct), modifiez et envoyez vers DTW.</p>
   </header>
 
-  <!-- Étape 1: Coller -->
   <div class="step" id="step1">
     <h2>1. Coller le tableau SAP</h2>
     <p class="hint">Copiez le tableau complet depuis SAP (Ctrl+C) et collez-le ici (Ctrl+V). Les colonnes sont détectées automatiquement.</p>
@@ -168,14 +201,13 @@
     </div>
   </div>
 
-  <!-- Étape 2: Sélectionner -->
   <div class="step" id="step2">
-    <h2>2. Sélectionner et modifier les prix</h2>
+    <h2>2. Sélectionner et modifier</h2>
     <div class="toolbar">
       <button class="btn btn-secondary" id="btnSelectAll">Tout cocher</button>
       <button class="btn btn-secondary" id="btnDeselectAll">Tout décocher</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)">
-        Nouveau prix global:
+        Prix global:
         <input type="number" step="0.01" min="0" class="prix-global" id="prixGlobal" placeholder="0.00">
       </label>
       <button class="btn btn-secondary" id="btnApplyGlobal">Appliquer aux cochés</button>
@@ -184,11 +216,21 @@
     <div class="table-wrap" id="tableWrap"></div>
   </div>
 
-  <!-- Barre du bas -->
   <div class="footer-bar" id="footerBar" style="display:none">
     <span class="count" id="footerCount">0 ligne(s) sélectionnée(s)</span>
     <button class="btn btn-ok" id="btnEnvoyer" disabled>Envoyer vers DTW</button>
     <span class="status" id="footerStatus"></span>
+  </div>
+</div>
+
+<div id="confirmOverlay" class="confirm-overlay" style="display:none">
+  <div class="confirm-box">
+    <h3>Confirmer l'envoi vers DTW</h3>
+    <div id="confirmBody"></div>
+    <div class="confirm-buttons">
+      <button class="btn btn-secondary" onclick="closeConfirm()">Annuler</button>
+      <button class="btn btn-ok" id="btnConfirmSend">Confirmer l'envoi</button>
+    </div>
   </div>
 </div>
 
@@ -209,38 +251,41 @@ function parseTable() {
   const lines = raw.split('\n').map(l => l.split('\t'));
   parsedRows = [];
 
-  // Detect if first line is header
   let startIdx = 0;
-  if (lines[0] && lines[0][0] && lines[0][0].match(/code.?article/i)) {
-    startIdx = 1;
-  }
+  if (lines[0] && lines[0][0] && lines[0][0].match(/code.?article/i)) startIdx = 1;
 
   for (let i = startIdx; i < lines.length; i++) {
     const cols = lines[i];
     if (cols.length < 5) continue;
 
     const source = (cols[1] || '').trim();
-    // Skip "Fiche article" rows - they're info only, not updatable
     if (source.match(/fiche article/i)) continue;
-    // Skip "Dernier achat" rows
     if (source.match(/dernier achat/i)) continue;
 
     const prixStr = (cols[4] || '0').replace(/\s/g, '').replace(',', '.');
     const prix = parseFloat(prixStr) || 0;
 
-    // Extract list number from "Liste de base" column
     const listeBase = (cols[10] || '').trim();
     const listeMatch = listeBase.match(/Liste no (\d+)/i);
     const listeNo = listeMatch ? parseInt(listeMatch[1]) : null;
 
+    // Extract detail for list name (e.g. "32 Plombier" → "Plombier")
+    const detail = (cols[2] || '').trim();
+    const detailListeMatch = detail.match(/^\d+\s+(.+)/);
+    const detailListeName = detailListeMatch ? detailListeMatch[1] : detail;
+
+    const remiseStr = (cols[6] || '0').replace(',', '.').replace('%', '').trim();
+    const remise = parseFloat(remiseStr) || 0;
+
     const row = {
       codeArticle: (cols[0] || '').trim(),
       source: source,
-      detail: (cols[2] || '').trim(),
+      detail: detail,
+      detailListeName: detailListeName,
       codePartenaire: (cols[3] || '').trim(),
       prix: prix,
       devise: (cols[5] || '$').trim(),
-      remise: (cols[6] || '0').trim(),
+      remise: remise,
       du: (cols[7] || '').trim(),
       au: (cols[8] || '').trim(),
       reference: (cols[9] || '').trim(),
@@ -249,10 +294,14 @@ function parseTable() {
       prixSource: (cols[11] || '').trim(),
       facteur: (cols[12] || '').trim(),
       majAuto: (cols[13] || '').trim(),
+      // Editable fields
       nouveauPrix: null,
+      nouvelleRemise: null,
       nouveauDu: null,
       nouveauAu: null,
-      checked: false
+      checked: false,
+      // Target: 'liste_liee' = update linked price list, 'direct' = update special price directly
+      cible: (listeNo && isSpecialSource(source)) ? 'liste_liee' : 'direct'
     };
     parsedRows.push(row);
   }
@@ -263,7 +312,6 @@ function parseTable() {
     return;
   }
 
-  // Group by source type
   groupedData = {};
   for (const r of parsedRows) {
     let groupKey;
@@ -271,12 +319,11 @@ function parseTable() {
     else if (r.source.match(/prix special partenaire/i)) groupKey = 'Prix spécial partenaire';
     else if (r.source.match(/prix special periode/i)) groupKey = 'Prix spécial période/volume';
     else groupKey = r.source || 'Autre';
-
     if (!groupedData[groupKey]) groupedData[groupKey] = [];
     groupedData[groupKey].push(r);
   }
 
-  document.getElementById('parseStatus').textContent = parsedRows.length + ' lignes trouvées dans ' + Object.keys(groupedData).length + ' groupe(s).';
+  document.getElementById('parseStatus').textContent = parsedRows.length + ' lignes dans ' + Object.keys(groupedData).length + ' groupe(s).';
   document.getElementById('parseStatus').style.color = 'var(--ok)';
 
   renderTable();
@@ -285,31 +332,28 @@ function parseTable() {
   updateFooter();
 }
 
-function isSpecial(r) {
-  return r.source.match(/prix special/i) || r.source.match(/partenaire/i) || r.source.match(/periode|volume/i);
+function isSpecialSource(src) {
+  return src.match(/prix special/i);
+}
+
+function getGroupType(r) {
+  if (r.source.match(/liste de prix/i)) return 'liste';
+  if (r.source.match(/prix special partenaire/i)) return 'partenaire';
+  if (r.source.match(/prix special periode/i)) return 'periode';
+  return 'autre';
 }
 
 function toDateVal(d) {
   if (!d) return '';
-  // SAP format: DD.MM.YYYY or DD/MM/YYYY → YYYY-MM-DD
   const m = d.match(/(\d{2})[./](\d{2})[./](\d{4})/);
   if (m) return m[3] + '-' + m[2] + '-' + m[1];
-  // Already YYYY-MM-DD
   if (d.match(/^\d{4}-\d{2}-\d{2}$/)) return d;
   return '';
 }
 
 function fromDateVal(d) {
   if (!d) return '';
-  // YYYY-MM-DD → YYYYMMDD (format DTW)
   return d.replace(/-/g, '');
-}
-
-function setDate(idx, field, val) {
-  if (field === 'du') parsedRows[idx].nouveauDu = val || null;
-  else parsedRows[idx].nouveauAu = val || null;
-  const inp = document.querySelector(`.date-input[data-idx="${idx}"][data-field="${field}"]`);
-  if (inp) inp.classList.toggle('changed', !!val);
 }
 
 function badgeClass(source) {
@@ -319,11 +363,27 @@ function badgeClass(source) {
   return 'badge-autre';
 }
 
+function diffHtml(r) {
+  if (r.nouveauPrix === null) return '<span class="diff-zero">—</span>';
+  const diff = r.nouveauPrix - r.prix;
+  if (Math.abs(diff) < 0.005) return '<span class="diff-zero">0.00</span>';
+  const pct = r.prix > 0 ? ((diff / r.prix) * 100).toFixed(1) : '—';
+  if (diff > 0) return `<span class="diff-pos">+${diff.toFixed(2)} (+${pct}%)</span>`;
+  return `<span class="diff-neg">${diff.toFixed(2)} (${pct}%)</span>`;
+}
+
+function cibleLabel(r) {
+  if (r.cible === 'liste_liee' && r.listeNo) {
+    return 'L' + r.listeNo + ' ' + (r.detailListeName || '');
+  }
+  return getGroupType(r) === 'liste' ? 'Liste directe' : 'Prix spécial direct';
+}
+
 function renderTable() {
   const wrap = document.getElementById('tableWrap');
   let html = `<table class="data">
     <thead><tr>
-      <th style="width:30px"></th>
+      <th style="width:28px"></th>
       <th>Code Article</th>
       <th>Source</th>
       <th>Détail / Partenaire</th>
@@ -332,7 +392,9 @@ function renderTable() {
       <th>Dev.</th>
       <th style="text-align:right">Nouveau prix</th>
       <th style="text-align:right">Diff.</th>
-      <th>Liste</th>
+      <th>Remise %</th>
+      <th>Cible import</th>
+      <th>Liste liée</th>
       <th>Du</th>
       <th>Au</th>
     </tr></thead><tbody>`;
@@ -346,7 +408,7 @@ function renderTable() {
   for (const group of allGroups) {
     const rows = groupedData[group];
     const groupId = group.replace(/[^a-zA-Z]/g, '_');
-    html += `<tr class="group-header"><td colspan="12">
+    html += `<tr class="group-header"><td colspan="14">
       <label><input type="checkbox" data-group="${groupId}" onchange="toggleGroup('${groupId}', this.checked)">
       ${group} <span style="color:var(--muted);font-weight:400">(${rows.length})</span></label>
     </td></tr>`;
@@ -354,20 +416,58 @@ function renderTable() {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const idx = parsedRows.indexOf(r);
+      const isSpec = isSpecialSource(r.source);
       const listeLabel = r.listeNo ? 'L' + r.listeNo : '';
+
+      // Build cible dropdown for special prices
+      let cibleHtml;
+      if (isSpec && r.listeNo) {
+        const selLL = r.cible === 'liste_liee' ? 'selected' : '';
+        const selDir = r.cible === 'direct' ? 'selected' : '';
+        cibleHtml = `<select class="cible-select" data-idx="${idx}" onchange="setCible(${idx}, this.value)">
+          <option value="liste_liee" ${selLL}>Liste ${r.listeNo} ${esc(r.detailListeName)}</option>
+          <option value="direct" ${selDir}>Prix spécial direct</option>
+        </select>`;
+      } else if (isSpec) {
+        cibleHtml = '<span style="font-size:12px;color:var(--muted)">Prix spécial direct</span>';
+      } else {
+        cibleHtml = '<span style="font-size:12px;color:var(--muted)">Liste directe</span>';
+      }
+
+      // Remise column
+      let remiseHtml;
+      if (isSpec) {
+        const rVal = r.nouvelleRemise !== null ? r.nouvelleRemise : '';
+        remiseHtml = `<input type="number" step="0.01" min="0" max="100" class="remise-input ${r.nouvelleRemise !== null ? 'changed' : ''}" data-idx="${idx}" value="${rVal}" placeholder="${r.remise}" oninput="setRemise(${idx}, this.value)">`;
+      } else {
+        remiseHtml = `<span style="font-size:13px;color:var(--muted)">${r.remise || ''}</span>`;
+      }
+
+      // Date columns
+      let duHtml, auHtml;
+      if (isSpec) {
+        duHtml = `<input type="date" class="date-input ${r.nouveauDu ? 'changed' : ''}" data-idx="${idx}" data-field="du" value="${toDateVal(r.nouveauDu || r.du)}" onchange="setDate(${idx},'du',this.value)">`;
+        auHtml = `<input type="date" class="date-input ${r.nouveauAu ? 'changed' : ''}" data-idx="${idx}" data-field="au" value="${toDateVal(r.nouveauAu || r.au)}" onchange="setDate(${idx},'au',this.value)">`;
+      } else {
+        duHtml = `<span style="font-size:12px;color:var(--muted)">${r.du}</span>`;
+        auHtml = `<span style="font-size:12px;color:var(--muted)">${r.au}</span>`;
+      }
+
       html += `<tr data-idx="${idx}" data-group="${groupId}" class="${r.checked ? 'checked' : ''}">
         <td><input type="checkbox" data-idx="${idx}" ${r.checked ? 'checked' : ''} onchange="toggleRow(${idx}, this.checked)"></td>
-        <td style="font-family:'IBM Plex Mono',monospace;font-size:14px">${r.codeArticle}</td>
-        <td><span class="badge ${badgeClass(r.source)}">${r.source}</span></td>
-        <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.detail}">${r.detail}</td>
-        <td style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--muted)">${r.codePartenaire}</td>
+        <td style="font-family:'IBM Plex Mono',monospace;font-size:13px">${esc(r.codeArticle)}</td>
+        <td><span class="badge ${badgeClass(r.source)}">${esc(r.source)}</span></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.detail)}">${esc(r.detail)}</td>
+        <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted)">${esc(r.codePartenaire)}</td>
         <td style="text-align:right;font-family:'IBM Plex Mono',monospace">${r.prix.toFixed(2)}</td>
-        <td style="color:var(--muted)">${r.devise}</td>
+        <td style="color:var(--muted);font-size:12px">${esc(r.devise)}</td>
         <td><input type="number" step="0.01" min="0" class="prix-input" data-idx="${idx}" value="${r.nouveauPrix !== null ? r.nouveauPrix.toFixed(2) : ''}" placeholder="${r.prix.toFixed(2)}" oninput="setPrix(${idx}, this.value)"></td>
         <td style="text-align:right" id="diff-${idx}">${diffHtml(r)}</td>
-        <td style="font-size:13px;color:var(--muted)">${listeLabel}</td>
-        <td>${isSpecial(r) ? `<input type="date" class="date-input ${r.nouveauDu ? 'changed' : ''}" data-idx="${idx}" data-field="du" value="${toDateVal(r.nouveauDu || r.du)}" onchange="setDate(${idx},'du',this.value)">` : `<span style="font-size:13px;color:var(--muted)">${r.du}</span>`}</td>
-        <td>${isSpecial(r) ? `<input type="date" class="date-input ${r.nouveauAu ? 'changed' : ''}" data-idx="${idx}" data-field="au" value="${toDateVal(r.nouveauAu || r.au)}" onchange="setDate(${idx},'au',this.value)">` : `<span style="font-size:13px;color:var(--muted)">${r.au}</span>`}</td>
+        <td>${remiseHtml}</td>
+        <td>${cibleHtml}</td>
+        <td style="font-size:12px;color:var(--muted)">${r.listeBase || ''}</td>
+        <td>${duHtml}</td>
+        <td>${auHtml}</td>
       </tr>`;
     }
   }
@@ -376,13 +476,28 @@ function renderTable() {
   wrap.innerHTML = html;
 }
 
-function diffHtml(r) {
-  if (r.nouveauPrix === null) return '<span class="diff-zero">—</span>';
-  const diff = r.nouveauPrix - r.prix;
-  if (Math.abs(diff) < 0.005) return '<span class="diff-zero">0.00</span>';
-  const pct = r.prix > 0 ? ((diff / r.prix) * 100).toFixed(1) : '—';
-  if (diff > 0) return `<span class="diff-pos">+${diff.toFixed(2)} (+${pct}%)</span>`;
-  return `<span class="diff-neg">${diff.toFixed(2)} (${pct}%)</span>`;
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function setCible(idx, val) {
+  parsedRows[idx].cible = val;
+}
+
+function setRemise(idx, val) {
+  const v = parseFloat(val);
+  parsedRows[idx].nouvelleRemise = isNaN(v) ? null : v;
+  const inp = document.querySelector(`.remise-input[data-idx="${idx}"]`);
+  if (inp) inp.classList.toggle('changed', parsedRows[idx].nouvelleRemise !== null);
+}
+
+function setDate(idx, field, val) {
+  if (field === 'du') parsedRows[idx].nouveauDu = val || null;
+  else parsedRows[idx].nouveauAu = val || null;
+  const inp = document.querySelector(`.date-input[data-idx="${idx}"][data-field="${field}"]`);
+  if (inp) inp.classList.toggle('changed', !!val);
 }
 
 function toggleRow(idx, checked) {
@@ -405,7 +520,6 @@ function toggleGroup(groupId, checked) {
 }
 
 function updateGroupCheckbox(idx) {
-  const row = parsedRows[idx];
   const tr = document.querySelector(`tr[data-idx="${idx}"]`);
   if (!tr) return;
   const groupId = tr.dataset.group;
@@ -427,21 +541,21 @@ function setPrix(idx, val) {
 
 function updateFooter() {
   const checked = parsedRows.filter(r => r.checked);
-  const withPrice = checked.filter(r => r.nouveauPrix !== null);
-  document.getElementById('footerCount').textContent = checked.length + ' ligne(s) cochée(s)' +
-    (withPrice.length > 0 ? ', ' + withPrice.length + ' avec nouveau prix' : '');
-  document.getElementById('btnEnvoyer').disabled = withPrice.length === 0;
+  const modified = checked.filter(r => r.nouveauPrix !== null || r.nouvelleRemise !== null);
+  document.getElementById('footerCount').textContent = checked.length + ' cochée(s)' +
+    (modified.length > 0 ? ', ' + modified.length + ' modifiée(s)' : '');
+  document.getElementById('btnEnvoyer').disabled = modified.length === 0;
 }
 
 document.getElementById('btnSelectAll').addEventListener('click', () => {
-  parsedRows.forEach((r, i) => { r.checked = true; });
+  parsedRows.forEach(r => { r.checked = true; });
   renderTable();
   document.querySelectorAll('input[data-group]').forEach(cb => cb.checked = true);
   updateFooter();
 });
 
 document.getElementById('btnDeselectAll').addEventListener('click', () => {
-  parsedRows.forEach((r, i) => { r.checked = false; });
+  parsedRows.forEach(r => { r.checked = false; });
   renderTable();
   updateFooter();
 });
@@ -449,13 +563,8 @@ document.getElementById('btnDeselectAll').addEventListener('click', () => {
 document.getElementById('btnApplyGlobal').addEventListener('click', () => {
   const val = parseFloat(document.getElementById('prixGlobal').value);
   if (isNaN(val)) return;
-  parsedRows.forEach((r, i) => {
-    if (r.checked) {
-      r.nouveauPrix = val;
-    }
-  });
+  parsedRows.forEach(r => { if (r.checked) r.nouveauPrix = val; });
   renderTable();
-  // Restore checkboxes after re-render
   parsedRows.forEach((r, i) => {
     if (r.checked) {
       const cb = document.querySelector(`input[type=checkbox][data-idx="${i}"]`);
@@ -465,12 +574,7 @@ document.getElementById('btnApplyGlobal').addEventListener('click', () => {
   updateFooter();
 });
 
-function getGroupType(r) {
-  if (r.source.match(/liste de prix/i)) return 'liste';
-  if (r.source.match(/prix special partenaire/i)) return 'partenaire';
-  if (r.source.match(/prix special periode/i)) return 'periode';
-  return 'autre';
-}
+// ── Build payloads ──────────────────────────────────────────────────────────
 
 function buildListePrixPayload(listeNum, rows) {
   const dtwLines = [
@@ -478,7 +582,8 @@ function buildListePrixPayload(listeNum, rows) {
     'ItemCode\tLineNum\tPriceList\tPrice\tCurrency\tBASE_NUM\tFactor\tManual\tAutoUpdt'
   ];
   for (const r of rows) {
-    dtwLines.push(`${r.codeArticle}\t0\t${listeNum}\t${r.nouveauPrix.toFixed(2)}\t\t\t\t\t`);
+    const prix = r.nouveauPrix !== null ? r.nouveauPrix.toFixed(2) : r.prix.toFixed(2);
+    dtwLines.push(`${r.codeArticle}\t0\t${listeNum}\t${prix}\t\t\t\t\t`);
   }
   return {
     type: 'import_prix',
@@ -493,12 +598,10 @@ function buildListePrixPayload(listeNum, rows) {
 }
 
 function buildSpecialPrixPayload(rows, label) {
-  // File 1: SpecialPrices (header) — one row per ItemCode+CardCode
   const headerLines = [
     'RecordKey\tItemCode\tCardCode\tPrice\tCurrency\tDiscountPercent\tPriceListNum\tAutoUpdate\tSourcePrice',
     'RecordKey\tItemCode\tCardCode\tPrice\tCurrency\tDiscountPercent\tPriceListNum\tAutoUpdate\tSourcePrice'
   ];
-  // File 2: SpecialPricesDataAreas (period lines) — one row per line
   const dataLines = [
     'RecordKey\tLineNum\tPriceCurrency\tAutoUpdate\tDateto\tDiscount\tSpecialPrice\tDateFrom\tPriceListNo\tRowNumber',
     'RecordKey\tLineNum\tPriceCurrency\tAutoUpdate\tDateto\tDiscount\tSpecialPrice\tDateFrom\tPriceListNo\tRowNumber'
@@ -506,12 +609,13 @@ function buildSpecialPrixPayload(rows, label) {
 
   for (const r of rows) {
     const currency = r.devise === '$' ? 'CAD' : r.devise;
-    const remise = r.remise ? r.remise.replace(',', '.').replace('%', '') : '';
+    const remise = r.nouvelleRemise !== null ? r.nouvelleRemise : r.remise;
+    const prix = r.nouveauPrix !== null ? r.nouveauPrix.toFixed(2) : r.prix.toFixed(2);
     const listeNum = r.listeNo || '';
-    headerLines.push(`\t${r.codeArticle}\t${r.codePartenaire}\t${r.nouveauPrix.toFixed(2)}\t${currency}\t${remise}\t${listeNum}\tN\t`);
+    headerLines.push(`\t${r.codeArticle}\t${r.codePartenaire}\t${prix}\t${currency}\t${remise}\t${listeNum}\tN\t`);
     const dateTo = fromDateVal(r.nouveauAu || toDateVal(r.au));
     const dateFrom = fromDateVal(r.nouveauDu || toDateVal(r.du));
-    dataLines.push(`\t0\t${currency}\tN\t${dateTo}\t${remise}\t${r.nouveauPrix.toFixed(2)}\t${dateFrom}\t${listeNum}\t0`);
+    dataLines.push(`\t0\t${currency}\tN\t${dateTo}\t${remise}\t${prix}\t${dateFrom}\t${listeNum}\t0`);
   }
 
   return {
@@ -526,55 +630,130 @@ function buildSpecialPrixPayload(rows, label) {
   };
 }
 
-document.getElementById('btnEnvoyer').addEventListener('click', async () => {
-  const toSend = parsedRows.filter(r => r.checked && r.nouveauPrix !== null);
-  if (toSend.length === 0) return;
+// ── Send logic with confirmation ────────────────────────────────────────────
 
-  // Separate by type
-  const listeRows = {};   // grouped by list number
-  const partenaireRows = [];
-  const periodeRows = [];
-  const autreRows = [];
+function buildSendPlan() {
+  const toSend = parsedRows.filter(r => r.checked && (r.nouveauPrix !== null || r.nouvelleRemise !== null));
+  if (toSend.length === 0) return null;
+
+  const plan = { payloads: [], ignored: [] };
+
+  // Sort rows into buckets by their effective target
+  const listeRows = {};     // list number → rows (from liste de prix OR special with cible=liste_liee)
+  const specialRows = [];   // special price direct
+  const ignored = [];
 
   for (const r of toSend) {
-    const t = getGroupType(r);
-    if (t === 'liste') {
-      if (r.listeNo) {
-        if (!listeRows[r.listeNo]) listeRows[r.listeNo] = [];
-        listeRows[r.listeNo].push(r);
+    const gt = getGroupType(r);
+
+    if (gt === 'liste') {
+      // Liste de prix → always goes to its own list
+      const ln = r.listeNo || parseInt(r.detail);
+      if (ln) {
+        if (!listeRows[ln]) listeRows[ln] = { name: r.detail, rows: [] };
+        listeRows[ln].rows.push(r);
       } else {
-        autreRows.push(r);
+        ignored.push(r);
       }
-    } else if (t === 'partenaire') {
-      partenaireRows.push(r);
-    } else if (t === 'periode') {
-      periodeRows.push(r);
+    } else if (gt === 'partenaire' || gt === 'periode') {
+      if (r.cible === 'liste_liee' && r.listeNo) {
+        // User chose to update the linked price list instead
+        if (!listeRows[r.listeNo]) listeRows[r.listeNo] = { name: 'Liste ' + r.listeNo, rows: [] };
+        listeRows[r.listeNo].rows.push(r);
+      } else {
+        // Direct special price update
+        specialRows.push(r);
+      }
     } else {
-      autreRows.push(r);
+      ignored.push(r);
     }
   }
 
-  if (autreRows.length > 0) {
-    const names = autreRows.map(r => r.codeArticle + ' (' + r.source + ')').join(', ');
-    if (!confirm(autreRows.length + ' ligne(s) de type non supporté seront ignorées:\n' + names + '\n\nContinuer avec les autres?')) return;
+  // Build payloads
+  for (const [ln, data] of Object.entries(listeRows)) {
+    plan.payloads.push({
+      label: 'Liste de prix ' + ln + ' (' + data.name + ')',
+      type: 'liste',
+      listeNo: ln,
+      rows: data.rows,
+      payload: buildListePrixPayload(ln, data.rows)
+    });
   }
 
-  const payloads = [];
-  for (const listeNum of Object.keys(listeRows)) {
-    payloads.push({ label: 'Liste ' + listeNum, payload: buildListePrixPayload(listeNum, listeRows[listeNum]), count: listeRows[listeNum].length });
-  }
-  if (partenaireRows.length > 0) {
-    payloads.push({ label: 'Prix spécial partenaire', payload: buildSpecialPrixPayload(partenaireRows, 'partenaire'), count: partenaireRows.length });
-  }
-  if (periodeRows.length > 0) {
-    payloads.push({ label: 'Prix spécial période', payload: buildSpecialPrixPayload(periodeRows, 'periode'), count: periodeRows.length });
+  if (specialRows.length > 0) {
+    // Group special rows by partenaire vs periode
+    const partenaire = specialRows.filter(r => getGroupType(r) === 'partenaire');
+    const periode = specialRows.filter(r => getGroupType(r) === 'periode');
+    if (partenaire.length > 0) {
+      plan.payloads.push({
+        label: 'Prix spéciaux partenaire (direct)',
+        type: 'special',
+        rows: partenaire,
+        payload: buildSpecialPrixPayload(partenaire, 'partenaire')
+      });
+    }
+    if (periode.length > 0) {
+      plan.payloads.push({
+        label: 'Prix spéciaux période/volume (direct)',
+        type: 'special',
+        rows: periode,
+        payload: buildSpecialPrixPayload(periode, 'periode')
+      });
+    }
   }
 
-  if (payloads.length === 0) {
+  plan.ignored = ignored;
+  return plan;
+}
+
+let currentPlan = null;
+
+function closeConfirm() {
+  document.getElementById('confirmOverlay').style.display = 'none';
+  currentPlan = null;
+}
+
+document.getElementById('btnEnvoyer').addEventListener('click', () => {
+  const plan = buildSendPlan();
+  if (!plan || plan.payloads.length === 0) {
     document.getElementById('footerStatus').textContent = 'Aucune ligne valide à envoyer.';
     document.getElementById('footerStatus').style.color = 'var(--ecart)';
     return;
   }
+
+  currentPlan = plan;
+
+  let html = '';
+  for (const p of plan.payloads) {
+    const articles = p.rows.map(r => r.codeArticle).join(', ');
+    const prixInfo = p.rows.filter(r => r.nouveauPrix !== null).length;
+    const remiseInfo = p.rows.filter(r => r.nouvelleRemise !== null).length;
+    let details = [];
+    if (prixInfo > 0) details.push(prixInfo + ' prix');
+    if (remiseInfo > 0) details.push(remiseInfo + ' remise(s)');
+
+    html += `<div class="confirm-item">
+      <div class="target">${esc(p.label)}</div>
+      <div class="count">${p.rows.length} article(s): ${esc(articles)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Modifications: ${details.join(', ') || 'prix'}</div>
+    </div>`;
+  }
+
+  if (plan.ignored.length > 0) {
+    html += `<div class="confirm-item" style="border-left:3px solid var(--warn)">
+      <div style="color:var(--warn);font-weight:600">${plan.ignored.length} ligne(s) ignorée(s)</div>
+      <div class="count">${plan.ignored.map(r => r.codeArticle + ' (' + r.source + ')').join(', ')}</div>
+    </div>`;
+  }
+
+  document.getElementById('confirmBody').innerHTML = html;
+  document.getElementById('confirmOverlay').style.display = 'flex';
+});
+
+document.getElementById('btnConfirmSend').addEventListener('click', async () => {
+  if (!currentPlan) return;
+  const plan = currentPlan;
+  closeConfirm();
 
   const btn = document.getElementById('btnEnvoyer');
   const status = document.getElementById('footerStatus');
@@ -585,8 +764,8 @@ document.getElementById('btnEnvoyer').addEventListener('click', async () => {
   let totalSent = 0;
   let errors = [];
 
-  for (const p of payloads) {
-    status.textContent = 'Envoi ' + p.label + ' (' + p.count + ' article(s))…';
+  for (const p of plan.payloads) {
+    status.textContent = 'Envoi ' + p.label + ' (' + p.rows.length + ' article(s))…';
     try {
       const rep = await fetch(FIREBASE_URL + 'gromec_vba/imports_prix.json', {
         method: 'POST',
@@ -594,7 +773,7 @@ document.getElementById('btnEnvoyer').addEventListener('click', async () => {
         body: JSON.stringify(p.payload)
       });
       if (!rep.ok) throw new Error('HTTP ' + rep.status);
-      totalSent += p.count;
+      totalSent += p.rows.length;
     } catch (e) {
       errors.push(p.label + ': ' + e.message);
     }
@@ -605,7 +784,7 @@ document.getElementById('btnEnvoyer').addEventListener('click', async () => {
     status.textContent = totalSent + ' envoyé(s), ' + errors.length + ' erreur(s): ' + errors.join('; ');
   } else {
     status.style.color = 'var(--ok)';
-    status.textContent = totalSent + ' prix envoyé(s) vers DTW (' + payloads.length + ' import(s)). SyncDTW va traiter sous peu.';
+    status.textContent = totalSent + ' prix envoyé(s) vers DTW (' + plan.payloads.length + ' import(s)). SyncDTW va traiter sous peu.';
   }
   btn.textContent = 'Envoyé ✓';
 });
