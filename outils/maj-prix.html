@@ -408,9 +408,20 @@ function renderTable() {
   for (const group of allGroups) {
     const rows = groupedData[group];
     const groupId = group.replace(/[^a-zA-Z]/g, '_');
+    const isSpecGroup = isSpecialSource(rows[0]?.source || '');
+    const dateControls = isSpecGroup ? `
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        Du: <input type="date" class="date-input" id="gdu-${groupId}" style="width:120px">
+        Au: <input type="date" class="date-input" id="gau-${groupId}" style="width:120px">
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="applyGroupDates('${groupId}')">Appliquer dates</button>
+      </span>` : '';
+
     html += `<tr class="group-header"><td colspan="14">
-      <label><input type="checkbox" data-group="${groupId}" onchange="toggleGroup('${groupId}', this.checked)">
-      ${group} <span style="color:var(--muted);font-weight:400">(${rows.length})</span></label>
+      <div style="display:flex;align-items:center;width:100%">
+        <label><input type="checkbox" data-group="${groupId}" onchange="toggleGroup('${groupId}', this.checked)">
+        ${group} <span style="color:var(--muted);font-weight:400">(${rows.length})</span></label>
+        ${dateControls}
+      </div>
     </td></tr>`;
 
     for (let i = 0; i < rows.length; i++) {
@@ -480,6 +491,28 @@ function esc(s) {
   const d = document.createElement('div');
   d.textContent = s || '';
   return d.innerHTML;
+}
+
+function applyGroupDates(groupId) {
+  const duVal = document.getElementById('gdu-' + groupId)?.value || '';
+  const auVal = document.getElementById('gau-' + groupId)?.value || '';
+  if (!duVal && !auVal) return;
+  document.querySelectorAll(`tr[data-group="${groupId}"][data-idx]`).forEach(tr => {
+    const idx = parseInt(tr.dataset.idx);
+    if (parsedRows[idx].checked) {
+      if (duVal) parsedRows[idx].nouveauDu = duVal;
+      if (auVal) parsedRows[idx].nouveauAu = auVal;
+    }
+  });
+  renderTable();
+  // Restore checkboxes
+  parsedRows.forEach((r, i) => {
+    if (r.checked) {
+      const cb = document.querySelector(`input[type=checkbox][data-idx="${i}"]`);
+      if (cb) cb.checked = true;
+    }
+  });
+  updateFooter();
 }
 
 function setCible(idx, val) {
