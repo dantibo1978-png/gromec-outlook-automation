@@ -748,32 +748,29 @@ function buildListePrixPayload(listeNum, rows) {
 
 function buildSpecialPrixPayload(rows, label) {
   const headerLines = [
-    'RecordKey\tItemCode\tCardCode\tPrice\tCurrency\tDiscountPercent\tPriceListNum\tAutoUpdate\tSourcePrice',
-    'RecordKey\tItemCode\tCardCode\tPrice\tCurrency\tDiscountPercent\tPriceListNum\tAutoUpdate\tSourcePrice'
+    'ItemCode\tCardCode\tPrice\tCurrency\tDiscountPercent\tPriceListNum\tAutoUpdate\tSourcePrice',
+    'ItemCode\tCardCode\tPrice\tCurrency\tDiscount\tListNum\tAutoUpdt\tSrcPrice'
   ];
   const dataLines = [
-    'RecordKey\tLineNum\tPriceCurrency\tAutoUpdate\tDateto\tDiscount\tSpecialPrice\tDateFrom\tPriceListNo\tRowNumber',
-    'RecordKey\tLineNum\tPriceCurrency\tAutoUpdate\tDateto\tDiscount\tSpecialPrice\tDateFrom\tPriceListNo\tRowNumber'
+    'ParentKey\tParentKey2\tLineNum\tPriceCurrency\tAutoUpdate\tDateto\tDiscount\tSpecialPrice\tDateFrom\tPriceListNo\tRowNumber',
+    'ItemCode\tCardCode\tLineNum\tCurrency\tAutoUpdt\tToDate\tDiscount\tPrice\tFromDate\tListNum\tLINENUM'
   ];
 
   for (const r of rows) {
-    const currency = r.devise === '$' ? 'CAD' : r.devise;
     const remise = r.nouvelleRemise !== null ? r.nouvelleRemise : r.remise;
-    const prix = r.nouveauPrix !== null ? r.nouveauPrix.toFixed(2) : r.prix.toFixed(2);
+    const prix = r.nouveauPrix !== null ? r.nouveauPrix : r.prix;
+    const prixStr = prix % 1 === 0 ? String(prix) : String(prix);
     const listeNum = r.listeNumInterne || '';
 
-    headerLines.push(`\t${r.codeArticle}\t${r.codePartenaire}\t${prix}\t${currency}\t${remise}\t${listeNum}\tN\t`);
+    headerLines.push(`${r.codeArticle}\t${r.codePartenaire}\t\t\t\t${listeNum}\ttNO\t`);
 
-    // With dates → period line (Remises avec validité temporelle)
-    // Without dates → DataAreas line with empty dates (updates base special price)
     const hasDates = !!(r.nouveauDu || r.du || r.nouveauAu || r.au);
     if (hasDates) {
       const dateTo = fromDateVal(r.nouveauAu || toDateVal(r.au));
       const dateFrom = fromDateVal(r.nouveauDu || toDateVal(r.du));
-      dataLines.push(`\t0\t${currency}\tN\t${dateTo}\t${remise}\t${prix}\t${dateFrom}\t${listeNum}\t0`);
+      dataLines.push(`${r.codeArticle}\t${r.codePartenaire}\t\t$\ttNO\t${dateTo}\t${remise}\t${prixStr}\t${dateFrom}\t\t`);
     } else {
-      // No dates: still need a DataAreas line (DTW requires it) but with empty dates
-      dataLines.push(`\t0\t${currency}\tN\t\t${remise}\t${prix}\t\t${listeNum}\t0`);
+      dataLines.push(`${r.codeArticle}\t${r.codePartenaire}\t\t$\ttNO\t\t${remise}\t${prixStr}\t\t\t`);
     }
   }
 
