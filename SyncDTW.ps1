@@ -128,11 +128,27 @@ try {
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── Fonctions SAP DI API ─────────────────────────────────────────────────────
+# Constantes BoObjectTypes (fallback si l'assembly .NET n'est pas chargee)
+$BO_Recordset      = 20
+$BO_PurchaseOrders = 22
+$BO_Items          = 4
 
 function Connect-SAP {
     if ([string]::IsNullOrEmpty($SAP_User) -or [string]::IsNullOrEmpty($SAP_Password)) {
         throw "Credentials SAP manquants dans config.json (sap_user, sap_password)"
     }
+    # Charger l'assembly .NET pour acceder aux enums SAPbobsCOM
+    try {
+        $diApiPath = "C:\Program Files\SAP\SAP Business One DI API\Interop.SAPbobsCOM.dll"
+        $diApiPath86 = "C:\Program Files (x86)\SAP\SAP Business One DI API\Interop.SAPbobsCOM.dll"
+        if (Test-Path $diApiPath) {
+            Add-Type -Path $diApiPath -ErrorAction SilentlyContinue
+        } elseif (Test-Path $diApiPath86) {
+            Add-Type -Path $diApiPath86 -ErrorAction SilentlyContinue
+        } else {
+            [System.Reflection.Assembly]::LoadWithPartialName("Interop.SAPbobsCOM") | Out-Null
+        }
+    } catch {}
     $company = New-Object -ComObject SAPbobsCOM.Company
     $company.Server       = $SAP_Server
     $company.DbServerType = $SAP_DbType
@@ -158,7 +174,7 @@ function Disconnect-SAP {
 
 function Get-DocEntryFromDocNum {
     param($Company, [string]$DocNum)
-    $rs = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::BoRecordset)
+    $rs = $Company.GetBusinessObject($BO_Recordset)
     $rs.DoQuery("SELECT ""DocEntry"" FROM ""OPOR"" WHERE ""DocNum"" = $DocNum")
     if ($rs.RecordCount -eq 0) {
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
@@ -171,7 +187,7 @@ function Get-DocEntryFromDocNum {
 
 function Update-POLines {
     param($Company, [int]$DocEntry, [array]$Articles, [bool]$CopierPrix, [bool]$CopierQty)
-    $oPO = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::oPurchaseOrders)
+    $oPO = $Company.GetBusinessObject($BO_PurchaseOrders)
     if (-not $oPO.GetByKey($DocEntry)) {
         $err = $Company.GetLastErrorDescription()
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
@@ -211,7 +227,7 @@ function Update-PriceList2 {
         if ($itemCode -eq '') { $itemCode = $a.sapArticle }
         $prix = if ($a.pdfPrix -and [double]$a.pdfPrix -gt 0) { [double]$a.pdfPrix } else { [double]$a.sapPrix }
 
-        $oItem = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::oItems)
+        $oItem = $Company.GetBusinessObject($BO_Items)
         if (-not $oItem.GetByKey($itemCode)) {
             $erreurs += "Article $itemCode introuvable"
             [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
@@ -245,7 +261,7 @@ function Update-PriceList2 {
 
 function Set-ConfirmPO {
     param($Company, [int]$DocEntry)
-    $oPO = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::oPurchaseOrders)
+    $oPO = $Company.GetBusinessObject($BO_PurchaseOrders)
     if (-not $oPO.GetByKey($DocEntry)) {
         $err = $Company.GetLastErrorDescription()
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
@@ -268,7 +284,7 @@ function New-PORevisionDraft {
     $pdfPath = $null
     try {
         # Generer le PDF du bon de commande via DI API
-        $oPO = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::oPurchaseOrders)
+        $oPO = $Company.GetBusinessObject($BO_PurchaseOrders)
         if (-not $oPO.GetByKey($DocEntry)) {
             [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
             Write-Log "WARN  Impossible de charger PO pour PDF (DocEntry $DocEntry)"
