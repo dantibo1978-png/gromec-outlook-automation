@@ -75,6 +75,24 @@ $DTW_FichierSpecialLines  = "$DTW_Dossier\special_prices_lines.txt"
 $DTW_ScenarioSpecial      = "$DTW_Dossier\UpdateSpecialPrices_PROD.xml"
 $IntervalleSecondes = 60
 $DTW_TimeoutSecondes = 600  # DTW.exe est tue si bloque plus de 10 min (ex: dialogue SAP cache)
+
+# ── Configuration SAP DI API ─────────────────────────────────────────────────
+$SAP_Server     = "NDB@hana:30013"
+$SAP_DbType     = 9  # dst_HANADB
+$SAP_UseTrusted = $false
+# Credentials lus de config.json (sap_user, sap_password, sap_db_test, sap_db_prod)
+$ConfigJson = $null
+try {
+    $configPath = Join-Path (Split-Path $PSCommandPath) "config.json"
+    if (Test-Path $configPath) {
+        $ConfigJson = Get-Content $configPath -Raw | ConvertFrom-Json
+    }
+} catch {}
+$SAP_User     = if ($ConfigJson -and $ConfigJson.sap_user)     { $ConfigJson.sap_user }     else { "" }
+$SAP_Password = if ($ConfigJson -and $ConfigJson.sap_password) { $ConfigJson.sap_password } else { "" }
+$SAP_DB_Test  = if ($ConfigJson -and $ConfigJson.sap_db_test)  { $ConfigJson.sap_db_test }  else { "SAP_GROMEC_20260430" }
+$SAP_DB_Prod  = if ($ConfigJson -and $ConfigJson.sap_db_prod)  { $ConfigJson.sap_db_prod }  else { "SAP_GROMEC_PROD" }
+$SAP_DB       = $SAP_DB_Prod  # PROD par defaut — changer a $SAP_DB_Test pour tester
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
 $DossierCachePO     = "U:\GromecOutlook\cache_po"  # meme cache que VerifierConfirmation.ps1 (Get-ItemsCommandeGromec)
@@ -106,6 +124,185 @@ try {
     }
 } catch {}
 # ──────────────────────────────────────────────────────────────────────────────
+
+# ── Fonctions SAP DI API ─────────────────────────────────────────────────────
+
+function Connect-SAP {
+    if ([string]::IsNullOrEmpty($SAP_User) -or [string]::IsNullOrEmpty($SAP_Password)) {
+        throw "Credentials SAP manquants dans config.json (sap_user, sap_password)"
+    }
+    $company = New-Object -ComObject SAPbobsCOM.Company
+    $company.Server       = $SAP_Server
+    $company.DbServerType = $SAP_DbType
+    $company.CompanyDB    = $SAP_DB
+    $company.UserName     = $SAP_User
+    $company.Password     = $SAP_Password
+    $company.UseTrusted   = $SAP_UseTrusted
+    $ret = $company.Connect()
+    if ($ret -ne 0) {
+        $errMsg = $company.GetLastErrorDescription()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($company) | Out-Null
+        throw "Connexion SAP echouee ($ret) : $errMsg"
+    }
+    return $company
+}
+
+function Disconnect-SAP {
+    param($Company)
+    if ($null -eq $Company) { return }
+    try { $Company.Disconnect() } catch {}
+    try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($Company) | Out-Null } catch {}
+}
+
+function Get-DocEntryFromDocNum {
+    param($Company, [string]$DocNum)
+    $rs = $Company.GetBusinessObject(20)  # BoRecordset
+    $rs.DoQuery("SELECT ""DocEntry"" FROM ""OPOR"" WHERE ""DocNum"" = $DocNum")
+    if ($rs.RecordCount -eq 0) {
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
+        throw "PO DocNum $DocNum introuvable dans SAP"
+    }
+    $docEntry = $rs.Fields.Item("DocEntry").Value
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
+    return [int]$docEntry
+}
+
+function Update-POLines {
+    param($Company, [int]$DocEntry, [array]$Articles, [bool]$CopierPrix, [bool]$CopierQty)
+    $oPO = $Company.GetBusinessObject(22)  # oPurchaseOrders
+    if (-not $oPO.GetByKey($DocEntry)) {
+        $err = $Company.GetLastErrorDescription()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+        throw "Impossible de charger PO DocEntry $DocEntry : $err"
+    }
+    $modifie = $false
+    foreach ($a in $Articles) {
+        $lineNum = [int]$a.sapLigne - 1  # 0-indexed
+        $oPO.Lines.SetCurrentLine($lineNum)
+        if ($CopierPrix) {
+            $prix = if ($a.pdfPrix -and [double]$a.pdfPrix -gt 0) { [double]$a.pdfPrix } else { [double]$a.sapPrix }
+            $oPO.Lines.UnitPrice = [math]::Round($prix, 4)
+            $modifie = $true
+        }
+        if ($CopierQty) {
+            $qty = if ($a.pdfQty -and [int]$a.pdfQty -gt 0) { [int]$a.pdfQty } else { [int]$a.sapQty }
+            $oPO.Lines.Quantity = $qty
+            $modifie = $true
+        }
+    }
+    if ($modifie) {
+        $ret = $oPO.Update()
+        if ($ret -ne 0) {
+            $err = $Company.GetLastErrorDescription()
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+            throw "Erreur Update PO lignes : $err"
+        }
+    }
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+}
+
+function Update-PriceList2 {
+    param($Company, [array]$Articles)
+    $erreurs = @()
+    foreach ($a in $Articles) {
+        $itemCode = ($a.sapArticle -replace '^0+', '')
+        if ($itemCode -eq '') { $itemCode = $a.sapArticle }
+        $prix = if ($a.pdfPrix -and [double]$a.pdfPrix -gt 0) { [double]$a.pdfPrix } else { [double]$a.sapPrix }
+
+        $oItem = $Company.GetBusinessObject(4)  # oItems
+        if (-not $oItem.GetByKey($itemCode)) {
+            $erreurs += "Article $itemCode introuvable"
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+            continue
+        }
+        $found = $false
+        for ($i = 0; $i -lt 100; $i++) {
+            $oItem.PriceList.SetCurrentLine($i)
+            if ($oItem.PriceList.PriceList -eq 2) {
+                $oItem.PriceList.Price = [math]::Round($prix, 4)
+                $oItem.PriceList.Currency = '$'
+                $found = $true
+                break
+            }
+        }
+        if (-not $found) {
+            $erreurs += "Liste 2 introuvable pour $itemCode"
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+            continue
+        }
+        $ret = $oItem.Update()
+        if ($ret -ne 0) {
+            $erreurs += "Erreur Update $itemCode : $($Company.GetLastErrorDescription())"
+        }
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+    }
+    if ($erreurs.Count -gt 0) {
+        throw "Erreur(s) Price List 2 : $($erreurs -join ' | ')"
+    }
+}
+
+function Set-ConfirmPO {
+    param($Company, [int]$DocEntry)
+    $oPO = $Company.GetBusinessObject(22)  # oPurchaseOrders
+    if (-not $oPO.GetByKey($DocEntry)) {
+        $err = $Company.GetLastErrorDescription()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+        throw "Impossible de charger PO DocEntry $DocEntry : $err"
+    }
+    $oPO.UserFields.Fields.Item("U_NWR_ConfirmPO").Value = "Y"
+    $ret = $oPO.Update()
+    if ($ret -ne 0) {
+        $err = $Company.GetLastErrorDescription()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+        throw "Erreur ConfirmPO : $err"
+    }
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+}
+
+function New-PORevisionDraft {
+    param($Company, [int]$DocEntry, [string]$DocNum)
+    $outlook = $null
+    $mail = $null
+    $pdfPath = $null
+    try {
+        # Generer le PDF du bon de commande via DI API
+        $oPO = $Company.GetBusinessObject(22)
+        if (-not $oPO.GetByKey($DocEntry)) {
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+            Write-Log "WARN  Impossible de charger PO pour PDF (DocEntry $DocEntry)"
+            return
+        }
+        $pdfPath = Join-Path $Temp_Dossier "PO_${DocNum}_revision.pdf"
+        if (-not (Test-Path $Temp_Dossier)) { New-Item -ItemType Directory -Path $Temp_Dossier -Force | Out-Null }
+        # PrintDocument: genere le layout par defaut du PO en PDF
+        $oPO.SaveDraftToFile($pdfPath)
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+    } catch {
+        Write-Log "WARN  Impossible de generer le PDF du PO $DocNum : $($_.Exception.Message)"
+        # Continuer quand meme — creer le brouillon sans piece jointe
+        $pdfPath = $null
+    }
+
+    try {
+        $outlook = New-Object -ComObject Outlook.Application
+        $mail = $outlook.CreateItem(0)  # olMailItem
+        $mail.Subject = "Revision - PO $DocNum"
+        $mail.Body = "Bon de commande $DocNum revise suite a correction de prix."
+        if ($pdfPath -and (Test-Path $pdfPath)) {
+            $mail.Attachments.Add($pdfPath) | Out-Null
+        }
+        $mail.Save()  # Sauvegarde dans Brouillons
+        Write-Log "INFO  Brouillon Outlook cree : Revision - PO $DocNum"
+    } catch {
+        Write-Log "WARN  Impossible de creer le brouillon Outlook pour PO $DocNum : $($_.Exception.Message)"
+    } finally {
+        if ($mail)    { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail) | Out-Null }
+        if ($outlook) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook) | Out-Null }
+        if ($pdfPath -and (Test-Path $pdfPath)) { Remove-Item $pdfPath -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+# ── Fin fonctions SAP DI API ─────────────────────────────────────────────────
 
 $Script:LogBuffer = [System.Collections.ArrayList]::new()
 $Script:DernierFlushLogs = Get-Date
@@ -520,66 +717,56 @@ function Invoke-TraiterEntree {
         return
     }
 
-    # ── Etape 1 : Document_Lines (UnitPrice et/ou Quantity) ─────────────────
+    # ── Connexion SAP DI API ────────────────────────────────────────────────
+    $company = $null
     try {
-        Write-FichierLignesDTW -DocNum $docNum -Articles $articles -CopierPrix $copierPrix -CopierQty $copierQty
+        $company = Connect-SAP
+        Write-Log "INFO  Connexion SAP DI API OK (DB: $SAP_DB)" -Cle $Cle -BC $docNum
     } catch {
-        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "Erreur generation fichier lignes : $($_.Exception.Message)"
+        Write-Log "ERREUR Connexion SAP : $($_.Exception.Message)" -Cle $Cle -BC $docNum
+        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "Connexion SAP : $($_.Exception.Message)"
         return
     }
 
-    $res = Invoke-DTW -ScenarioXml $DTW_ScenarioLignes
-    if (-not $res.Succes) {
-        Write-Log "ERREUR DTW lignes : $($res.Erreur)" -Cle $Cle -BC $docNum
-        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW lignes : $($res.Erreur)"
-        return
-    }
-    Write-Log "INFO  DTW lignes OK." -Cle $Cle -BC $docNum
+    try {
+        # Trouver le DocEntry a partir du DocNum
+        $docEntry = Get-DocEntryFromDocNum -Company $company -DocNum $docNum
+        Write-Log "INFO  PO $docNum -> DocEntry $docEntry" -Cle $Cle -BC $docNum
 
-    # ── Etape 2 : Price List 2 (seulement si on copie les prix) ─────────────
-    if ($copierPrix) {
+        # ── Etape 1 : Modifier les lignes PO (prix et/ou quantites) ──────────
+        Update-POLines -Company $company -DocEntry $docEntry -Articles $articles -CopierPrix $copierPrix -CopierQty $copierQty
+        Write-Log "INFO  DI API lignes PO OK." -Cle $Cle -BC $docNum
+
+        # ── Etape 2 : Mettre a jour Price List 2 (seulement si on copie les prix)
+        if ($copierPrix) {
+            Update-PriceList2 -Company $company -Articles $articles
+            Write-Log "INFO  DI API Price List 2 OK." -Cle $Cle -BC $docNum
+        }
+
+        # ── Etape 3 : ConfirmPO = Y ──────────────────────────────────────────
         try {
-            Write-FichierPrixL2DTW -Articles $articles
+            Set-ConfirmPO -Company $company -DocEntry $docEntry
+            Write-Log "INFO  DI API ConfirmPO OK." -Cle $Cle -BC $docNum
         } catch {
-            Write-Log "WARN  Erreur generation fichier Price List 2 : $($_.Exception.Message)" -Cle $Cle -BC $docNum
-            Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW lignes OK, mais erreur Price List 2 : $($_.Exception.Message)"
-            return
+            Write-Log "WARN  ConfirmPO : $($_.Exception.Message) (prix OK quand meme)" -Cle $Cle -BC $docNum
         }
 
-        $res2 = Invoke-DTW -ScenarioXml $DTW_ScenarioPrixL2
-        if (-not $res2.Succes) {
-            Write-Log "WARN  DTW Price List 2 : $($res2.Erreur)" -Cle $Cle -BC $docNum
-            Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW lignes OK, mais DTW Price List 2 : $($res2.Erreur)"
-            return
+        # ── Etape 4 : Brouillon Outlook "Revision - PO xxxx" ─────────────────
+        try {
+            New-PORevisionDraft -Company $company -DocEntry $docEntry -DocNum $docNum
+        } catch {
+            Write-Log "WARN  Brouillon revision : $($_.Exception.Message)" -Cle $Cle -BC $docNum
         }
-        Write-Log "INFO  DTW Price List 2 OK." -Cle $Cle -BC $docNum
-    }
 
-    # ── Etape 3 : U_NWR_ConfirmPO = Y (confirmer la commande dans SAP) ────────
-    try {
-        $contenuConfirm = "DocNum`tDocEntry`tU_NWR_ConfirmPO`r`nDocNum`tDocEntry`tU_NWR_ConfirmPO`r`n$docNum`t`tY"
-        [System.IO.File]::WriteAllText($DTW_FichierConfirmPO, $contenuConfirm, [System.Text.Encoding]::Unicode)
+        Set-StatutDTW -Cle $Cle -Statut 'ok'
+        Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
+        Write-Log "INFO  PO $docNum traite avec succes via DI API." -Cle $Cle -BC $docNum
     } catch {
-        Write-Log "WARN  Erreur generation fichier ConfirmPO : $($_.Exception.Message)" -Cle $Cle -BC $docNum
-        Set-StatutDTW -Cle $Cle -Statut 'ok'
-        Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
-        Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)." -Cle $Cle -BC $docNum
-        return
+        Write-Log "ERREUR DI API pour PO $docNum : $($_.Exception.Message)" -Cle $Cle -BC $docNum
+        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DI API : $($_.Exception.Message)"
+    } finally {
+        Disconnect-SAP -Company $company
     }
-
-    $res3 = Invoke-DTW -ScenarioXml $DTW_ScenarioConfirmPO
-    if (-not $res3.Succes) {
-        Write-Log "WARN  DTW ConfirmPO : $($res3.Erreur)" -Cle $Cle -BC $docNum
-        Set-StatutDTW -Cle $Cle -Statut 'ok'
-        Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
-        Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)." -Cle $Cle -BC $docNum
-        return
-    }
-    Write-Log "INFO  DTW ConfirmPO OK." -Cle $Cle -BC $docNum
-
-    Set-StatutDTW -Cle $Cle -Statut 'ok'
-    Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
-    Write-Log "INFO  PO $docNum traite avec succes." -Cle $Cle -BC $docNum
 }
 
 
@@ -1311,8 +1498,9 @@ while ($true) {
         }
     }
 
-    # ── ConfirmPO automatique : pousser U_NWR_ConfirmPO=Y pour les commandes conformes ──
+    # ── ConfirmPO automatique via DI API pour les commandes conformes ────────
     if ($null -ne $historique) {
+        $aConfirmer = @()
         foreach ($cle in $historique.PSObject.Properties.Name) {
             $entree = $historique.$cle
             $estOK     = ($entree.statut -eq 'OK')
@@ -1323,38 +1511,40 @@ while ($true) {
                 $dejaSync = [bool]$entree.syncSAP
             }
             if ($dejaSync) { continue }
-
             $docNum = $entree.numeroCommande
             if ([string]::IsNullOrEmpty($docNum)) { continue }
-
-            Write-Log "INFO  ConfirmPO auto : PO $docNum (cle: $cle)" -Cle $cle -BC $docNum
+            $aConfirmer += @{ cle = $cle; docNum = $docNum }
+        }
+        if ($aConfirmer.Count -gt 0) {
+            $companyCfm = $null
             try {
-                $contenuConfirm = "DocNum`tDocEntry`tU_NWR_ConfirmPO`r`nDocNum`tDocEntry`tU_NWR_ConfirmPO`r`n$docNum`t`tY"
-                [System.IO.File]::WriteAllText($DTW_FichierConfirmPO, $contenuConfirm, [System.Text.Encoding]::Unicode)
+                $companyCfm = Connect-SAP
+                foreach ($item in $aConfirmer) {
+                    $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+                    try {
+                        $de = Get-DocEntryFromDocNum -Company $companyCfm -DocNum $item.docNum
+                        Set-ConfirmPO -Company $companyCfm -DocEntry $de
+                        Write-Log "INFO  ConfirmPO auto : PO $($item.docNum) OK." -Cle $item.cle -BC $item.docNum
+                        try {
+                            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$($item.cle).json" `
+                                -Method Patch `
+                                -Body (@{ syncSAP = $true; syncSAPDate = $maintenant; confirme = $true; confirme_le = $maintenant; actionRequise = $false } | ConvertTo-Json -Compress) `
+                                -ContentType "application/json" -TimeoutSec 15 | Out-Null
+                        } catch {}
+                    } catch {
+                        Write-Log "WARN  ConfirmPO auto : PO $($item.docNum) echec : $($_.Exception.Message)" -Cle $item.cle -BC $item.docNum
+                        try {
+                            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$($item.cle).json" `
+                                -Method Patch `
+                                -Body (@{ syncSAP = $false; syncSAPDate = $maintenant; syncSAPErreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
+                                -ContentType "application/json" -TimeoutSec 15 | Out-Null
+                        } catch {}
+                    }
+                }
             } catch {
-                Write-Log "WARN  ConfirmPO auto : erreur ecriture fichier pour PO $docNum : $($_.Exception.Message)" -Cle $cle -BC $docNum
-                continue
-            }
-
-            $resConfirm = Invoke-DTW -ScenarioXml $DTW_ScenarioConfirmPO
-            $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
-            if ($resConfirm.Succes) {
-                Write-Log "INFO  ConfirmPO auto : PO $docNum OK." -Cle $cle -BC $docNum
-                try {
-                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
-                        -Method Patch `
-                        -Body (@{ syncSAP = $true; syncSAPDate = $maintenant; confirme = $true; confirme_le = $maintenant; actionRequise = $false } | ConvertTo-Json -Compress) `
-                        -ContentType "application/json" -TimeoutSec 15 | Out-Null
-                } catch {}
-            } else {
-                Write-Log "WARN  ConfirmPO auto : PO $docNum echec : $($resConfirm.Erreur)" -Cle $cle -BC $docNum
-                if ($resConfirm.Erreur -like "*deja ouvert*") { break }
-                try {
-                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
-                        -Method Patch `
-                        -Body (@{ syncSAP = $false; syncSAPDate = $maintenant; syncSAPErreur = $resConfirm.Erreur } | ConvertTo-Json -Compress) `
-                        -ContentType "application/json" -TimeoutSec 15 | Out-Null
-                } catch {}
+                Write-Log "WARN  ConfirmPO auto : connexion SAP echouee : $($_.Exception.Message)"
+            } finally {
+                Disconnect-SAP -Company $companyCfm
             }
         }
     }
