@@ -80,19 +80,21 @@ $DTW_TimeoutSecondes = 600  # DTW.exe est tue si bloque plus de 10 min (ex: dial
 $SAP_Server     = "NDB@hana:30013"
 $SAP_DbType     = 9  # dst_HANADB
 $SAP_UseTrusted = $false
-# Credentials lus de config.json (sap_user, sap_password, sap_db_test, sap_db_prod)
-$ConfigJson = $null
+$SAP_User       = ""
+$SAP_Password   = ""
+$SAP_DB_Test    = "SAP_GROMEC_20260430"
+$SAP_DB_Prod    = "SAP_GROMEC_PROD"
 try {
     $configPath = Join-Path (Split-Path $PSCommandPath) "config.json"
     if (Test-Path $configPath) {
-        $ConfigJson = Get-Content $configPath -Raw | ConvertFrom-Json
+        $cfgSAP = Get-Content $configPath -Raw | ConvertFrom-Json
+        if ($cfgSAP.sap_user)     { $SAP_User     = [string]$cfgSAP.sap_user }
+        if ($cfgSAP.sap_password) { $SAP_Password = [string]$cfgSAP.sap_password }
+        if ($cfgSAP.sap_db_test)  { $SAP_DB_Test  = [string]$cfgSAP.sap_db_test }
+        if ($cfgSAP.sap_db_prod)  { $SAP_DB_Prod  = [string]$cfgSAP.sap_db_prod }
     }
 } catch {}
-$SAP_User     = if ($ConfigJson -and $ConfigJson.sap_user)     { $ConfigJson.sap_user }     else { "" }
-$SAP_Password = if ($ConfigJson -and $ConfigJson.sap_password) { $ConfigJson.sap_password } else { "" }
-$SAP_DB_Test  = if ($ConfigJson -and $ConfigJson.sap_db_test)  { $ConfigJson.sap_db_test }  else { "SAP_GROMEC_20260430" }
-$SAP_DB_Prod  = if ($ConfigJson -and $ConfigJson.sap_db_prod)  { $ConfigJson.sap_db_prod }  else { "SAP_GROMEC_PROD" }
-$SAP_DB       = $SAP_DB_Prod  # PROD par defaut — changer a $SAP_DB_Test pour tester
+$SAP_DB = $SAP_DB_Prod  # PROD par defaut — changer a $SAP_DB_Test pour tester
 $Logo_Gromec        = "U:\GromecOutlook\logo_gromec.png"
 $Temp_Dossier       = "U:\GromecOutlook\temp"
 $DossierCachePO     = "U:\GromecOutlook\cache_po"  # meme cache que VerifierConfirmation.ps1 (Get-ItemsCommandeGromec)
