@@ -158,7 +158,7 @@ function Disconnect-SAP {
 
 function Get-DocEntryFromDocNum {
     param($Company, [string]$DocNum)
-    $rs = $Company.GetBusinessObject(20)  # BoRecordset
+    $rs = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::BoRecordset)
     $rs.DoQuery("SELECT ""DocEntry"" FROM ""OPOR"" WHERE ""DocNum"" = $DocNum")
     if ($rs.RecordCount -eq 0) {
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
@@ -171,7 +171,7 @@ function Get-DocEntryFromDocNum {
 
 function Update-POLines {
     param($Company, [int]$DocEntry, [array]$Articles, [bool]$CopierPrix, [bool]$CopierQty)
-    $oPO = $Company.GetBusinessObject(22)  # oPurchaseOrders
+    $oPO = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::oPurchaseOrders)
     if (-not $oPO.GetByKey($DocEntry)) {
         $err = $Company.GetLastErrorDescription()
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
@@ -211,7 +211,7 @@ function Update-PriceList2 {
         if ($itemCode -eq '') { $itemCode = $a.sapArticle }
         $prix = if ($a.pdfPrix -and [double]$a.pdfPrix -gt 0) { [double]$a.pdfPrix } else { [double]$a.sapPrix }
 
-        $oItem = $Company.GetBusinessObject(4)  # oItems
+        $oItem = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::oItems)
         if (-not $oItem.GetByKey($itemCode)) {
             $erreurs += "Article $itemCode introuvable"
             [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
@@ -245,7 +245,7 @@ function Update-PriceList2 {
 
 function Set-ConfirmPO {
     param($Company, [int]$DocEntry)
-    $oPO = $Company.GetBusinessObject(22)  # oPurchaseOrders
+    $oPO = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::oPurchaseOrders)
     if (-not $oPO.GetByKey($DocEntry)) {
         $err = $Company.GetLastErrorDescription()
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
@@ -268,7 +268,7 @@ function New-PORevisionDraft {
     $pdfPath = $null
     try {
         # Generer le PDF du bon de commande via DI API
-        $oPO = $Company.GetBusinessObject(22)
+        $oPO = $Company.GetBusinessObject([SAPbobsCOM.BoObjectTypes]::oPurchaseOrders)
         if (-not $oPO.GetByKey($DocEntry)) {
             [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
             Write-Log "WARN  Impossible de charger PO pour PDF (DocEntry $DocEntry)"
