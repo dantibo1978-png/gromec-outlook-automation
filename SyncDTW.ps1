@@ -175,12 +175,16 @@ function Disconnect-SAP {
 function Get-DocEntryFromDocNum {
     param($Company, [string]$DocNum)
     $rs = $Company.GetBusinessObject($BO_Recordset)
-    $rs.DoQuery("SELECT ""DocEntry"" FROM ""OPOR"" WHERE ""DocNum"" = $DocNum")
-    if ($rs.RecordCount -eq 0) {
+    $sql = "SELECT ""DocEntry"" FROM ""OPOR"" WHERE ""DocNum"" = $DocNum"
+    [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sql))
+    $count = [System.__ComObject].InvokeMember("RecordCount", [System.Reflection.BindingFlags]::GetProperty, $null, $rs, $null)
+    if ($count -eq 0) {
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
         throw "PO DocNum $DocNum introuvable dans SAP"
     }
-    $docEntry = $rs.Fields.Item("DocEntry").Value
+    $fields = [System.__ComObject].InvokeMember("Fields", [System.Reflection.BindingFlags]::GetProperty, $null, $rs, $null)
+    $field = [System.__ComObject].InvokeMember("Item", [System.Reflection.BindingFlags]::GetProperty, $null, $fields, @("DocEntry"))
+    $docEntry = [System.__ComObject].InvokeMember("Value", [System.Reflection.BindingFlags]::GetProperty, $null, $field, $null)
     [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
     return [int]$docEntry
 }
