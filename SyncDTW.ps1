@@ -332,12 +332,16 @@ function Update-ItemPriceLists {
     $erreurs = @()
     for ($r = 2; $r -lt $lignes.Count; $r++) {
         $cols = $lignes[$r] -split "`t"
-        if ($cols.Count -lt 4) { continue }
-        $itemCode = $cols[0].Trim()
-        $plIndex  = [int]$cols[1].Trim()
-        $plNum    = [int]$cols[2].Trim()
-        $prix     = [double]$cols[3].Trim()
+        if ($cols.Count -lt 3) { continue }
+        $itemCode  = $cols[0].Trim()
+        $plIndex   = if ($cols.Count -gt 1 -and $cols[1].Trim() -ne '') { [int]$cols[1].Trim() } else { -1 }
+        $plNum     = if ($cols.Count -gt 2 -and $cols[2].Trim() -ne '') { [int]$cols[2].Trim() } else { -1 }
+        $prix      = if ($cols.Count -gt 3 -and $cols[3].Trim() -ne '') { [double]$cols[3].Trim() } else { $null }
+        $currency  = if ($cols.Count -gt 4) { $cols[4].Trim() } else { '' }
+        $baseList  = if ($cols.Count -gt 5 -and $cols[5].Trim() -ne '') { [int]$cols[5].Trim() } else { $null }
+        $factor    = if ($cols.Count -gt 6 -and $cols[6].Trim() -ne '') { [double]$cols[6].Trim() } else { $null }
         if ([string]::IsNullOrEmpty($itemCode)) { continue }
+        if ($plNum -eq -1) { continue }
 
         $oItem = $Company.GetBusinessObject($BO_Items)
         if (-not $oItem.GetByKey($itemCode)) {
@@ -349,7 +353,13 @@ function Update-ItemPriceLists {
         for ($i = 0; $i -lt 100; $i++) {
             $oItem.PriceList.SetCurrentLine($i)
             if ($oItem.PriceList.PriceList -eq $plNum) {
-                $oItem.PriceList.Price = [math]::Round($prix, 4)
+                if ($null -ne $baseList -and $null -ne $factor) {
+                    $oItem.PriceList.BasePriceList = $baseList
+                    $oItem.PriceList.Factor = [math]::Round($factor, 6)
+                } elseif ($null -ne $prix) {
+                    $oItem.PriceList.Price = [math]::Round($prix, 4)
+                    if ($currency -ne '') { $oItem.PriceList.Currency = $currency }
+                }
                 $found = $true
                 break
             }
@@ -361,7 +371,7 @@ function Update-ItemPriceLists {
         }
         $ret = $oItem.Update()
         if ($ret -ne 0) {
-            $erreurs += "Erreur Update $itemCode : $($Company.GetLastErrorDescription())"
+            $erreurs += "Erreur Update $itemCode liste $plNum : $($Company.GetLastErrorDescription())"
         }
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
     }
