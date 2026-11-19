@@ -530,7 +530,10 @@ function Flush-Logs {
     if ($Script:LogBuffer.Count -eq 0) { return }
     try {
         $batch = @{}
-        foreach ($e in $Script:LogBuffer) { $batch[(New-Guid).ToString("N")] = $e }
+        foreach ($e in $Script:LogBuffer) {
+            $k = (Get-Date).ToString("yyyyMMddHHmmss") + "_" + (New-Guid).ToString("N").Substring(0,8)
+            $batch[$k] = $e
+        }
         $jsonBytes = [System.Text.Encoding]::UTF8.GetBytes(($batch | ConvertTo-Json -Compress -Depth 3))
         $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json" -Method Patch -Body $jsonBytes -ContentType "application/json; charset=utf-8" -TimeoutSec 5
         $Script:LogBuffer.Clear()
