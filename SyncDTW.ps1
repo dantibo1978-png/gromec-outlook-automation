@@ -493,12 +493,15 @@ function Update-ItemFullbox {
             $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem)
             continue
         }
+        $flags = [System.Reflection.BindingFlags]::SetProperty
         if ($colPurPack -ge 0 -and $cols.Count -gt $colPurPack -and $cols[$colPurPack].Trim() -ne '') {
-            $oItem.PurchasePackagingUnitEntry = [int]$cols[$colPurPack].Trim()
+            [System.__ComObject].InvokeMember("PurPackUn", $flags, $null, $oItem, @([int]$cols[$colPurPack].Trim()))
         }
         if ($colQryGroup -ge 0 -and $cols.Count -gt $colQryGroup -and $cols[$colQryGroup].Trim() -ne '') {
             $val = $cols[$colQryGroup].Trim()
-            $oItem.Properties(26) = if ($val -eq 'Y' -or $val -eq '1') { 1 } else { 0 }
+            $propVal = if ($val -eq 'Y' -or $val -eq '1') { 1 } else { 0 }
+            $props = [System.__ComObject].InvokeMember("Properties", [System.Reflection.BindingFlags]::InvokeMethod, $null, $oItem, @(26))
+            [System.__ComObject].InvokeMember("Value", $flags, $null, $props, @($propVal))
         }
         $ret = $oItem.Update()
         if ($ret -ne 0) {
