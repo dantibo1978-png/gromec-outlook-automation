@@ -73,7 +73,7 @@ $DTW_ScenarioFullbox   = "$DTW_Dossier\UpdateFullbox_PROD.xml"
 $DTW_FichierSpecialHeader = "$DTW_Dossier\special_prices_header.txt"
 $DTW_FichierSpecialLines  = "$DTW_Dossier\special_prices_lines.txt"
 $DTW_ScenarioSpecial      = "$DTW_Dossier\UpdateSpecialPrices_PROD.xml"
-$IntervalleSecondes = 60
+$IntervalleSecondes = 20
 $DTW_TimeoutSecondes = 600  # DTW.exe est tue si bloque plus de 10 min (ex: dialogue SAP cache)
 
 # ── Configuration SAP DI API ─────────────────────────────────────────────────
