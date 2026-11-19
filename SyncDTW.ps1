@@ -476,8 +476,8 @@ function Update-ItemFullbox {
     for ($c = 0; $c -lt $headers.Count; $c++) {
         $h = $headers[$c].Trim()
         if ($h -eq 'ItemCode') { $colItemCode = $c }
-        if ($h -like '*PurPackUn*') { $colPurPack = $c }
-        if ($h -like '*QryGroup26*') { $colQryGroup = $c }
+        if ($h -like '*PurPackUn*' -or $h -like '*PurchaseQtyPerPack*') { $colPurPack = $c }
+        if ($h -like '*QryGroup26*' -or $h -like '*Properties26*') { $colQryGroup = $c }
     }
     if ($colItemCode -lt 0) { throw "Colonne ItemCode introuvable dans contenu fullbox" }
 
