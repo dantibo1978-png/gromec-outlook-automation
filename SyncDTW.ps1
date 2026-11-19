@@ -177,17 +177,17 @@ function Get-DocEntryFromDocNum {
     param($Company, [string]$DocNum)
     $rs = $Company.GetBusinessObject($BO_Recordset)
     $sql = "SELECT ""DocEntry"" FROM ""OPOR"" WHERE ""DocNum"" = $DocNum"
-    [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sql))
+    $null = [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sql))
     $count = [System.__ComObject].InvokeMember("RecordCount", [System.Reflection.BindingFlags]::GetProperty, $null, $rs, $null)
     if ($count -eq 0) {
-        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
+        $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs)
         throw "PO DocNum $DocNum introuvable dans SAP"
     }
     $fields = [System.__ComObject].InvokeMember("Fields", [System.Reflection.BindingFlags]::GetProperty, $null, $rs, $null)
     $field = [System.__ComObject].InvokeMember("Item", [System.Reflection.BindingFlags]::InvokeMethod, $null, $fields, @("DocEntry"))
-    $docEntry = [System.__ComObject].InvokeMember("Value", [System.Reflection.BindingFlags]::GetProperty, $null, $field, $null)
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
-    return [int]$docEntry
+    $val = [System.__ComObject].InvokeMember("Value", [System.Reflection.BindingFlags]::GetProperty, $null, $field, $null)
+    $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs)
+    return [int]$val
 }
 
 function Update-POLines {
@@ -446,7 +446,7 @@ function Update-ItemLeadTimes {
 
 function Update-POShipDates {
     param($Company, [string]$DocNum, [string]$DateLivraison, [array]$LignesPO)
-    $docEntry = Get-DocEntryFromDocNum -Company $Company -DocNum $DocNum
+    [int]$docEntry = Get-DocEntryFromDocNum -Company $Company -DocNum $DocNum
     $oPO = $Company.GetBusinessObject($BO_PurchaseOrders)
     if (-not $oPO.GetByKey($docEntry)) {
         $err = $Company.GetLastErrorDescription()
@@ -935,7 +935,7 @@ function Invoke-TraiterEntree {
     }
 
     try {
-        $docEntry = Get-DocEntryFromDocNum -Company $company -DocNum $docNum
+        [int]$docEntry = Get-DocEntryFromDocNum -Company $company -DocNum $docNum
         Write-Log "INFO  DocEntry=$docEntry pour DocNum=$docNum" -Cle $Cle -BC $docNum
 
         # ── Etape 1 : Lignes PO (UnitPrice et/ou Quantity) ───────────────────
@@ -1723,7 +1723,7 @@ while ($true) {
                     Write-Log "INFO  ConfirmPO auto : PO $docNum (cle: $cle)" -Cle $cle -BC $docNum
                     $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
                     try {
-                        $docEntry = Get-DocEntryFromDocNum -Company $companyConfirm -DocNum $docNum
+                        [int]$docEntry = Get-DocEntryFromDocNum -Company $companyConfirm -DocNum $docNum
                         Set-ConfirmPO -Company $companyConfirm -DocEntry $docEntry
                         Write-Log "INFO  ConfirmPO auto : PO $docNum OK." -Cle $cle -BC $docNum
                         try {
