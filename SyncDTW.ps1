@@ -739,56 +739,66 @@ function Invoke-TraiterEntree {
         return
     }
 
-    # ── Connexion SAP DI API ────────────────────────────────────────────────
-    $company = $null
+    # ── Etape 1 : Document_Lines (UnitPrice et/ou Quantity) ─────────────────
     try {
-        $company = Connect-SAP
-        Write-Log "INFO  Connexion SAP DI API OK (DB: $SAP_DB)" -Cle $Cle -BC $docNum
+        Write-FichierLignesDTW -DocNum $docNum -Articles $articles -CopierPrix $copierPrix -CopierQty $copierQty
     } catch {
-        Write-Log "ERREUR Connexion SAP : $($_.Exception.Message)" -Cle $Cle -BC $docNum
-        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "Connexion SAP : $($_.Exception.Message)"
+        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "Erreur generation fichier lignes : $($_.Exception.Message)"
         return
     }
 
+    $res = Invoke-DTW -ScenarioXml $DTW_ScenarioLignes
+    if (-not $res.Succes) {
+        Write-Log "ERREUR DTW lignes : $($res.Erreur)" -Cle $Cle -BC $docNum
+        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW lignes : $($res.Erreur)"
+        return
+    }
+    Write-Log "INFO  DTW lignes OK." -Cle $Cle -BC $docNum
+
+    # ── Etape 2 : Price List 2 (seulement si on copie les prix) ─────────────
+    if ($copierPrix) {
+        try {
+            Write-FichierPrixL2DTW -Articles $articles
+        } catch {
+            Write-Log "WARN  Erreur generation fichier Price List 2 : $($_.Exception.Message)" -Cle $Cle -BC $docNum
+            Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW lignes OK, mais erreur Price List 2 : $($_.Exception.Message)"
+            return
+        }
+
+        $res2 = Invoke-DTW -ScenarioXml $DTW_ScenarioPrixL2
+        if (-not $res2.Succes) {
+            Write-Log "WARN  DTW Price List 2 : $($res2.Erreur)" -Cle $Cle -BC $docNum
+            Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DTW lignes OK, mais DTW Price List 2 : $($res2.Erreur)"
+            return
+        }
+        Write-Log "INFO  DTW Price List 2 OK." -Cle $Cle -BC $docNum
+    }
+
+    # ── Etape 3 : U_NWR_ConfirmPO = Y (confirmer la commande dans SAP) ────────
     try {
-        # Trouver le DocEntry a partir du DocNum
-        $docEntry = Get-DocEntryFromDocNum -Company $company -DocNum $docNum
-        Write-Log "INFO  PO $docNum -> DocEntry $docEntry" -Cle $Cle -BC $docNum
-
-        # ── Etape 1 : Modifier les lignes PO (prix et/ou quantites) ──────────
-        Update-POLines -Company $company -DocEntry $docEntry -Articles $articles -CopierPrix $copierPrix -CopierQty $copierQty
-        Write-Log "INFO  DI API lignes PO OK." -Cle $Cle -BC $docNum
-
-        # ── Etape 2 : Mettre a jour Price List 2 (seulement si on copie les prix)
-        if ($copierPrix) {
-            Update-PriceList2 -Company $company -Articles $articles
-            Write-Log "INFO  DI API Price List 2 OK." -Cle $Cle -BC $docNum
-        }
-
-        # ── Etape 3 : ConfirmPO = Y ──────────────────────────────────────────
-        try {
-            Set-ConfirmPO -Company $company -DocEntry $docEntry
-            Write-Log "INFO  DI API ConfirmPO OK." -Cle $Cle -BC $docNum
-        } catch {
-            Write-Log "WARN  ConfirmPO : $($_.Exception.Message) (prix OK quand meme)" -Cle $Cle -BC $docNum
-        }
-
-        # ── Etape 4 : Brouillon Outlook "Revision - PO xxxx" ─────────────────
-        try {
-            New-PORevisionDraft -Company $company -DocEntry $docEntry -DocNum $docNum
-        } catch {
-            Write-Log "WARN  Brouillon revision : $($_.Exception.Message)" -Cle $Cle -BC $docNum
-        }
-
+        $contenuConfirm = "DocNum`tDocEntry`tU_NWR_ConfirmPO`r`nDocNum`tDocEntry`tU_NWR_ConfirmPO`r`n$docNum`t`tY"
+        [System.IO.File]::WriteAllText($DTW_FichierConfirmPO, $contenuConfirm, [System.Text.Encoding]::Unicode)
+    } catch {
+        Write-Log "WARN  Erreur generation fichier ConfirmPO : $($_.Exception.Message)" -Cle $Cle -BC $docNum
         Set-StatutDTW -Cle $Cle -Statut 'ok'
         Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
-        Write-Log "INFO  PO $docNum traite avec succes via DI API." -Cle $Cle -BC $docNum
-    } catch {
-        Write-Log "ERREUR DI API pour PO $docNum : $($_.Exception.Message)" -Cle $Cle -BC $docNum
-        Set-StatutDTW -Cle $Cle -Statut 'erreur' -Erreur "DI API : $($_.Exception.Message)"
-    } finally {
-        Disconnect-SAP -Company $company
+        Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)." -Cle $Cle -BC $docNum
+        return
     }
+
+    $res3 = Invoke-DTW -ScenarioXml $DTW_ScenarioConfirmPO
+    if (-not $res3.Succes) {
+        Write-Log "WARN  DTW ConfirmPO : $($res3.Erreur)" -Cle $Cle -BC $docNum
+        Set-StatutDTW -Cle $Cle -Statut 'ok'
+        Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
+        Write-Log "INFO  PO $docNum traite avec succes (ConfirmPO non mis a jour)." -Cle $Cle -BC $docNum
+        return
+    }
+    Write-Log "INFO  DTW ConfirmPO OK." -Cle $Cle -BC $docNum
+
+    Set-StatutDTW -Cle $Cle -Statut 'ok'
+    Set-CategorieOutlook -EntryID $Entree.entryID -StoreID $Entree.storeID -EstOK $true
+    Write-Log "INFO  PO $docNum traite avec succes." -Cle $Cle -BC $docNum
 }
 
 
@@ -1520,9 +1530,8 @@ while ($true) {
         }
     }
 
-    # ── ConfirmPO automatique via DI API pour les commandes conformes ────────
+    # ── ConfirmPO automatique via DTW pour les commandes conformes ────────
     if ($null -ne $historique) {
-        $aConfirmer = @()
         foreach ($cle in $historique.PSObject.Properties.Name) {
             $entree = $historique.$cle
             $estOK     = ($entree.statut -eq 'OK')
@@ -1533,40 +1542,38 @@ while ($true) {
                 $dejaSync = [bool]$entree.syncSAP
             }
             if ($dejaSync) { continue }
+
             $docNum = $entree.numeroCommande
             if ([string]::IsNullOrEmpty($docNum)) { continue }
-            $aConfirmer += @{ cle = $cle; docNum = $docNum }
-        }
-        if ($aConfirmer.Count -gt 0) {
-            $companyCfm = $null
+
+            Write-Log "INFO  ConfirmPO auto : PO $docNum (cle: $cle)" -Cle $cle -BC $docNum
             try {
-                $companyCfm = Connect-SAP
-                foreach ($item in $aConfirmer) {
-                    $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
-                    try {
-                        $de = Get-DocEntryFromDocNum -Company $companyCfm -DocNum $item.docNum
-                        Set-ConfirmPO -Company $companyCfm -DocEntry $de
-                        Write-Log "INFO  ConfirmPO auto : PO $($item.docNum) OK." -Cle $item.cle -BC $item.docNum
-                        try {
-                            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$($item.cle).json" `
-                                -Method Patch `
-                                -Body (@{ syncSAP = $true; syncSAPDate = $maintenant; confirme = $true; confirme_le = $maintenant; actionRequise = $false } | ConvertTo-Json -Compress) `
-                                -ContentType "application/json" -TimeoutSec 15 | Out-Null
-                        } catch {}
-                    } catch {
-                        Write-Log "WARN  ConfirmPO auto : PO $($item.docNum) echec : $($_.Exception.Message)" -Cle $item.cle -BC $item.docNum
-                        try {
-                            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$($item.cle).json" `
-                                -Method Patch `
-                                -Body (@{ syncSAP = $false; syncSAPDate = $maintenant; syncSAPErreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
-                                -ContentType "application/json" -TimeoutSec 15 | Out-Null
-                        } catch {}
-                    }
-                }
+                $contenuConfirm = "DocNum`tDocEntry`tU_NWR_ConfirmPO`r`nDocNum`tDocEntry`tU_NWR_ConfirmPO`r`n$docNum`t`tY"
+                [System.IO.File]::WriteAllText($DTW_FichierConfirmPO, $contenuConfirm, [System.Text.Encoding]::Unicode)
             } catch {
-                Write-Log "WARN  ConfirmPO auto : connexion SAP echouee : $($_.Exception.Message)"
-            } finally {
-                Disconnect-SAP -Company $companyCfm
+                Write-Log "WARN  ConfirmPO auto : erreur ecriture fichier pour PO $docNum : $($_.Exception.Message)" -Cle $cle -BC $docNum
+                continue
+            }
+
+            $resConfirm = Invoke-DTW -ScenarioXml $DTW_ScenarioConfirmPO
+            $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+            if ($resConfirm.Succes) {
+                Write-Log "INFO  ConfirmPO auto : PO $docNum OK." -Cle $cle -BC $docNum
+                try {
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
+                        -Method Patch `
+                        -Body (@{ syncSAP = $true; syncSAPDate = $maintenant; confirme = $true; confirme_le = $maintenant; actionRequise = $false } | ConvertTo-Json -Compress) `
+                        -ContentType "application/json" -TimeoutSec 15 | Out-Null
+                } catch {}
+            } else {
+                Write-Log "WARN  ConfirmPO auto : PO $docNum echec : $($resConfirm.Erreur)" -Cle $cle -BC $docNum
+                if ($resConfirm.Erreur -like "*deja ouvert*") { break }
+                try {
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
+                        -Method Patch `
+                        -Body (@{ syncSAP = $false; syncSAPDate = $maintenant; syncSAPErreur = $resConfirm.Erreur } | ConvertTo-Json -Compress) `
+                        -ContentType "application/json" -TimeoutSec 15 | Out-Null
+                } catch {}
             }
         }
     }
