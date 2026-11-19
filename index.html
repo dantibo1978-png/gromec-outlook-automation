@@ -1381,8 +1381,8 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-11-19 13:45";
-const DERNIERE_MAJ_PR = "PR #88";
+const DERNIERE_MAJ_CODE = "2026-11-19 13:50";
+const DERNIERE_MAJ_PR = "PR #89";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
@@ -2752,7 +2752,9 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
       const result = await rep.json();
       status.style.color = 'var(--ok)';
       status.textContent = 'Envoye! SyncDTW va traiter l\'import sous peu. (ID: ' + result.name + ')';
-      btnSend.textContent = 'Envoye';
+      btnSend.textContent = 'Fermer';
+      btnSend.disabled = false;
+      btnSend.onclick = () => { modal.style.display = 'none'; };
     } catch(e) {
       status.style.color = 'var(--ecart)';
       status.textContent = 'Erreur: ' + e.message;
@@ -2919,7 +2921,9 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
       if (!rep.ok) throw new Error('HTTP ' + rep.status);
       status.style.color = 'var(--ok)';
       status.textContent = 'Envoyé! SyncDTW va importer les prix dans la Liste 1 sous peu.';
-      btnSend.textContent = 'Envoyé';
+      btnSend.textContent = 'Fermer';
+      btnSend.disabled = false;
+      btnSend.onclick = () => { modal.style.display = 'none'; };
     } catch(e){
       status.style.color = 'var(--ecart)';
       status.textContent = 'Erreur: ' + e.message;
@@ -3309,9 +3313,10 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
       if (!rep.ok) throw new Error('HTTP ' + rep.status);
       status.style.color = 'var(--ok)';
       status.textContent = nbArticles + ' article(s) envoyé(s) — en attente de traitement par SyncDTW.';
-      btnSend.textContent = 'Envoyé ✓';
+      btnSend.textContent = 'Fermer';
+      btnSend.disabled = false;
+      btnSend.onclick = () => { modal.style.display = 'none'; };
     } catch(e) {
-      alert('Erreur: ' + e.message);
       status.style.display = 'block'; status.style.color = 'var(--ecart)';
       status.textContent = 'Erreur : ' + e.message;
       btnSend.disabled = false; btnSend.textContent = 'Réessayer';
