@@ -1566,18 +1566,36 @@ if ($Script:ParamActiverEnvoiRelance) {
 }
 
 $Script:CourrielsDejaVus = [System.Collections.Generic.HashSet[string]]::new()
+$Script:ConversationsTraitees = [System.Collections.Generic.HashSet[string]]::new()
+$Script:DernierChargementConvTraitees = [datetime]::MinValue
+$Script:ProcessVC = $null
+$FichierConvTraitees = Join-Path (Split-Path $PSCommandPath) "conversations_traitees.csv"
+
+function Sync-ConversationsTraitees {
+    if (((Get-Date) - $Script:DernierChargementConvTraitees).TotalSeconds -lt 60) { return }
+    try {
+        if (Test-Path $FichierConvTraitees) {
+            $lignes = [System.IO.File]::ReadAllLines($FichierConvTraitees)
+            foreach ($l in $lignes) { $null = $Script:ConversationsTraitees.Add($l.Trim()) }
+        }
+    } catch {}
+    $Script:DernierChargementConvTraitees = Get-Date
+}
 
 function Invoke-ScanCourrielsManques {
     param($Outlook)
     try {
+        if ($null -ne $Script:ProcessVC -and -not $Script:ProcessVC.HasExited) { return }
+
+        Sync-ConversationsTraitees
+
         $ns = $Outlook.GetNamespace("MAPI")
         $inbox = $ns.GetDefaultFolder(6)  # olFolderInbox
         $items = $inbox.Items
         $items.Sort("[ReceivedTime]", $true)
 
-        $limite = (Get-Date).AddMinutes(-30)
+        $limite = (Get-Date).AddHours(-2)
         $scriptPath = Join-Path (Split-Path $PSCommandPath) "VerifierConfirmation.ps1"
-        $nbLances = 0
 
         foreach ($item in $items) {
             if ($item.Class -ne 43) { continue }
@@ -1597,6 +1615,13 @@ function Invoke-ScanCourrielsManques {
                 $null = $Script:CourrielsDejaVus.Add($eid)
                 continue
             }
+
+            $convID = $item.ConversationID
+            if ($Script:ConversationsTraitees.Contains($convID)) {
+                $null = $Script:CourrielsDejaVus.Add($eid)
+                continue
+            }
+
             if ($item.Attachments.Count -eq 0 -and
                 $item.Subject -notmatch '(?i)(confirmation|order.?ack|sales.?order|accus.+r.+ception)') {
                 $null = $Script:CourrielsDejaVus.Add($eid)
@@ -1607,17 +1632,14 @@ function Invoke-ScanCourrielsManques {
             $sid = $item.Parent.StoreID
             Write-Log "INFO  Scan inbox : courriel non traite detecte -- $($item.Subject)"
             try {
-                Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`" -EntryID `"$eid`" -StoreID `"$sid`"" -WindowStyle Hidden
-                $nbLances++
-                Start-Sleep -Milliseconds 500
+                $Script:ProcessVC = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`" -EntryID `"$eid`" -StoreID `"$sid`"" -WindowStyle Hidden -PassThru
+                return
             } catch {
                 Write-Log "WARN  Scan inbox : impossible de lancer VerifierConfirmation pour $($item.Subject) : $($_.Exception.Message)"
             }
-            if ($nbLances -ge 3) { break }
         }
-        if ($nbLances -gt 0) { Write-Log "INFO  Scan inbox : $nbLances courriel(s) envoye(s) a VerifierConfirmation" }
 
-        if ($Script:CourrielsDejaVus.Count -gt 500) { $Script:CourrielsDejaVus.Clear() }
+        if ($Script:CourrielsDejaVus.Count -gt 1000) { $Script:CourrielsDejaVus.Clear() }
     } catch {
         Write-Log "WARN  Erreur scan inbox : $($_.Exception.Message)"
     }
