@@ -631,7 +631,7 @@ function Set-StatutDTW {
             -Method Patch `
             -Body ($body | ConvertTo-Json -Compress) `
             -ContentType "application/json" `
-            $null = -TimeoutSec 15
+            -TimeoutSec 15
     } catch {
         Write-Log "WARN  Impossible de mettre a jour Firebase pour '$Cle' : $($_.Exception.Message)"
     }
@@ -757,7 +757,7 @@ function Invoke-EnvoiRelancesAutomatiques {
         if (-not $dest) {
             Write-Log "AVERT Relance auto '$cle' sans courriel destinataire -- ignoree."
             Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_auto/$cle.json" -Method Patch `
-                $null = -Body '{"statut":"erreur","erreur":"Pas de courriel destinataire"}' -ContentType "application/json" -TimeoutSec 5
+                -Body '{"statut":"erreur","erreur":"Pas de courriel destinataire"}' -ContentType "application/json" -TimeoutSec 5
             continue
         }
 
@@ -771,7 +771,7 @@ function Invoke-EnvoiRelancesAutomatiques {
             Write-Log "ERREUR Relance auto '$cle' : PDF invalide : $($_.Exception.Message)"
             Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_auto/$cle.json" -Method Patch `
                 -Body (@{ statut = 'erreur'; erreur = "PDF invalide : $($_.Exception.Message)" } | ConvertTo-Json -Compress) `
-                $null = -ContentType "application/json" -TimeoutSec 5
+                -ContentType "application/json" -TimeoutSec 5
             continue
         }
 
@@ -786,7 +786,7 @@ function Invoke-EnvoiRelancesAutomatiques {
             Write-Log "INFO  Relance envoyee a '$($job.fournisseur)' <$dest> (BC: $($job.orders -join ', '))."
             Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_auto/$cle.json" -Method Patch `
                 -Body (@{ statut = 'envoye'; dateTraitement = (Get-Date).ToString('o') } | ConvertTo-Json -Compress) `
-                $null = -ContentType "application/json" -TimeoutSec 5
+                -ContentType "application/json" -TimeoutSec 5
 
             # Miroir de markRelance() cote web : incrementer le compteur de relance
             $actuel = $null
@@ -798,7 +798,7 @@ function Invoke-EnvoiRelancesAutomatiques {
             Write-Log "ERREUR Relance auto '$cle' : echec envoi Outlook : $($_.Exception.Message)"
             Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/relance_auto/$cle.json" -Method Patch `
                 -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
-                $null = -ContentType "application/json" -TimeoutSec 5
+                -ContentType "application/json" -TimeoutSec 5
         } finally {
             if ($cheminPdf -and (Test-Path $cheminPdf)) { Remove-Item $cheminPdf -Force -ErrorAction SilentlyContinue }
         }
@@ -883,7 +883,7 @@ function Invoke-TraiterEntree {
             -Method Patch `
             -Body '{"dtw_statut":"en_cours"}' `
             -ContentType "application/json" `
-            $null = -TimeoutSec 10
+            -TimeoutSec 10
     } catch {}
 
     $copierPrix     = [bool]$Entree.dtw_copierPrix
@@ -1017,7 +1017,7 @@ function Set-StatutConfirmation {
             -Method Patch `
             -Body ($body | ConvertTo-Json -Compress) `
             -ContentType "application/json" `
-            $null = -TimeoutSec 15
+            -TimeoutSec 15
     } catch {
         Write-Log "WARN  Impossible de mettre a jour statut confirmation pour '$Cle' : $($_.Exception.Message)"
     }
@@ -1342,7 +1342,7 @@ function Invoke-TraiterReclassification {
         # Supprimer la reclassification de Firebase EN PREMIER pour eviter une boucle
         # infinie si VerifierConfirmation.ps1 crashe avant la fin du traitement.
         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/reclassifications/$CleFirebase.json" `
-            $null = -Method Delete -TimeoutSec 15
+            -Method Delete -TimeoutSec 15
         Write-Log "INFO  Reclassification '$CleFirebase' supprimee de Firebase (pre-traitement)."
 
         # Mettre a jour fournisseurs_appris.csv
@@ -1381,7 +1381,7 @@ function Invoke-TraiterReclassification {
                 -Method Post `
                 -Body ($correction | ConvertTo-Json -Compress) `
                 -ContentType "application/json" `
-                $null = -TimeoutSec 10
+                -TimeoutSec 10
             Write-Log "INFO  Correction enregistree pour apprentissage : $expediteur -> $classification"
         } catch {
             Write-Log "WARN  Impossible d'enregistrer la correction : $($_.Exception.Message)"
@@ -1450,7 +1450,7 @@ try {
                     try {
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
                             -Method Patch -Body (@{ actionRequise = [bool]$besoinAction } | ConvertTo-Json -Compress) `
-                            $null = -ContentType "application/json" -TimeoutSec 5
+                            -ContentType "application/json" -TimeoutSec 5
                         $nbMigre++
                     } catch {}
                 }
@@ -1459,7 +1459,7 @@ try {
         }
         try {
             Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/migration_actionRequise_faite.json" `
-                $null = -Method Put -Body 'true' -ContentType "application/json" -TimeoutSec 10
+                -Method Put -Body 'true' -ContentType "application/json" -TimeoutSec 10
         } catch {}
     }
 } catch {
@@ -1633,7 +1633,7 @@ while ($true) {
                 if ($entreeR.aReessayer -eq $true -and $entreeR.numeroBCManuel -and $entreeR.entryID) {
                     Write-Log "INFO  Reessai demande pour BC $($entreeR.numeroBCManuel) (cle: $cleR)"
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cleR.json" `
-                        $null = -Method Patch -Body '{"aReessayer":false,"actionRequise":false}' -ContentType "application/json" -TimeoutSec 5
+                        -Method Patch -Body '{"aReessayer":false,"actionRequise":false}' -ContentType "application/json" -TimeoutSec 5
                     $scriptPath = "U:\GromecOutlook\VerifierConfirmation.ps1"
                     $procR = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -NumeroBC `"$($entreeR.numeroBCManuel)`" -Force" -WindowStyle Hidden -PassThru
                     if (-not $procR.WaitForExit(300000)) {
@@ -1652,7 +1652,7 @@ while ($true) {
                     }
                     Write-Log "INFO  Contestation mauvais_mode : $expediteurR mode $modeActuel -> $(if ($modeActuel -eq 'CORPS') { 'PDF' } else { 'CORPS' }) (cle: $cleR)"
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cleR.json" `
-                        $null = -Method Patch -Body '{"aReessayer":false}' -ContentType "application/json" -TimeoutSec 5
+                        -Method Patch -Body '{"aReessayer":false}' -ContentType "application/json" -TimeoutSec 5
                     $scriptPath = "U:\GromecOutlook\VerifierConfirmation.ps1"
                     $procC = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`" -EntryID `"$($entreeR.entryID)`" -StoreID `"$($entreeR.storeID)`" -Force" -WindowStyle Hidden -PassThru
                     if (-not $procC.WaitForExit(300000)) {
@@ -1735,7 +1735,7 @@ while ($true) {
                             Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
                                 -Method Patch `
                                 -Body (@{ syncSAP = $true; syncSAPDate = $maintenant; confirme = $true; confirme_le = $maintenant; actionRequise = $false } | ConvertTo-Json -Compress) `
-                                $null = -ContentType "application/json" -TimeoutSec 15
+                                -ContentType "application/json" -TimeoutSec 15
                         } catch {}
                     } catch {
                         Write-Log "WARN  ConfirmPO auto : PO $docNum echec : $($_.Exception.Message)" -Cle $cle -BC $docNum
@@ -1743,7 +1743,7 @@ while ($true) {
                             Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/historique/$cle.json" `
                                 -Method Patch `
                                 -Body (@{ syncSAP = $false; syncSAPDate = $maintenant; syncSAPErreur = $($_.Exception.Message) } | ConvertTo-Json -Compress) `
-                                $null = -ContentType "application/json" -TimeoutSec 15
+                                -ContentType "application/json" -TimeoutSec 15
                         } catch {}
                     }
                 }
@@ -1780,7 +1780,7 @@ while ($true) {
 
                 try {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
-                        $null = -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
 
                     $typeImport = if ($imp.type) { $imp.type } else { 'import_prix' }
                     $companyPrix = $null
@@ -1796,14 +1796,14 @@ while ($true) {
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
                             -Method Patch `
                             -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                            $null = -ContentType "application/json" -TimeoutSec 5
+                            -ContentType "application/json" -TimeoutSec 5
                     } catch {
                         $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
                         Write-Log "WARN  Import prix dashboard : $nomFichier echec : $($_.Exception.Message)"
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
                             -Method Patch `
                             -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                            $null = -ContentType "application/json" -TimeoutSec 5
+                            -ContentType "application/json" -TimeoutSec 5
                     } finally {
                         Disconnect-SAP -Company $companyPrix
                     }
@@ -1834,7 +1834,7 @@ while ($true) {
                 $companyLT = $null
                 try {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
-                        $null = -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
 
                     $companyLT = Connect-SAP
                     Update-ItemLeadTimes -Company $companyLT -Items @($impLT.items)
@@ -1843,7 +1843,7 @@ while ($true) {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
                         -Method Patch `
                         -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                        $null = -ContentType "application/json" -TimeoutSec 5
+                        -ContentType "application/json" -TimeoutSec 5
                 } catch {
                     $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
                     Write-Log "ERREUR Import LeadTime '$cleLT' : $($_.Exception.Message)"
@@ -1851,7 +1851,7 @@ while ($true) {
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
                             -Method Patch `
                             -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                            $null = -ContentType "application/json" -TimeoutSec 5
+                            -ContentType "application/json" -TimeoutSec 5
                     } catch {}
                 } finally {
                     Disconnect-SAP -Company $companyLT
@@ -1879,7 +1879,7 @@ while ($true) {
                     $dateLivr = $job.date
 
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
-                        $null = -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
 
                     $fichierCachePO = Join-Path $DossierCachePO "$docNum.json"
                     $lignesPO = @()
@@ -1919,7 +1919,7 @@ while ($true) {
                         Write-Log "WARN  Sync ShipDate BC $docNum : aucune ligne trouvee (cache local absent et historique Firebase vide) -- maj SAP manuelle requise." "" $docNum
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
                             -Method Patch -Body (@{ statut = 'erreur'; erreur = 'Aucune ligne trouvee (cache local et historique Firebase vides) -- mise a jour manuelle requise dans SAP' } | ConvertTo-Json -Compress) `
-                            $null = -ContentType "application/json" -TimeoutSec 5
+                            -ContentType "application/json" -TimeoutSec 5
                         continue
                     }
 
@@ -1932,14 +1932,14 @@ while ($true) {
                         Write-Log "INFO  Sync ShipDate BC $docNum : $dateLivr applique sur $($lignesPO.Count) ligne(s) via DI API." "" $docNum
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
                             -Method Patch -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                            $null = -ContentType "application/json" -TimeoutSec 5
+                            -ContentType "application/json" -TimeoutSec 5
                     } catch {
                         try { if ($sapCoSD -and $sapCoSD.Connected) { Disconnect-SAP -Company $sapCoSD } } catch {}
                         $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
                         Write-Log "ERREUR Sync ShipDate BC ${docNum} : $($_.Exception.Message)" "" $docNum
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
                             -Method Patch -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                            $null = -ContentType "application/json" -TimeoutSec 5
+                            -ContentType "application/json" -TimeoutSec 5
                     }
                 }
             }
@@ -1968,7 +1968,7 @@ while ($true) {
 
                 try {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
-                        $null = -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
 
                     $sapCoFB = Connect-SAP
                     Update-ItemFullbox -Company $sapCoFB -Contenu $impFB.contenu
@@ -1979,7 +1979,7 @@ while ($true) {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
                         -Method Patch `
                         -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                        $null = -ContentType "application/json" -TimeoutSec 5
+                        -ContentType "application/json" -TimeoutSec 5
                 } catch {
                     try { if ($sapCoFB -and $sapCoFB.Connected) { Disconnect-SAP -Company $sapCoFB } } catch {}
                     Write-Log "ERREUR Import Fullbox '$cleFB' : $($_.Exception.Message)"
@@ -1987,7 +1987,7 @@ while ($true) {
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
                             -Method Patch `
                             -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
-                            $null = -ContentType "application/json" -TimeoutSec 5
+                            -ContentType "application/json" -TimeoutSec 5
                     } catch {}
                 }
             }
