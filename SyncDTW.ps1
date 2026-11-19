@@ -532,9 +532,11 @@ function Flush-Logs {
         $batch = @{}
         foreach ($e in $Script:LogBuffer) { $batch[(New-Guid).ToString("N")] = $e }
         $jsonBytes = [System.Text.Encoding]::UTF8.GetBytes(($batch | ConvertTo-Json -Compress -Depth 3))
-        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json" -Method Patch -Body $jsonBytes -ContentType "application/json; charset=utf-8" -TimeoutSec 5 | Out-Null
-    } catch {}
-    $Script:LogBuffer.Clear()
+        $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/logs.json" -Method Patch -Body $jsonBytes -ContentType "application/json; charset=utf-8" -TimeoutSec 5
+        $Script:LogBuffer.Clear()
+    } catch {
+        Write-Host "[FLUSH-LOGS ERREUR] $($_.Exception.Message)"
+    }
     $Script:DernierFlushLogs = Get-Date
 }
 
