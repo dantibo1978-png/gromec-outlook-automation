@@ -325,6 +325,180 @@ function New-PORevisionDraft {
     }
 }
 
+function Update-ItemPriceLists {
+    param($Company, [string]$Contenu)
+    $lignes = $Contenu -split "`r?`n" | Where-Object { $_ -ne '' }
+    if ($lignes.Count -lt 3) { throw "Contenu prix vide ou invalide" }
+    $erreurs = @()
+    for ($r = 2; $r -lt $lignes.Count; $r++) {
+        $cols = $lignes[$r] -split "`t"
+        if ($cols.Count -lt 4) { continue }
+        $itemCode = $cols[0].Trim()
+        $plIndex  = [int]$cols[1].Trim()
+        $plNum    = [int]$cols[2].Trim()
+        $prix     = [double]$cols[3].Trim()
+        if ([string]::IsNullOrEmpty($itemCode)) { continue }
+
+        $oItem = $Company.GetBusinessObject($BO_Items)
+        if (-not $oItem.GetByKey($itemCode)) {
+            $erreurs += "Article $itemCode introuvable"
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+            continue
+        }
+        $found = $false
+        for ($i = 0; $i -lt 100; $i++) {
+            $oItem.PriceList.SetCurrentLine($i)
+            if ($oItem.PriceList.PriceList -eq $plNum) {
+                $oItem.PriceList.Price = [math]::Round($prix, 4)
+                $found = $true
+                break
+            }
+        }
+        if (-not $found) {
+            $erreurs += "Liste $plNum introuvable pour $itemCode"
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+            continue
+        }
+        $ret = $oItem.Update()
+        if ($ret -ne 0) {
+            $erreurs += "Erreur Update $itemCode : $($Company.GetLastErrorDescription())"
+        }
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+    }
+    if ($erreurs.Count -gt 0) { throw "Erreur(s) prix : $($erreurs -join ' | ')" }
+}
+
+function Update-SpecialPrices {
+    param($Company, [string]$ContenuHeader, [string]$ContenuLines)
+    $headerRows = $ContenuHeader -split "`r?`n" | Where-Object { $_ -ne '' }
+    $lineRows   = $ContenuLines  -split "`r?`n" | Where-Object { $_ -ne '' }
+    if ($headerRows.Count -lt 3 -or $lineRows.Count -lt 3) { throw "Contenu prix speciaux vide ou invalide" }
+
+    $headerCols = ($headerRows[0] -split "`t")
+    $lineCols   = ($lineRows[0] -split "`t")
+
+    $erreurs = @()
+    $rs = $Company.GetBusinessObject($BO_Recordset)
+
+    for ($r = 2; $r -lt $lineRows.Count; $r++) {
+        $cols = $lineRows[$r] -split "`t"
+        if ($cols.Count -lt 2) { continue }
+        try {
+            $cardCode = $cols[0].Trim()
+            $itemCode = $cols[1].Trim()
+            $prix     = if ($cols.Count -gt 2 -and $cols[2].Trim() -ne '') { [double]$cols[2].Trim() } else { continue }
+            if ([string]::IsNullOrEmpty($cardCode) -or [string]::IsNullOrEmpty($itemCode)) { continue }
+
+            $sqlCheck = "SELECT COUNT(*) AS ""CNT"" FROM ""OSPP"" WHERE ""CardCode"" = '$cardCode' AND ""ItemCode"" = '$itemCode'"
+            [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sqlCheck))
+            $flds = [System.__ComObject].InvokeMember("Fields", [System.Reflection.BindingFlags]::GetProperty, $null, $rs, $null)
+            $fld  = [System.__ComObject].InvokeMember("Item", [System.Reflection.BindingFlags]::InvokeMethod, $null, $flds, @("CNT"))
+            $cnt  = [int][System.__ComObject].InvokeMember("Value", [System.Reflection.BindingFlags]::GetProperty, $null, $fld, $null)
+
+            if ($cnt -gt 0) {
+                $sqlUpd = "UPDATE ""OSPP"" SET ""Price"" = $prix WHERE ""CardCode"" = '$cardCode' AND ""ItemCode"" = '$itemCode'"
+                [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sqlUpd))
+            } else {
+                $sqlIns = "INSERT INTO ""OSPP"" (""CardCode"", ""ItemCode"", ""Price"") VALUES ('$cardCode', '$itemCode', $prix)"
+                [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sqlIns))
+            }
+        } catch {
+            $erreurs += "$cardCode/$itemCode : $($_.Exception.Message)"
+        }
+    }
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs) | Out-Null
+    if ($erreurs.Count -gt 0) { throw "Erreur(s) prix speciaux : $($erreurs -join ' | ')" }
+}
+
+function Update-ItemLeadTimes {
+    param($Company, [array]$Items)
+    $erreurs = @()
+    foreach ($item in $Items) {
+        $itemCode = $item.ItemCode
+        $leadTime = [int]$item.LeadTime
+        $oItem = $Company.GetBusinessObject($BO_Items)
+        if (-not $oItem.GetByKey($itemCode)) {
+            $erreurs += "Article $itemCode introuvable"
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+            continue
+        }
+        $oItem.PlanningData.PlanningSystem = 0
+        $oItem.PlanningData.Procurement = 1
+        $oItem.PlanningData.OrderInterval = $leadTime
+        $ret = $oItem.Update()
+        if ($ret -ne 0) {
+            $erreurs += "Erreur $itemCode : $($Company.GetLastErrorDescription())"
+        }
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+    }
+    if ($erreurs.Count -gt 0) { throw "Erreur(s) LeadTime : $($erreurs -join ' | ')" }
+}
+
+function Update-POShipDates {
+    param($Company, [string]$DocNum, [string]$DateLivraison, [array]$LignesPO)
+    $docEntry = Get-DocEntryFromDocNum -Company $Company -DocNum $DocNum
+    $oPO = $Company.GetBusinessObject($BO_PurchaseOrders)
+    if (-not $oPO.GetByKey($docEntry)) {
+        $err = $Company.GetLastErrorDescription()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+        throw "Impossible de charger PO DocEntry $docEntry : $err"
+    }
+    foreach ($ln in $LignesPO) {
+        $lineNum = [int]$ln - 1
+        $oPO.Lines.SetCurrentLine($lineNum)
+        $oPO.Lines.ShipDate = $DateLivraison
+    }
+    $ret = $oPO.Update()
+    if ($ret -ne 0) {
+        $err = $Company.GetLastErrorDescription()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+        throw "Erreur Update ShipDate PO $DocNum : $err"
+    }
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oPO) | Out-Null
+}
+
+function Update-ItemFullbox {
+    param($Company, [string]$Contenu)
+    $lignes = $Contenu -split "`r?`n" | Where-Object { $_ -ne '' }
+    if ($lignes.Count -lt 3) { throw "Contenu fullbox vide ou invalide" }
+    $headers = $lignes[0] -split "`t"
+    $colItemCode = -1; $colPurPack = -1; $colQryGroup = -1
+    for ($c = 0; $c -lt $headers.Count; $c++) {
+        $h = $headers[$c].Trim()
+        if ($h -eq 'ItemCode') { $colItemCode = $c }
+        if ($h -like '*PurPackUn*') { $colPurPack = $c }
+        if ($h -like '*QryGroup26*') { $colQryGroup = $c }
+    }
+    if ($colItemCode -lt 0) { throw "Colonne ItemCode introuvable dans contenu fullbox" }
+
+    $erreurs = @()
+    for ($r = 2; $r -lt $lignes.Count; $r++) {
+        $cols = $lignes[$r] -split "`t"
+        $itemCode = $cols[$colItemCode].Trim()
+        if ([string]::IsNullOrEmpty($itemCode)) { continue }
+
+        $oItem = $Company.GetBusinessObject($BO_Items)
+        if (-not $oItem.GetByKey($itemCode)) {
+            $erreurs += "Article $itemCode introuvable"
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+            continue
+        }
+        if ($colPurPack -ge 0 -and $cols.Count -gt $colPurPack -and $cols[$colPurPack].Trim() -ne '') {
+            $oItem.PurchasePackagingUnitEntry = [int]$cols[$colPurPack].Trim()
+        }
+        if ($colQryGroup -ge 0 -and $cols.Count -gt $colQryGroup -and $cols[$colQryGroup].Trim() -ne '') {
+            $val = $cols[$colQryGroup].Trim()
+            $oItem.Properties(26) = if ($val -eq 'Y' -or $val -eq '1') { 1 } else { 0 }
+        }
+        $ret = $oItem.Update()
+        if ($ret -ne 0) {
+            $erreurs += "Erreur $itemCode : $($Company.GetLastErrorDescription())"
+        }
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem) | Out-Null
+    }
+    if ($erreurs.Count -gt 0) { throw "Erreur(s) Fullbox : $($erreurs -join ' | ')" }
+}
+
 # ── Fin fonctions SAP DI API ─────────────────────────────────────────────────
 
 $Script:LogBuffer = [System.Collections.ArrayList]::new()
@@ -1594,38 +1768,32 @@ while ($true) {
                         -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
 
                     $typeImport = if ($imp.type) { $imp.type } else { 'import_prix' }
-
-                    if ($typeImport -eq 'import_prix_special') {
-                        [System.IO.File]::WriteAllText($DTW_FichierSpecialHeader, $imp.contenu, [System.Text.Encoding]::Unicode)
-                        [System.IO.File]::WriteAllText($DTW_FichierSpecialLines, $imp.contenu2, [System.Text.Encoding]::Unicode)
-                        $resPrix = Invoke-DTW -ScenarioXml $DTW_ScenarioSpecial
-                    } else {
-                        [System.IO.File]::WriteAllText($DTW_FichierPrix, $imp.contenu, [System.Text.Encoding]::Unicode)
-                        $resPrix = Invoke-DTW -ScenarioXml $DTW_ScenarioPrix
-                    }
-                    $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
-
-                    if ($resPrix.Succes) {
+                    $companyPrix = $null
+                    try {
+                        $companyPrix = Connect-SAP
+                        if ($typeImport -eq 'import_prix_special') {
+                            Update-SpecialPrices -Company $companyPrix -ContenuHeader $imp.contenu -ContenuLines $imp.contenu2
+                        } else {
+                            Update-ItemPriceLists -Company $companyPrix -Contenu $imp.contenu
+                        }
+                        $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
                         Write-Log "INFO  Import prix dashboard : $nomFichier OK."
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
                             -Method Patch `
                             -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
                             -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                    } else {
-                        Write-Log "WARN  Import prix dashboard : $nomFichier echec : $($resPrix.Erreur)"
+                    } catch {
+                        $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+                        Write-Log "WARN  Import prix dashboard : $nomFichier echec : $($_.Exception.Message)"
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
                             -Method Patch `
-                            -Body (@{ statut = 'erreur'; erreur = $resPrix.Erreur; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                            -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
                             -ContentType "application/json" -TimeoutSec 5 | Out-Null
+                    } finally {
+                        Disconnect-SAP -Company $companyPrix
                     }
                 } catch {
                     Write-Log "ERREUR Import prix dashboard '$nomFichier' : $($_.Exception.Message)"
-                    try {
-                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_prix/$cleIP.json" `
-                            -Method Patch `
-                            -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
-                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                    } catch {}
                 }
             }
         }
@@ -1648,54 +1816,30 @@ while ($true) {
                 $nbProduits = $impLT.nbProduits
                 Write-Log "INFO  Import LeadTime : $nbProduits produit(s) (cle: $cleLT)"
 
+                $companyLT = $null
                 try {
-                    # Marquer en cours
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
                         -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
 
-                    # Generer le fichier DTW tab-separated (UTF-16 LE comme les autres)
-                    $Tab = "`t"
-                    $Header = "ItemCode${Tab}LeadTime"
-                    $LignesLT = @($Header, $Header)
-                    foreach ($item in $impLT.items) {
-                        $LignesLT += "$($item.ItemCode)${Tab}$($item.LeadTime)"
-                    }
-                    $ContenuLT = ($LignesLT -join "`r`n") + "`r`n"
-
-                    for ($iRetry = 1; $iRetry -le 8; $iRetry++) {
-                        try {
-                            [System.IO.File]::WriteAllText($DTW_FichierLeadTime, $ContenuLT, [System.Text.Encoding]::Unicode)
-                            break
-                        } catch {
-                            if ($iRetry -eq 8) { throw }
-                            Start-Sleep -Seconds 3
-                        }
-                    }
-
-                    $resLT = Invoke-DTW -ScenarioXml $DTW_ScenarioLeadTime
+                    $companyLT = Connect-SAP
+                    Update-ItemLeadTimes -Company $companyLT -Items @($impLT.items)
                     $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
-
-                    if ($resLT.Succes) {
-                        Write-Log "INFO  Import LeadTime : $nbProduits produit(s) OK."
-                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
-                            -Method Patch `
-                            -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                    } else {
-                        Write-Log "WARN  Import LeadTime : echec : $($resLT.Erreur)"
-                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
-                            -Method Patch `
-                            -Body (@{ statut = 'erreur'; erreur = $resLT.Erreur; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                    }
+                    Write-Log "INFO  Import LeadTime : $nbProduits produit(s) OK."
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
+                        -Method Patch `
+                        -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                        -ContentType "application/json" -TimeoutSec 5 | Out-Null
                 } catch {
+                    $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
                     Write-Log "ERREUR Import LeadTime '$cleLT' : $($_.Exception.Message)"
                     try {
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw/$cleLT.json" `
                             -Method Patch `
-                            -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
+                            -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
                             -ContentType "application/json" -TimeoutSec 5 | Out-Null
                     } catch {}
+                } finally {
+                    Disconnect-SAP -Company $companyLT
                 }
             }
         }
@@ -1765,44 +1909,21 @@ while ($true) {
                     }
 
                     try {
-
-                        $Tab = "`t"
-                        $Header = "ParentKey${Tab}LineNum${Tab}ItemCode${Tab}ItemDescription${Tab}Quantity${Tab}ShipDate${Tab}UnitPrice"
-                        $LignesSD = @($Header, $Header)
-                        foreach ($ln in $lignesPO) {
-                            $lineNum = $ln - 1  # 0-indexed, meme convention que Write-FichierLignesDTW
-                            $LignesSD += "${docNum}${Tab}${lineNum}${Tab}${Tab}${Tab}${Tab}${dateLivr}${Tab}"
-                        }
-                        $ContenuSD = ($LignesSD -join "`r`n") + "`r`n"
-
-                        for ($iRetry = 1; $iRetry -le 8; $iRetry++) {
-                            try {
-                                [System.IO.File]::WriteAllText($DTW_FichierLignes, $ContenuSD, [System.Text.Encoding]::Unicode)
-                                break
-                            } catch {
-                                if ($iRetry -eq 8) { throw }
-                                Start-Sleep -Seconds 3
-                            }
-                        }
-
-                        $resSD = Invoke-DTW -ScenarioXml $DTW_ScenarioLignes
+                        $sapCoSD = Connect-SAP
+                        Update-POShipDates -Company $sapCoSD -DocNum $docNum -DateLivraison $dateLivr -LignesPO $lignesPO
+                        Disconnect-SAP -Company $sapCoSD
                         $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
 
-                        if ($resSD.Succes) {
-                            Write-Log "INFO  Sync ShipDate BC $docNum : $dateLivr applique sur $($lignesPO.Count) ligne(s)." "" $docNum
-                            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
-                                -Method Patch -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                                -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                        } else {
-                            Write-Log "WARN  Sync ShipDate BC $docNum : echec DTW : $($resSD.Erreur)" "" $docNum
-                            Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
-                                -Method Patch -Body (@{ statut = 'erreur'; erreur = $resSD.Erreur; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                                -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                        }
+                        Write-Log "INFO  Sync ShipDate BC $docNum : $dateLivr applique sur $($lignesPO.Count) ligne(s) via DI API." "" $docNum
+                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
+                            -Method Patch -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
                     } catch {
+                        try { if ($sapCoSD -and $sapCoSD.Connected) { Disconnect-SAP -Company $sapCoSD } } catch {}
+                        $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
                         Write-Log "ERREUR Sync ShipDate BC ${docNum} : $($_.Exception.Message)" "" $docNum
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_shipdate_a_synchroniser/$cleSD.json" `
-                            -Method Patch -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
+                            -Method Patch -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
                             -ContentType "application/json" -TimeoutSec 5 | Out-Null
                     }
                 }
@@ -1834,25 +1955,18 @@ while ($true) {
                     Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
                         -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5 | Out-Null
 
-                    [System.IO.File]::WriteAllText($DTW_FichierFullbox, $impFB.contenu, [System.Text.Encoding]::Unicode)
-
-                    $resFB = Invoke-DTW -ScenarioXml $DTW_ScenarioFullbox
+                    $sapCoFB = Connect-SAP
+                    Update-ItemFullbox -Company $sapCoFB -Contenu $impFB.contenu
+                    Disconnect-SAP -Company $sapCoFB
                     $maintenant = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
 
-                    if ($resFB.Succes) {
-                        Write-Log "INFO  Import Fullbox : OK."
-                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
-                            -Method Patch `
-                            -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                    } else {
-                        Write-Log "WARN  Import Fullbox : echec : $($resFB.Erreur)"
-                        Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
-                            -Method Patch `
-                            -Body (@{ statut = 'erreur'; erreur = $resFB.Erreur; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
-                            -ContentType "application/json" -TimeoutSec 5 | Out-Null
-                    }
+                    Write-Log "INFO  Import Fullbox : OK via DI API."
+                    Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
+                        -Method Patch `
+                        -Body (@{ statut = 'ok'; date_traitement = $maintenant } | ConvertTo-Json -Compress) `
+                        -ContentType "application/json" -TimeoutSec 5 | Out-Null
                 } catch {
+                    try { if ($sapCoFB -and $sapCoFB.Connected) { Disconnect-SAP -Company $sapCoFB } } catch {}
                     Write-Log "ERREUR Import Fullbox '$cleFB' : $($_.Exception.Message)"
                     try {
                         Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/imports_fullbox/$cleFB.json" `
