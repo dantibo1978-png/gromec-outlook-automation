@@ -1468,6 +1468,7 @@ try {
 
 $Script:DernierCheckBrouillons = [datetime]::MinValue
 $Script:DernierCheckQueues = [datetime]::MinValue
+$Script:DernierScanInbox = [datetime]::MinValue
 $Script:ListeNoDelivro = @()
 
 function Sync-ListeNoDelivro {
@@ -1564,6 +1565,48 @@ if ($Script:ParamActiverEnvoiRelance) {
     }
 }
 
+function Invoke-ScanCourrielsManques {
+    param($Outlook)
+    try {
+        $ns = $Outlook.GetNamespace("MAPI")
+        $inbox = $ns.GetDefaultFolder(6)  # olFolderInbox
+        $items = $inbox.Items
+        $items.Sort("[ReceivedTime]", $true)
+
+        $limite = (Get-Date).AddHours(-4)
+        $scriptPath = Join-Path (Split-Path $PSCommandPath) "VerifierConfirmation.ps1"
+        $nbLances = 0
+
+        foreach ($item in $items) {
+            if ($item.Class -ne 43) { continue }
+            if ($item.ReceivedTime -lt $limite) { break }
+
+            $cats = $item.Categories
+            if ($cats -like "*Confirmation OK*" -or $cats -like "*Confirmation - Ecart*" -or
+                $cats -like "*Non-confirmation*" -or $cats -like "*Exclu*") { continue }
+
+            if (-not $item.UnRead) { continue }
+            if ($item.Attachments.Count -eq 0 -and
+                $item.Subject -notmatch '(?i)(confirmation|order.?ack|sales.?order|accus.+r.+ception)') { continue }
+
+            $eid = $item.EntryID
+            $sid = $item.Parent.StoreID
+            Write-Log "INFO  Scan inbox : courriel non traite detecte -- $($item.Subject)"
+            try {
+                Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`" -EntryID `"$eid`" -StoreID `"$sid`"" -WindowStyle Hidden
+                $nbLances++
+                Start-Sleep -Milliseconds 500
+            } catch {
+                Write-Log "WARN  Scan inbox : impossible de lancer VerifierConfirmation pour $($item.Subject) : $($_.Exception.Message)"
+            }
+            if ($nbLances -ge 5) { break }
+        }
+        if ($nbLances -gt 0) { Write-Log "INFO  Scan inbox : $nbLances courriel(s) envoye(s) a VerifierConfirmation" }
+    } catch {
+        Write-Log "WARN  Erreur scan inbox : $($_.Exception.Message)"
+    }
+}
+
 $Script:ProgrammeActif = $true
 $Script:DernierCheckActif = [datetime]::MinValue
 
@@ -1608,6 +1651,13 @@ while ($true) {
             Invoke-VerifierBrouillonsDelivro -Outlook $outlookBrouillon
         }
         $Script:DernierCheckBrouillons = Get-Date
+    }
+
+    # Scanner les courriels non traites dans la boite de reception (toutes les 120s)
+    if (((Get-Date) - $Script:DernierScanInbox).TotalSeconds -ge 120) {
+        $outlookScan = if ($Script:OutlookRelance) { $Script:OutlookRelance } else { try { New-Object -ComObject Outlook.Application } catch { $null } }
+        if ($outlookScan) { Invoke-ScanCourrielsManques -Outlook $outlookScan }
+        $Script:DernierScanInbox = Get-Date
     }
 
     # Verifier reclassifications manuelles (VBA Outlook) -- liste pour supporter plusieurs en meme temps
