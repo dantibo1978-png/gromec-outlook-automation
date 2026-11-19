@@ -487,27 +487,24 @@ function Update-ItemFullbox {
         $itemCode = $cols[$colItemCode].Trim()
         if ([string]::IsNullOrEmpty($itemCode)) { continue }
 
-        $oItem = $Company.GetBusinessObject($BO_Items)
-        if (-not $oItem.GetByKey($itemCode)) {
-            $erreurs += "Article $itemCode introuvable"
-            $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem)
-            continue
-        }
-        $flags = [System.Reflection.BindingFlags]::SetProperty
+        $sets = @()
         if ($colPurPack -ge 0 -and $cols.Count -gt $colPurPack -and $cols[$colPurPack].Trim() -ne '') {
-            [System.__ComObject].InvokeMember("PurPackUn", $flags, $null, $oItem, @([int]$cols[$colPurPack].Trim()))
+            $sets += """PurPackUn"" = $([int]$cols[$colPurPack].Trim())"
         }
         if ($colQryGroup -ge 0 -and $cols.Count -gt $colQryGroup -and $cols[$colQryGroup].Trim() -ne '') {
             $val = $cols[$colQryGroup].Trim()
-            $propVal = if ($val -eq 'Y' -or $val -eq '1') { 1 } else { 0 }
-            $props = [System.__ComObject].InvokeMember("Properties", [System.Reflection.BindingFlags]::InvokeMethod, $null, $oItem, @(26))
-            [System.__ComObject].InvokeMember("Value", $flags, $null, $props, @($propVal))
+            $qryVal = if ($val -eq 'Y' -or $val -eq '1') { "'Y'" } else { "'N'" }
+            $sets += """QryGroup26"" = $qryVal"
         }
-        $ret = $oItem.Update()
-        if ($ret -ne 0) {
-            $erreurs += "Erreur $itemCode : $($Company.GetLastErrorDescription())"
+        if ($sets.Count -eq 0) { continue }
+        $sql = "UPDATE ""OITM"" SET $($sets -join ', ') WHERE ""ItemCode"" = '$($itemCode -replace "'","''")'"
+        $rs = $Company.GetBusinessObject($BO_Recordset)
+        try {
+            $null = [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sql))
+        } catch {
+            $erreurs += "Erreur $itemCode : $($_.Exception.Message)"
         }
-        $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($oItem)
+        $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs)
     }
     if ($erreurs.Count -gt 0) { throw "Erreur(s) Fullbox : $($erreurs -join ' | ')" }
 }
