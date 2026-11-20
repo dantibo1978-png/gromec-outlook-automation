@@ -478,22 +478,20 @@ async function searchArticle() {
     document.getElementById('articleInfo').innerHTML = `<div class="info-box"><h3>${item.ItemCode} — ${item.ItemName || ''}</h3><div class="detail">Groupe: <span>${item.ItmsGrpCod || '-'}</span> | Unite achat: <span>${item.BuyUnitMsr || '-'}</span> | Unite vente: <span>${item.SalUnitMsr || '-'}</span></div></div>`;
 
     // Prix dans toutes les listes
-    const plR = await sapQuery(`SELECT p."PriceList", l."ListName", p."Price", p."Currency", l."BaseNum", l."Factor" FROM "ITM1" p LEFT JOIN "OPLN" l ON p."PriceList" = l."ListNum" WHERE p."ItemCode" = '${escSql(code)}' ORDER BY p."PriceList"`, 100);
+    const plR = await sapQuery(`SELECT p."PriceList", l."ListName", p."Price", p."Currency" FROM "ITM1" p LEFT JOIN "OPLN" l ON p."PriceList" = l."ListNum" WHERE p."ItemCode" = '${escSql(code)}' ORDER BY p."PriceList"`, 100);
     document.getElementById('articlePriceListSection').style.display = 'block';
     const plThead = document.getElementById('tableArticlePL').querySelector('thead');
     const plTbody = document.getElementById('tableArticlePL').querySelector('tbody');
-    plThead.innerHTML = '<tr><th>#</th><th>Liste</th><th>Prix</th><th>Devise</th><th>Base</th><th>Facteur</th></tr>';
+    plThead.innerHTML = '<tr><th>#</th><th>Liste</th><th>Prix</th><th>Devise</th></tr>';
     if (plR.donnees && plR.donnees.length > 0) {
       plTbody.innerHTML = plR.donnees.map(r => `<tr>
         <td>${r.PriceList}</td>
         <td>${r.ListName || ''}</td>
         <td style="color:${r.Price > 0 ? 'var(--ok)' : 'var(--muted)'}">${r.Price != null ? Number(r.Price).toFixed(2) : '-'}</td>
         <td>${r.Currency || ''}</td>
-        <td>${r.BaseNum > 0 ? r.BaseNum : '-'}</td>
-        <td>${r.Factor > 0 ? r.Factor : '-'}</td>
       </tr>`).join('');
     } else {
-      plTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">Aucun prix</td></tr>';
+      plTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Aucun prix</td></tr>';
     }
 
     // Prix speciaux — qui paie combien?
