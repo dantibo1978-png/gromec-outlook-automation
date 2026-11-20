@@ -1569,6 +1569,7 @@ $Script:CourrielsDejaVus = [System.Collections.Generic.HashSet[string]]::new()
 $Script:ConversationsTraitees = [System.Collections.Generic.HashSet[string]]::new()
 $Script:DernierChargementConvTraitees = [datetime]::MinValue
 $Script:ProcessVC = $null
+$Script:HeureDemarrageSyncDTW = Get-Date
 $FichierConvTraitees = Join-Path (Split-Path $PSCommandPath) "conversations_traitees.csv"
 
 function Sync-ConversationsTraitees {
@@ -1594,7 +1595,9 @@ function Invoke-ScanCourrielsManques {
         $items = $inbox.Items
         $items.Sort("[ReceivedTime]", $true)
 
-        $limite = (Get-Date).AddHours(-2)
+        $heuresDepuisDemarrage = ((Get-Date) - $Script:HeureDemarrageSyncDTW).TotalHours
+        $heuresScan = [Math]::Max(2, [Math]::Min($heuresDepuisDemarrage + 1, 16))
+        $limite = (Get-Date).AddHours(-$heuresScan)
         $scriptPath = Join-Path (Split-Path $PSCommandPath) "VerifierConfirmation.ps1"
 
         foreach ($item in $items) {
