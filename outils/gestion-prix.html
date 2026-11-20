@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestion Prix SAP — Gromec</title>
+<style>
+  :root{
+    --bg:#11161D;--panel:#1B232E;--panel-2:#212B38;--grid-line:#243140;
+    --rule:#2C394A;--accent:#5EA8FF;--ok:#3FB67F;--ok-bg:rgba(63,182,127,0.12);
+    --ecart:#E2553F;--ecart-bg:rgba(226,85,63,0.12);--warn:#E0A93E;
+    --warn-bg:rgba(224,169,62,0.12);--text:#E7ECF2;--muted:#8C9BAE;--muted-2:#5C6B7E;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:linear-gradient(var(--grid-line) 1px,transparent 1px) 0 0/40px 40px,
+      linear-gradient(90deg,var(--grid-line) 1px,transparent 1px) 0 0/40px 40px,var(--bg);
+    color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    font-size:15px;min-height:100vh;
+  }
+  .wrap{max-width:100%;margin:0 auto;padding:20px 28px 80px}
+  a.back{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--accent);text-decoration:none;display:inline-block;margin-bottom:14px}
+  a.back:hover{text-decoration:underline}
+  header h1{font-family:'Space Grotesk',sans-serif;font-size:1.7rem;margin:0 0 4px;font-weight:700}
+  header p{color:var(--muted);margin:0 0 16px;font-size:15px}
+
+  .tabs{display:flex;gap:0;margin-bottom:0;border-bottom:2px solid var(--rule)}
+  .tab{
+    padding:10px 20px;cursor:pointer;font-size:14px;font-weight:600;color:var(--muted);
+    border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;
+    font-family:'Space Grotesk',sans-serif;
+  }
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+  .panel{display:none;background:var(--panel);border:1px solid var(--rule);border-top:none;border-radius:0 0 10px 10px;padding:20px 24px}
+  .panel.active{display:block}
+
+  .search-bar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  .search-bar input{
+    background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
+    color:var(--text);padding:8px 14px;font-size:14px;min-width:200px;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .search-bar input:focus{outline:none;border-color:var(--accent)}
+  .search-bar input::placeholder{color:var(--muted-2)}
+  .btn{
+    padding:8px 18px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;
+    transition:all .15s;font-family:'Space Grotesk',sans-serif;
+  }
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-primary:hover{filter:brightness(1.15)}
+  .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+  .btn-ok{background:var(--ok);color:#fff}
+  .btn-ok:hover{filter:brightness(1.15)}
+  .btn-danger{background:var(--ecart);color:#fff}
+  .btn-danger:hover{filter:brightness(1.15)}
+  .btn-sm{padding:5px 12px;font-size:12px}
+  .btn-ghost{background:transparent;border:1px solid var(--rule);color:var(--muted)}
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+
+  .status{font-size:13px;color:var(--muted);font-family:'IBM Plex Mono',monospace}
+  .status.loading{color:var(--warn)}
+  .status.error{color:var(--ecart)}
+  .status.ok{color:var(--ok)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;font-family:'IBM Plex Mono',monospace}
+  th{text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--rule);font-size:12px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;background:var(--panel)}
+  td{padding:7px 10px;border-bottom:1px solid var(--rule)}
+  tr:hover td{background:rgba(94,168,255,0.04)}
+  .table-wrap{max-height:60vh;overflow-y:auto;border-radius:0 0 8px 8px}
+
+  td input,td select{
+    background:transparent;border:1px solid transparent;border-radius:4px;
+    color:var(--text);padding:3px 6px;font-size:13px;width:100%;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  td input:focus,td select:focus{outline:none;border-color:var(--accent);background:var(--panel-2)}
+  td.modified input{border-color:var(--warn);background:var(--warn-bg)}
+
+  .info-box{background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;padding:14px 18px;margin-bottom:14px}
+  .info-box h3{margin:0 0 6px;font-size:15px;font-family:'Space Grotesk',sans-serif}
+  .info-box .detail{color:var(--muted);font-size:13px;line-height:1.6}
+  .info-box .detail span{color:var(--text);font-family:'IBM Plex Mono',monospace}
+
+  .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+  .badge-ok{background:var(--ok-bg);color:var(--ok)}
+  .badge-warn{background:var(--warn-bg);color:var(--warn)}
+  .badge-err{background:var(--ecart-bg);color:var(--ecart)}
+
+  .toolbar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap}
+  .toolbar-left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .toolbar-right{display:flex;gap:8px;align-items:center}
+
+  .chip{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;background:var(--panel-2);color:var(--muted);border:1px solid var(--rule)}
+
+  .empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
+  .empty-state .icon{font-size:40px;margin-bottom:10px}
+
+  .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center}
+  .modal-overlay.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:24px;min-width:400px;max-width:600px;max-height:80vh;overflow-y:auto}
+  .modal h3{margin:0 0 16px;font-family:'Space Grotesk',sans-serif}
+  .modal label{display:block;color:var(--muted);font-size:12px;margin-bottom:4px;margin-top:12px}
+  .modal input,.modal select{
+    width:100%;background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
+    color:var(--text);padding:8px 12px;font-size:14px;font-family:'IBM Plex Mono',monospace;
+  }
+  .modal input:focus,.modal select:focus{outline:none;border-color:var(--accent)}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../index.html">← Dashboard</a>
+  <header>
+    <h1>Gestion des Prix SAP</h1>
+    <p>Recherche, consultation et modification des prix — listes de prix, prix speciaux, remises</p>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-panel="panelClient">Par client</div>
+    <div class="tab" data-panel="panelArticle">Par article</div>
+    <div class="tab" data-panel="panelListes">Listes de prix</div>
+    <div class="tab" data-panel="panelImport">Import prix</div>
+  </div>
+
+  <!-- ═══════════════════ ONGLET : PAR CLIENT ═══════════════════ -->
+  <div class="panel active" id="panelClient">
+    <div class="search-bar">
+      <input type="text" id="inputClient" placeholder="Code client (ex: C10045)" autocomplete="off">
+      <button class="btn btn-primary" id="btnSearchClient">Rechercher</button>
+      <span class="status" id="statusClient"></span>
+    </div>
+    <div id="clientInfo" style="display:none"></div>
+    <div class="toolbar" id="clientToolbar" style="display:none">
+      <div class="toolbar-left">
+        <span class="chip" id="clientChip"></span>
+        <span class="chip" id="clientCountChip"></span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn btn-sm btn-ghost" id="btnAddSpecialPrice">+ Ajouter prix</button>
+        <button class="btn btn-sm btn-ok" id="btnSaveClient" style="display:none">Sauvegarder</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="tableClient"><thead></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ ONGLET : PAR ARTICLE ═══════════════════ -->
+  <div class="panel" id="panelArticle">
+    <div class="search-bar">
+      <input type="text" id="inputArticle" placeholder="Code article (ex: 551250)" autocomplete="off">
+      <button class="btn btn-primary" id="btnSearchArticle">Rechercher</button>
+      <span class="status" id="statusArticle"></span>
+    </div>
+    <div id="articleInfo" style="display:none"></div>
+    <div id="articlePriceListSection" style="display:none">
+      <h3 style="font-family:'Space Grotesk',sans-serif;font-size:15px;margin:16px 0 8px">Listes de prix</h3>
+      <div class="table-wrap">
+        <table id="tableArticlePL"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+    <div id="articleSpecialSection" style="display:none">
+      <h3 style="font-family:'Space Grotesk',sans-serif;font-size:15px;margin:16px 0 8px">Prix speciaux par client</h3>
+      <div class="toolbar">
+        <div class="toolbar-left"><span class="chip" id="articleSpecialCount"></span></div>
+        <div class="toolbar-right">
+          <button class="btn btn-sm btn-ok" id="btnSaveArticle" style="display:none">Sauvegarder</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="tableArticleSP"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ ONGLET : LISTES DE PRIX ═══════════════════ -->
+  <div class="panel" id="panelListes">
+    <div class="search-bar">
+      <input type="text" id="inputListeFilter" placeholder="Filtrer par nom de liste..." autocomplete="off">
+      <button class="btn btn-primary" id="btnLoadListes">Charger les listes</button>
+      <span class="status" id="statusListes"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="tableListes"><thead></thead><tbody></tbody></table>
+    </div>
+    <div id="listeDetail" style="display:none;margin-top:16px">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <h3 style="font-family:'Space Grotesk',sans-serif;font-size:15px;margin:0" id="listeDetailTitle"></h3>
+          <span class="chip" id="listeDetailCount"></span>
+        </div>
+        <div class="toolbar-right">
+          <input type="text" id="inputListeArticleFilter" placeholder="Filtrer articles..." style="background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;color:var(--text);padding:6px 12px;font-size:13px;font-family:'IBM Plex Mono',monospace">
+          <button class="btn btn-sm btn-ok" id="btnSaveListe" style="display:none">Sauvegarder</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="tableListeDetail"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ ONGLET : IMPORT PRIX ═══════════════════ -->
+  <div class="panel" id="panelImport">
+    <div class="info-box">
+      <h3>Import de prix en lot</h3>
+      <div class="detail">
+        Collez vos donnees (tab-separated) ou importez un fichier Excel.<br>
+        Les imports passent par SyncDTW et sont appliques via le DI API SAP.
+      </div>
+    </div>
+    <div class="search-bar">
+      <select id="selectImportType" style="background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;color:var(--text);padding:8px 12px;font-size:14px">
+        <option value="import_prix">Liste de prix standard</option>
+        <option value="import_prix_special">Prix speciaux par client</option>
+      </select>
+    </div>
+    <textarea id="importData" placeholder="Collez les donnees ici (format tab-separated avec headers)..." style="width:100%;height:200px;background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;color:var(--text);padding:12px;font-size:13px;font-family:'IBM Plex Mono',monospace;resize:vertical"></textarea>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+      <button class="btn btn-primary" id="btnImport">Envoyer a SyncDTW</button>
+      <span class="status" id="statusImport"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Modal ajout prix special -->
+<div class="modal-overlay" id="modalAddPrice">
+  <div class="modal">
+    <h3>Ajouter un prix special</h3>
+    <label>Code client (CardCode)</label>
+    <input type="text" id="addPriceClient" placeholder="C10045">
+    <label>Code article (ItemCode)</label>
+    <input type="text" id="addPriceItem" placeholder="551250">
+    <label>Prix</label>
+    <input type="number" id="addPriceValue" step="0.01" placeholder="0.00">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="document.getElementById('modalAddPrice').classList.remove('show')">Annuler</button>
+      <button class="btn btn-ok" id="btnConfirmAddPrice">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const FIREBASE_URL = 'https://gromec-outlook-vba-default-rtdb.firebaseio.com/';
+let pendingChanges = {};
+let queryCounter = 0;
+
+// ── Tabs ──────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(t.dataset.panel).classList.add('active');
+  });
+});
+
+// ── SAP Query Engine ──────────────────────────────────────────
+function sapQuery(sql, limite) {
+  return new Promise((resolve, reject) => {
+    const id = 'q_' + Date.now() + '_' + (++queryCounter);
+    const payload = { sql, statut: 'en_attente', date: new Date().toISOString() };
+    if (limite) payload.limite = limite;
+    fetch(FIREBASE_URL + 'gromec_vba/sap_queries/' + id + '.json', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' }
+    }).then(() => {
+      let attempts = 0;
+      const poll = setInterval(() => {
+        attempts++;
+        if (attempts > 60) { clearInterval(poll); reject(new Error('Timeout — SyncDTW ne repond pas')); return; }
+        fetch(FIREBASE_URL + 'gromec_vba/sap_queries/' + id + '.json')
+          .then(r => r.json())
+          .then(data => {
+            if (!data) { clearInterval(poll); reject(new Error('Requete disparue')); return; }
+            if (data.statut === 'ok') { clearInterval(poll); resolve(data); }
+            else if (data.statut === 'erreur') { clearInterval(poll); reject(new Error(data.erreur)); }
+          }).catch(() => {});
+      }, 1000);
+    }).catch(reject);
+  });
+}
+
+function sapUpdate(sql) {
+  return new Promise((resolve, reject) => {
+    const id = 'u_' + Date.now() + '_' + (++queryCounter);
+    const payload = { sql, statut: 'en_attente', date: new Date().toISOString() };
+    fetch(FIREBASE_URL + 'gromec_vba/sap_updates/' + id + '.json', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' }
+    }).then(() => {
+      let attempts = 0;
+      const poll = setInterval(() => {
+        attempts++;
+        if (attempts > 60) { clearInterval(poll); reject(new Error('Timeout')); return; }
+        fetch(FIREBASE_URL + 'gromec_vba/sap_updates/' + id + '.json')
+          .then(r => r.json())
+          .then(data => {
+            if (!data) { clearInterval(poll); reject(new Error('MAJ disparue')); return; }
+            if (data.statut === 'ok') { clearInterval(poll); resolve(data); }
+            else if (data.statut === 'erreur') { clearInterval(poll); reject(new Error(data.erreur)); }
+          }).catch(() => {});
+      }, 1000);
+    }).catch(reject);
+  });
+}
+
+function escSql(v) { return ('' + v).replace(/'/g, "''"); }
+
+// ── PAR CLIENT ────────────────────────────────────────────────
+document.getElementById('btnSearchClient').addEventListener('click', searchClient);
+document.getElementById('inputClient').addEventListener('keydown', e => { if (e.key === 'Enter') searchClient(); });
+
+async function searchClient() {
+  const code = document.getElementById('inputClient').value.trim();
+  if (!code) return;
+  const st = document.getElementById('statusClient');
+  st.textContent = 'Recherche en cours...'; st.className = 'status loading';
+  document.getElementById('clientInfo').style.display = 'none';
+  document.getElementById('clientToolbar').style.display = 'none';
+  document.getElementById('tableClient').querySelector('thead').innerHTML = '';
+  document.getElementById('tableClient').querySelector('tbody').innerHTML = '';
+
+  try {
+    // Info client
+    const infoR = await sapQuery(`SELECT "CardCode","CardName","GroupCode","Currency","Phone1","E_Mail" FROM "OCRD" WHERE "CardCode" = '${escSql(code)}'`, 1);
+    if (!infoR.donnees || infoR.donnees.length === 0) {
+      st.textContent = 'Client introuvable'; st.className = 'status error'; return;
+    }
+    const client = infoR.donnees[0];
+    document.getElementById('clientInfo').style.display = 'block';
+    document.getElementById('clientInfo').innerHTML = `<div class="info-box"><h3>${client.CardCode} — ${client.CardName || ''}</h3><div class="detail">Groupe: <span>${client.GroupCode || '-'}</span> | Devise: <span>${client.Currency || '-'}</span> | Tel: <span>${client.Phone1 || '-'}</span> | Courriel: <span>${client.E_Mail || '-'}</span></div></div>`;
+
+    // Prix speciaux
+    const spR = await sapQuery(`SELECT s."ItemCode", i."ItemName", s."Price", s."Currency", s."StartDate", s."EndDate", s."Amount", s."Discount" FROM "OSPP" s LEFT JOIN "OITM" i ON s."ItemCode" = i."ItemCode" WHERE s."CardCode" = '${escSql(code)}' ORDER BY s."ItemCode"`, 1000);
+
+    document.getElementById('clientToolbar').style.display = 'flex';
+    document.getElementById('clientChip').textContent = client.CardCode;
+    document.getElementById('clientCountChip').textContent = (spR.donnees ? spR.donnees.length : 0) + ' prix speciaux';
+
+    const thead = document.getElementById('tableClient').querySelector('thead');
+    const tbody = document.getElementById('tableClient').querySelector('tbody');
+    thead.innerHTML = '<tr><th>Article</th><th>Description</th><th>Prix</th><th>Devise</th><th>Debut</th><th>Fin</th><th>Escompte %</th><th></th></tr>';
+
+    if (!spR.donnees || spR.donnees.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px">Aucun prix special pour ce client</td></tr>';
+    } else {
+      tbody.innerHTML = spR.donnees.map((r, i) => `<tr data-idx="${i}" data-card="${escSql(code)}" data-item="${r.ItemCode}">
+        <td><span style="color:var(--accent)">${r.ItemCode}</span></td>
+        <td>${r.ItemName || ''}</td>
+        <td><input type="number" step="0.01" value="${r.Price || 0}" data-field="Price" data-orig="${r.Price || 0}" onchange="markChanged(this)"></td>
+        <td>${r.Currency || 'CAD'}</td>
+        <td><input type="date" value="${formatDate(r.StartDate)}" data-field="StartDate" data-orig="${formatDate(r.StartDate)}" onchange="markChanged(this)"></td>
+        <td><input type="date" value="${formatDate(r.EndDate)}" data-field="EndDate" data-orig="${formatDate(r.EndDate)}" onchange="markChanged(this)"></td>
+        <td><input type="number" step="0.01" value="${r.Discount || 0}" data-field="Discount" data-orig="${r.Discount || 0}" onchange="markChanged(this)"></td>
+        <td><button class="btn btn-sm btn-danger" onclick="deleteSpecialPrice('${escSql(code)}','${escSql(r.ItemCode)}',this)">X</button></td>
+      </tr>`).join('');
+    }
+    st.textContent = 'OK'; st.className = 'status ok';
+  } catch (err) {
+    st.textContent = err.message; st.className = 'status error';
+  }
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt.getTime()) || dt.getFullYear() < 1900) return '';
+    return dt.toISOString().split('T')[0];
+  } catch { return ''; }
+}
+
+function markChanged(input) {
+  const td = input.parentElement;
+  if (input.value !== input.dataset.orig) {
+    td.classList.add('modified');
+    document.getElementById('btnSaveClient').style.display = '';
+    document.getElementById('btnSaveArticle').style.display = '';
+  } else {
+    td.classList.remove('modified');
+  }
+}
+
+document.getElementById('btnSaveClient').addEventListener('click', async () => {
+  const btn = document.getElementById('btnSaveClient');
+  const st = document.getElementById('statusClient');
+  btn.disabled = true; st.textContent = 'Sauvegarde...'; st.className = 'status loading';
+  const rows = document.querySelectorAll('#tableClient tbody tr[data-card]');
+  let count = 0;
+  for (const row of rows) {
+    const inputs = row.querySelectorAll('input');
+    const card = row.dataset.card;
+    const item = row.dataset.item;
+    const sets = [];
+    inputs.forEach(inp => {
+      if (inp.value !== inp.dataset.orig) {
+        const f = inp.dataset.field;
+        if (f === 'Price' || f === 'Discount') sets.push(`"${f}" = ${inp.value || 0}`);
+        else if (f === 'StartDate' || f === 'EndDate') {
+          if (inp.value) sets.push(`"${f}" = '${inp.value}'`);
+        }
+      }
+    });
+    if (sets.length === 0) continue;
+    try {
+      await sapUpdate(`UPDATE "OSPP" SET ${sets.join(', ')} WHERE "CardCode" = '${card}' AND "ItemCode" = '${item}'`);
+      inputs.forEach(inp => { inp.dataset.orig = inp.value; inp.parentElement.classList.remove('modified'); });
+      count++;
+    } catch (err) {
+      st.textContent = 'Erreur: ' + err.message; st.className = 'status error'; btn.disabled = false; return;
+    }
+  }
+  st.textContent = count + ' prix mis a jour'; st.className = 'status ok';
+  btn.style.display = 'none'; btn.disabled = false;
+});
+
+document.getElementById('btnAddSpecialPrice').addEventListener('click', () => {
+  const code = document.getElementById('inputClient').value.trim();
+  if (code) document.getElementById('addPriceClient').value = code;
+  document.getElementById('modalAddPrice').classList.add('show');
+});
+
+document.getElementById('btnConfirmAddPrice').addEventListener('click', async () => {
+  const card = document.getElementById('addPriceClient').value.trim();
+  const item = document.getElementById('addPriceItem').value.trim();
+  const price = document.getElementById('addPriceValue').value;
+  if (!card || !item || !price) return;
+  const st = document.getElementById('statusClient');
+  st.textContent = 'Ajout...'; st.className = 'status loading';
+  try {
+    await sapUpdate(`INSERT INTO "OSPP" ("CardCode","ItemCode","Price") VALUES ('${escSql(card)}','${escSql(item)}',${price})`);
+    document.getElementById('modalAddPrice').classList.remove('show');
+    st.textContent = 'Prix ajoute'; st.className = 'status ok';
+    searchClient();
+  } catch (err) {
+    st.textContent = err.message; st.className = 'status error';
+  }
+});
+
+async function deleteSpecialPrice(card, item, btn) {
+  if (!confirm('Supprimer le prix special de ' + item + ' pour ' + card + '?')) return;
+  const st = document.getElementById('statusClient');
+  st.textContent = 'Suppression...'; st.className = 'status loading';
+  try {
+    await sapUpdate(`DELETE FROM "OSPP" WHERE "CardCode" = '${card}' AND "ItemCode" = '${item}'`);
+    btn.closest('tr').remove();
+    st.textContent = 'Supprime'; st.className = 'status ok';
+  } catch (err) {
+    st.textContent = err.message; st.className = 'status error';
+  }
+}
+
+// ── PAR ARTICLE ───────────────────────────────────────────────
+document.getElementById('btnSearchArticle').addEventListener('click', searchArticle);
+document.getElementById('inputArticle').addEventListener('keydown', e => { if (e.key === 'Enter') searchArticle(); });
+
+async function searchArticle() {
+  const code = document.getElementById('inputArticle').value.trim();
+  if (!code) return;
+  const st = document.getElementById('statusArticle');
+  st.textContent = 'Recherche...'; st.className = 'status loading';
+
+  try {
+    // Info article
+    const infoR = await sapQuery(`SELECT "ItemCode","ItemName","ItmsGrpCod","BuyUnitMsr","SalUnitMsr" FROM "OITM" WHERE "ItemCode" = '${escSql(code)}'`, 1);
+    if (!infoR.donnees || infoR.donnees.length === 0) {
+      st.textContent = 'Article introuvable'; st.className = 'status error'; return;
+    }
+    const item = infoR.donnees[0];
+    document.getElementById('articleInfo').style.display = 'block';
+    document.getElementById('articleInfo').innerHTML = `<div class="info-box"><h3>${item.ItemCode} — ${item.ItemName || ''}</h3><div class="detail">Groupe: <span>${item.ItmsGrpCod || '-'}</span> | Unite achat: <span>${item.BuyUnitMsr || '-'}</span> | Unite vente: <span>${item.SalUnitMsr || '-'}</span></div></div>`;
+
+    // Prix dans toutes les listes
+    const plR = await sapQuery(`SELECT p."PriceList", l."ListName", p."Price", p."Currency", p."BasePriceList", p."Factor" FROM "ITM1" p LEFT JOIN "OPLN" l ON p."PriceList" = l."ListNum" WHERE p."ItemCode" = '${escSql(code)}' ORDER BY p."PriceList"`, 100);
+    document.getElementById('articlePriceListSection').style.display = 'block';
+    const plThead = document.getElementById('tableArticlePL').querySelector('thead');
+    const plTbody = document.getElementById('tableArticlePL').querySelector('tbody');
+    plThead.innerHTML = '<tr><th>#</th><th>Liste</th><th>Prix</th><th>Devise</th><th>Base</th><th>Facteur</th></tr>';
+    if (plR.donnees && plR.donnees.length > 0) {
+      plTbody.innerHTML = plR.donnees.map(r => `<tr>
+        <td>${r.PriceList}</td>
+        <td>${r.ListName || ''}</td>
+        <td style="color:${r.Price > 0 ? 'var(--ok)' : 'var(--muted)'}">${r.Price != null ? Number(r.Price).toFixed(2) : '-'}</td>
+        <td>${r.Currency || ''}</td>
+        <td>${r.BasePriceList > 0 ? r.BasePriceList : '-'}</td>
+        <td>${r.Factor > 0 ? r.Factor : '-'}</td>
+      </tr>`).join('');
+    } else {
+      plTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">Aucun prix</td></tr>';
+    }
+
+    // Prix speciaux — qui paie combien?
+    const spR = await sapQuery(`SELECT s."CardCode", c."CardName", s."Price", s."Currency", s."StartDate", s."EndDate", s."Discount" FROM "OSPP" s LEFT JOIN "OCRD" c ON s."CardCode" = c."CardCode" WHERE s."ItemCode" = '${escSql(code)}' ORDER BY s."CardCode"`, 500);
+    document.getElementById('articleSpecialSection').style.display = 'block';
+    document.getElementById('articleSpecialCount').textContent = (spR.donnees ? spR.donnees.length : 0) + ' clients avec prix special';
+    const spThead = document.getElementById('tableArticleSP').querySelector('thead');
+    const spTbody = document.getElementById('tableArticleSP').querySelector('tbody');
+    spThead.innerHTML = '<tr><th>Client</th><th>Nom</th><th>Prix</th><th>Devise</th><th>Debut</th><th>Fin</th><th>Escompte %</th></tr>';
+    if (spR.donnees && spR.donnees.length > 0) {
+      spTbody.innerHTML = spR.donnees.map(r => `<tr>
+        <td><a href="#" style="color:var(--accent)" onclick="document.getElementById('inputClient').value='${r.CardCode}';document.querySelectorAll('.tab')[0].click();searchClient();return false">${r.CardCode}</a></td>
+        <td>${r.CardName || ''}</td>
+        <td style="color:var(--ok)">${r.Price != null ? Number(r.Price).toFixed(2) : '-'}</td>
+        <td>${r.Currency || 'CAD'}</td>
+        <td>${formatDate(r.StartDate)}</td>
+        <td>${formatDate(r.EndDate)}</td>
+        <td>${r.Discount || '-'}</td>
+      </tr>`).join('');
+    } else {
+      spTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Aucun prix special</td></tr>';
+    }
+
+    st.textContent = 'OK'; st.className = 'status ok';
+  } catch (err) {
+    st.textContent = err.message; st.className = 'status error';
+  }
+}
+
+// ── LISTES DE PRIX ────────────────────────────────────────────
+document.getElementById('btnLoadListes').addEventListener('click', loadListes);
+
+async function loadListes() {
+  const st = document.getElementById('statusListes');
+  st.textContent = 'Chargement...'; st.className = 'status loading';
+  try {
+    const r = await sapQuery(`SELECT "ListNum","ListName","IsGrossPrc","PrimCurr" FROM "OPLN" ORDER BY "ListNum"`, 100);
+    const thead = document.getElementById('tableListes').querySelector('thead');
+    const tbody = document.getElementById('tableListes').querySelector('tbody');
+    thead.innerHTML = '<tr><th>#</th><th>Nom</th><th>Brut</th><th>Devise</th><th></th></tr>';
+    if (r.donnees && r.donnees.length > 0) {
+      tbody.innerHTML = r.donnees.map(l => `<tr>
+        <td>${l.ListNum}</td>
+        <td>${l.ListName}</td>
+        <td>${l.IsGrossPrc === 'Y' ? 'Oui' : 'Non'}</td>
+        <td>${l.PrimCurr || '-'}</td>
+        <td><button class="btn btn-sm btn-primary" onclick="loadListeDetail(${l.ListNum},'${escSql(l.ListName)}')">Voir articles</button></td>
+      </tr>`).join('');
+    }
+    st.textContent = r.donnees.length + ' listes'; st.className = 'status ok';
+  } catch (err) {
+    st.textContent = err.message; st.className = 'status error';
+  }
+}
+
+async function loadListeDetail(listNum, listName) {
+  const st = document.getElementById('statusListes');
+  st.textContent = 'Chargement liste #' + listNum + '...'; st.className = 'status loading';
+  document.getElementById('listeDetail').style.display = 'block';
+  document.getElementById('listeDetailTitle').textContent = 'Liste #' + listNum + ' — ' + listName;
+  try {
+    const r = await sapQuery(`SELECT p."ItemCode", i."ItemName", p."Price", p."Currency", p."BasePriceList", p."Factor" FROM "ITM1" p LEFT JOIN "OITM" i ON p."ItemCode" = i."ItemCode" WHERE p."PriceList" = ${listNum} AND p."Price" > 0 ORDER BY p."ItemCode"`, 2000);
+    document.getElementById('listeDetailCount').textContent = (r.donnees ? r.donnees.length : 0) + ' articles';
+    const thead = document.getElementById('tableListeDetail').querySelector('thead');
+    const tbody = document.getElementById('tableListeDetail').querySelector('tbody');
+    thead.innerHTML = '<tr><th>Article</th><th>Description</th><th>Prix</th><th>Devise</th><th>Base</th><th>Facteur</th></tr>';
+    if (r.donnees && r.donnees.length > 0) {
+      window._listeDetailData = r.donnees;
+      renderListeDetail(r.donnees);
+    }
+    st.textContent = 'OK'; st.className = 'status ok';
+  } catch (err) {
+    st.textContent = err.message; st.className = 'status error';
+  }
+}
+
+function renderListeDetail(data) {
+  const filter = (document.getElementById('inputListeArticleFilter').value || '').toLowerCase();
+  const filtered = filter ? data.filter(r => (r.ItemCode + ' ' + (r.ItemName || '')).toLowerCase().includes(filter)) : data;
+  const tbody = document.getElementById('tableListeDetail').querySelector('tbody');
+  tbody.innerHTML = filtered.slice(0, 500).map(r => `<tr>
+    <td><a href="#" style="color:var(--accent)" onclick="document.getElementById('inputArticle').value='${r.ItemCode}';document.querySelectorAll('.tab')[1].click();searchArticle();return false">${r.ItemCode}</a></td>
+    <td>${r.ItemName || ''}</td>
+    <td style="color:var(--ok)">${Number(r.Price).toFixed(2)}</td>
+    <td>${r.Currency || ''}</td>
+    <td>${r.BasePriceList > 0 ? r.BasePriceList : '-'}</td>
+    <td>${r.Factor > 0 ? r.Factor : '-'}</td>
+  </tr>`).join('');
+}
+
+document.getElementById('inputListeArticleFilter').addEventListener('input', () => {
+  if (window._listeDetailData) renderListeDetail(window._listeDetailData);
+});
+
+document.getElementById('inputListeFilter').addEventListener('input', () => {
+  const filter = document.getElementById('inputListeFilter').value.toLowerCase();
+  document.querySelectorAll('#tableListes tbody tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(filter) ? '' : 'none';
+  });
+});
+
+// ── IMPORT ────────────────────────────────────────────────────
+document.getElementById('btnImport').addEventListener('click', async () => {
+  const type = document.getElementById('selectImportType').value;
+  const data = document.getElementById('importData').value.trim();
+  if (!data) return;
+  const st = document.getElementById('statusImport');
+  st.textContent = 'Envoi...'; st.className = 'status loading';
+  try {
+    const payload = { type, fichier: type + '_' + Date.now() + '.txt', contenu: data, date: new Date().toISOString(), statut: 'en_attente' };
+    await fetch(FIREBASE_URL + 'gromec_vba/imports_prix.json', {
+      method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' }
+    });
+    st.textContent = 'Envoye a SyncDTW — en attente de traitement'; st.className = 'status ok';
+    document.getElementById('importData').value = '';
+  } catch (err) {
+    st.textContent = err.message; st.className = 'status error';
+  }
+});
+</script>
+</body>
+</html>

@@ -1907,6 +1907,119 @@ while ($true) {
         Write-Log "WARN  Erreur lecture noeud imports_prix : $($_.Exception.Message)"
     } }
 
+    # ── Requetes SAP (lecture/ecriture depuis le dashboard) ─────────────────────
+    if ($checkQueues) { try {
+        $shallowQ = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries.json?shallow=true" -Method Get -TimeoutSec 5
+        $queries = if ($null -ne $shallowQ -and $shallowQ -ne "null") { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries.json" -Method Get -TimeoutSec 10 } else { $null }
+        if ($null -ne $queries -and $queries -ne "null") {
+            foreach ($cleQ in $queries.PSObject.Properties.Name) {
+                $req = $queries.$cleQ
+                if ($req.statut -ne 'en_attente') {
+                    if ($req.statut -eq 'ok' -or $req.statut -eq 'erreur') {
+                        $age = ((Get-Date) - [datetime]$req.date).TotalMinutes
+                        if ($age -gt 5) { try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries/$cleQ.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {} }
+                    }
+                    continue
+                }
+                try {
+                    $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries/$cleQ.json" `
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
+                    $companySQ = $null
+                    try {
+                        $companySQ = Connect-SAP
+                        $rs = $companySQ.GetBusinessObject($BO_Recordset)
+                        $sql = $req.sql
+                        if ($sql -notmatch '(?i)^\s*SELECT') { throw "Seules les requetes SELECT sont permises" }
+                        [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sql))
+                        $count = [int][System.__ComObject].InvokeMember("RecordCount", [System.Reflection.BindingFlags]::GetProperty, $null, $rs, $null)
+                        $rows = @()
+                        $flds = [System.__ComObject].InvokeMember("Fields", [System.Reflection.BindingFlags]::GetProperty, $null, $rs, $null)
+                        $nbFields = [int][System.__ComObject].InvokeMember("Count", [System.Reflection.BindingFlags]::GetProperty, $null, $flds, $null)
+                        $colNames = @()
+                        for ($f = 0; $f -lt $nbFields; $f++) {
+                            $fld = [System.__ComObject].InvokeMember("Item", [System.Reflection.BindingFlags]::InvokeMethod, $null, $flds, @($f))
+                            $colNames += [string][System.__ComObject].InvokeMember("Name", [System.Reflection.BindingFlags]::GetProperty, $null, $fld, $null)
+                        }
+                        $maxRows = if ($req.limite) { [int]$req.limite } else { 500 }
+                        for ($i = 0; $i -lt [Math]::Min($count, $maxRows); $i++) {
+                            $row = @{}
+                            for ($f = 0; $f -lt $nbFields; $f++) {
+                                $fld = [System.__ComObject].InvokeMember("Item", [System.Reflection.BindingFlags]::InvokeMethod, $null, $flds, @($f))
+                                $val = [System.__ComObject].InvokeMember("Value", [System.Reflection.BindingFlags]::GetProperty, $null, $fld, $null)
+                                $row[$colNames[$f]] = $val
+                            }
+                            $rows += $row
+                            [System.__ComObject].InvokeMember("MoveNext", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, $null)
+                        }
+                        $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs)
+                        $resultJson = @{ statut = 'ok'; colonnes = $colNames; donnees = $rows; total = $count; date_traitement = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss") } | ConvertTo-Json -Compress -Depth 5
+                        $resultBytes = [System.Text.Encoding]::UTF8.GetBytes($resultJson)
+                        $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries/$cleQ.json" `
+                            -Method Put -Body $resultBytes -ContentType "application/json; charset=utf-8" -TimeoutSec 15
+                        Write-Log "INFO  Requete SAP '$cleQ' : $count resultats"
+                    } catch {
+                        $errJson = @{ statut = 'erreur'; erreur = $_.Exception.Message; date_traitement = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss") } | ConvertTo-Json -Compress
+                        $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries/$cleQ.json" `
+                            -Method Patch -Body $errJson -ContentType "application/json" -TimeoutSec 5
+                        Write-Log "WARN  Requete SAP '$cleQ' erreur : $($_.Exception.Message)"
+                    } finally {
+                        Disconnect-SAP -Company $companySQ
+                    }
+                } catch {
+                    Write-Log "ERREUR Requete SAP '$cleQ' : $($_.Exception.Message)"
+                }
+            }
+        }
+    } catch {
+        Write-Log "WARN  Erreur lecture noeud sap_queries : $($_.Exception.Message)"
+    } }
+
+    # ── Mises a jour SAP (ecriture depuis le dashboard) ──────────────────────────
+    if ($checkQueues) { try {
+        $shallowU = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates.json?shallow=true" -Method Get -TimeoutSec 5
+        $updates = if ($null -ne $shallowU -and $shallowU -ne "null") { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates.json" -Method Get -TimeoutSec 10 } else { $null }
+        if ($null -ne $updates -and $updates -ne "null") {
+            foreach ($cleU in $updates.PSObject.Properties.Name) {
+                $upd = $updates.$cleU
+                if ($upd.statut -ne 'en_attente') {
+                    if ($upd.statut -eq 'ok' -or $upd.statut -eq 'erreur') {
+                        $age = ((Get-Date) - [datetime]$upd.date).TotalMinutes
+                        if ($age -gt 5) { try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates/$cleU.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {} }
+                    }
+                    continue
+                }
+                try {
+                    $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates/$cleU.json" `
+                        -Method Patch -Body '{"statut":"en_cours"}' -ContentType "application/json" -TimeoutSec 5
+                    $companyUpd = $null
+                    try {
+                        $companyUpd = Connect-SAP
+                        $rs = $companyUpd.GetBusinessObject($BO_Recordset)
+                        $sql = $upd.sql
+                        if ($sql -match '(?i)^\s*(DROP|TRUNCATE|ALTER|CREATE|DELETE\s+FROM\s+"(?!OSPP|SPP1))') { throw "Operation SQL non permise" }
+                        [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sql))
+                        $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs)
+                        $okJson = @{ statut = 'ok'; date_traitement = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss") } | ConvertTo-Json -Compress
+                        $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates/$cleU.json" `
+                            -Method Patch -Body $okJson -ContentType "application/json" -TimeoutSec 5
+                        Write-Log "INFO  MAJ SAP '$cleU' OK"
+                    } catch {
+                        $errJson = @{ statut = 'erreur'; erreur = $_.Exception.Message; date_traitement = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss") } | ConvertTo-Json -Compress
+                        $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates/$cleU.json" `
+                            -Method Patch -Body $errJson -ContentType "application/json" -TimeoutSec 5
+                        Write-Log "WARN  MAJ SAP '$cleU' erreur : $($_.Exception.Message)"
+                    } finally {
+                        Disconnect-SAP -Company $companyUpd
+                    }
+                } catch {
+                    Write-Log "ERREUR MAJ SAP '$cleU' : $($_.Exception.Message)"
+                }
+            }
+        }
+    } catch {
+        Write-Log "WARN  Erreur lecture noeud sap_updates : $($_.Exception.Message)"
+    } }
+
     # ── Import LeadTime depuis l'outil delais-produits ──────────────────────────
     if ($checkQueues) { try {
         $shallowLT = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/leadtime_dtw.json?shallow=true" -Method Get -TimeoutSec 5
