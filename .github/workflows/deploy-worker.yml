@@ -8,6 +8,7 @@ on:
       - 'wrangler.jsonc'
       - 'index.html'
       - 'style.css'
+      - 'outils/**'
       - 'VerifierConfirmation.ps1'
       - '.github/workflows/deploy-worker.yml'
 
