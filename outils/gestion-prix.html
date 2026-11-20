@@ -478,7 +478,7 @@ async function searchArticle() {
     document.getElementById('articleInfo').innerHTML = `<div class="info-box"><h3>${item.ItemCode} — ${item.ItemName || ''}</h3><div class="detail">Groupe: <span>${item.ItmsGrpCod || '-'}</span> | Unite achat: <span>${item.BuyUnitMsr || '-'}</span> | Unite vente: <span>${item.SalUnitMsr || '-'}</span></div></div>`;
 
     // Prix dans toutes les listes
-    const plR = await sapQuery(`SELECT p."PriceList", l."ListName", p."Price", p."Currency", p."BasePriceList", p."Factor" FROM "ITM1" p LEFT JOIN "OPLN" l ON p."PriceList" = l."ListNum" WHERE p."ItemCode" = '${escSql(code)}' ORDER BY p."PriceList"`, 100);
+    const plR = await sapQuery(`SELECT p."PriceList", l."ListName", p."Price", p."Currency", l."BaseNum", l."Factor" FROM "ITM1" p LEFT JOIN "OPLN" l ON p."PriceList" = l."ListNum" WHERE p."ItemCode" = '${escSql(code)}' ORDER BY p."PriceList"`, 100);
     document.getElementById('articlePriceListSection').style.display = 'block';
     const plThead = document.getElementById('tableArticlePL').querySelector('thead');
     const plTbody = document.getElementById('tableArticlePL').querySelector('tbody');
@@ -489,7 +489,7 @@ async function searchArticle() {
         <td>${r.ListName || ''}</td>
         <td style="color:${r.Price > 0 ? 'var(--ok)' : 'var(--muted)'}">${r.Price != null ? Number(r.Price).toFixed(2) : '-'}</td>
         <td>${r.Currency || ''}</td>
-        <td>${r.BasePriceList > 0 ? r.BasePriceList : '-'}</td>
+        <td>${r.BaseNum > 0 ? r.BaseNum : '-'}</td>
         <td>${r.Factor > 0 ? r.Factor : '-'}</td>
       </tr>`).join('');
     } else {
@@ -555,11 +555,11 @@ async function loadListeDetail(listNum, listName) {
   document.getElementById('listeDetail').style.display = 'block';
   document.getElementById('listeDetailTitle').textContent = 'Liste #' + listNum + ' — ' + listName;
   try {
-    const r = await sapQuery(`SELECT p."ItemCode", i."ItemName", p."Price", p."Currency", p."BasePriceList", p."Factor" FROM "ITM1" p LEFT JOIN "OITM" i ON p."ItemCode" = i."ItemCode" WHERE p."PriceList" = ${listNum} AND p."Price" > 0 ORDER BY p."ItemCode"`, 2000);
+    const r = await sapQuery(`SELECT p."ItemCode", i."ItemName", p."Price", p."Currency" FROM "ITM1" p LEFT JOIN "OITM" i ON p."ItemCode" = i."ItemCode" WHERE p."PriceList" = ${listNum} AND p."Price" > 0 ORDER BY p."ItemCode"`, 2000);
     document.getElementById('listeDetailCount').textContent = (r.donnees ? r.donnees.length : 0) + ' articles';
     const thead = document.getElementById('tableListeDetail').querySelector('thead');
     const tbody = document.getElementById('tableListeDetail').querySelector('tbody');
-    thead.innerHTML = '<tr><th>Article</th><th>Description</th><th>Prix</th><th>Devise</th><th>Base</th><th>Facteur</th></tr>';
+    thead.innerHTML = '<tr><th>Article</th><th>Description</th><th>Prix</th><th>Devise</th></tr>';
     if (r.donnees && r.donnees.length > 0) {
       window._listeDetailData = r.donnees;
       renderListeDetail(r.donnees);
@@ -579,8 +579,6 @@ function renderListeDetail(data) {
     <td>${r.ItemName || ''}</td>
     <td style="color:var(--ok)">${Number(r.Price).toFixed(2)}</td>
     <td>${r.Currency || ''}</td>
-    <td>${r.BasePriceList > 0 ? r.BasePriceList : '-'}</td>
-    <td>${r.Factor > 0 ? r.Factor : '-'}</td>
   </tr>`).join('');
 }
 
