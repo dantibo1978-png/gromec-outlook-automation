@@ -1,0 +1,17 @@
+node_modules
+.git
+.github
+*.ps1
+*.vbs
+*.log
+*.csv
+*.xml
+*.md
+*.lnk
+src/
+config.json
+wrangler.jsonc
+package.json
+package-lock.json
+.gitignore
+.assetsignore
