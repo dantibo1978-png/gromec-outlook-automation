@@ -1913,12 +1913,25 @@ while ($true) {
         $queries = if ($null -ne $shallowQ -and $shallowQ -ne "null") { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries.json" -Method Get -TimeoutSec 10 } else { $null }
         if ($null -ne $queries -and $queries -ne "null") {
             foreach ($cleQ in $queries.PSObject.Properties.Name) {
+              try {
                 $req = $queries.$cleQ
+                if ($null -eq $req -or $null -eq $req.statut) {
+                    try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries/$cleQ.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {}
+                    continue
+                }
                 if ($req.statut -ne 'en_attente') {
                     if ($req.statut -eq 'ok' -or $req.statut -eq 'erreur') {
                         $age = 999
-                        if ($req.date) { try { $age = ((Get-Date) - [datetime]$req.date).TotalMinutes } catch {} }
+                        if ($req.date) { try { $age = ((Get-Date) - [datetime]$req.date).TotalMinutes } catch { $age = 999 } }
                         if ($age -gt 5) { try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries/$cleQ.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {} }
+                    }
+                    if ($req.statut -eq 'en_cours') {
+                        $age2 = 999
+                        if ($req.date) { try { $age2 = ((Get-Date) - [datetime]$req.date).TotalMinutes } catch { $age2 = 999 } }
+                        if ($age2 -gt 3) {
+                            $errJ = @{ statut = 'erreur'; erreur = 'Timeout: requete bloquee en_cours'; date_traitement = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss") } | ConvertTo-Json -Compress
+                            try { $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries/$cleQ.json" -Method Patch -Body $errJ -ContentType "application/json" -TimeoutSec 5 } catch {}
+                        }
                     }
                     continue
                 }
@@ -1969,6 +1982,9 @@ while ($true) {
                 } catch {
                     Write-Log "ERREUR Requete SAP '$cleQ' : $($_.Exception.Message)"
                 }
+              } catch {
+                  Write-Log "WARN  Erreur isolee requete '$cleQ' (skipped) : $($_.Exception.Message)"
+              }
             }
         }
     } catch {
@@ -1981,12 +1997,25 @@ while ($true) {
         $updates = if ($null -ne $shallowU -and $shallowU -ne "null") { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates.json" -Method Get -TimeoutSec 10 } else { $null }
         if ($null -ne $updates -and $updates -ne "null") {
             foreach ($cleU in $updates.PSObject.Properties.Name) {
+              try {
                 $upd = $updates.$cleU
+                if ($null -eq $upd -or $null -eq $upd.statut) {
+                    try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates/$cleU.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {}
+                    continue
+                }
                 if ($upd.statut -ne 'en_attente') {
                     if ($upd.statut -eq 'ok' -or $upd.statut -eq 'erreur') {
                         $age = 999
-                        if ($upd.date) { try { $age = ((Get-Date) - [datetime]$upd.date).TotalMinutes } catch {} }
+                        if ($upd.date) { try { $age = ((Get-Date) - [datetime]$upd.date).TotalMinutes } catch { $age = 999 } }
                         if ($age -gt 5) { try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates/$cleU.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {} }
+                    }
+                    if ($upd.statut -eq 'en_cours') {
+                        $age2 = 999
+                        if ($upd.date) { try { $age2 = ((Get-Date) - [datetime]$upd.date).TotalMinutes } catch { $age2 = 999 } }
+                        if ($age2 -gt 3) {
+                            $errJ = @{ statut = 'erreur'; erreur = 'Timeout: MAJ bloquee en_cours'; date_traitement = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss") } | ConvertTo-Json -Compress
+                            try { $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates/$cleU.json" -Method Patch -Body $errJ -ContentType "application/json" -TimeoutSec 5 } catch {}
+                        }
                     }
                     continue
                 }
@@ -2016,6 +2045,9 @@ while ($true) {
                 } catch {
                     Write-Log "ERREUR MAJ SAP '$cleU' : $($_.Exception.Message)"
                 }
+              } catch {
+                  Write-Log "WARN  Erreur isolee MAJ '$cleU' (skipped) : $($_.Exception.Message)"
+              }
             }
         }
     } catch {
