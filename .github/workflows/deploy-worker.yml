@@ -10,6 +10,7 @@ on:
       - 'style.css'
       - 'outils/**'
       - 'VerifierConfirmation.ps1'
+      - '.assetsignore'
       - '.github/workflows/deploy-worker.yml'
 
 jobs:
