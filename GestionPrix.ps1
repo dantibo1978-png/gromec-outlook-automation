@@ -1,5 +1,5 @@
 <#
-  GestionPrix.ps1 — Outil local de gestion des prix SAP
+  GestionPrix.ps1 - Outil local de gestion des prix SAP
   Connexion directe via DI API (zero latence)
   Usage: clic-droit > Executer avec PowerShell
          ou: powershell -ExecutionPolicy Bypass -File "U:\GromecOutlook\GestionPrix.ps1"
@@ -173,15 +173,15 @@ try {
 # ── Menu interactif dans la console ──
 Write-Host ""
 Write-Host "============================================"
-Write-Host "  GESTION PRIX SAP — Commandes disponibles"
+Write-Host "  GESTION PRIX SAP - Commandes disponibles"
 Write-Host "============================================"
-Write-Host "  client <code>    — Chercher prix speciaux d'un client"
-Write-Host "  article <code>   — Chercher prix d'un article"
-Write-Host "  listes           — Charger toutes les listes de prix"
-Write-Host "  save-client      — Sauvegarder modifications client"
-Write-Host "  save-article     — Sauvegarder modifications article"
-Write-Host "  refresh          — Reconnecter SAP"
-Write-Host "  quit             — Quitter"
+Write-Host "  client CODE      - Chercher prix speciaux d un client"
+Write-Host "  article CODE     - Chercher prix d un article"
+Write-Host "  listes           - Charger toutes les listes de prix"
+Write-Host "  save-client      - Sauvegarder modifications client"
+Write-Host "  save-article     - Sauvegarder modifications article"
+Write-Host "  refresh          - Reconnecter SAP"
+Write-Host "  quit             - Quitter"
 Write-Host "============================================"
 Write-Host ""
 
@@ -195,7 +195,7 @@ while ($true) {
 
     switch ($cmd) {
         "client" {
-            if ($arg -eq "") { Write-Host "Usage: client <CodeClient>"; continue }
+            if ($arg -eq "") { Write-Host "Usage: client CodeClient"; continue }
             try {
                 $wsClient.Cells(1,2).Value2 = $arg
                 Write-Host "Recherche client $arg..."
@@ -233,14 +233,14 @@ while ($true) {
                     $wsClient.Cells($row, 10).Value2 = Get-RSField $rsSP "ValidTo"
                     Move-RSNext $rsSP
                 }
-                Write-Host "OK — $cnt lignes chargees dans 'Par client'"
+                Write-Host "OK - $cnt lignes chargees dans 'Par client'"
             } catch {
                 Write-Host "ERREUR: $($_.Exception.Message)"
             }
         }
 
         "article" {
-            if ($arg -eq "") { Write-Host "Usage: article <CodeArticle>"; continue }
+            if ($arg -eq "") { Write-Host "Usage: article CodeArticle"; continue }
             try {
                 $wsArticle.Cells(1,2).Value2 = $arg
                 Write-Host "Recherche article $arg..."
@@ -273,7 +273,7 @@ while ($true) {
                     $wsArticle.Cells($row, 7).Value2 = Get-RSField $rsPL "IsGrossPrc"
                     Move-RSNext $rsPL
                 }
-                Write-Host "OK — $cnt listes de prix chargees dans 'Par article'"
+                Write-Host "OK - $cnt listes de prix chargees dans 'Par article'"
             } catch {
                 Write-Host "ERREUR: $($_.Exception.Message)"
             }
@@ -305,7 +305,7 @@ while ($true) {
                     $wsListes.Cells($row, 9).Value2 = Get-RSField $rsL "ValidTo"
                     Move-RSNext $rsL
                 }
-                Write-Host "OK — $cnt listes chargees"
+                Write-Host "OK - $cnt listes chargees"
             } catch {
                 Write-Host "ERREUR: $($_.Exception.Message)"
             }
@@ -333,7 +333,7 @@ while ($true) {
                     $cnt++
                     $r++
                 }
-                Write-Host "OK — $cnt prix mis a jour"
+                Write-Host "OK - $cnt prix mis a jour"
             } catch {
                 Write-Host "ERREUR: $($_.Exception.Message)"
             }
@@ -354,7 +354,7 @@ while ($true) {
                     $cnt++
                     $r++
                 }
-                Write-Host "OK — $cnt prix de liste mis a jour"
+                Write-Host "OK - $cnt prix de liste mis a jour"
             } catch {
                 Write-Host "ERREUR: $($_.Exception.Message)"
             }
