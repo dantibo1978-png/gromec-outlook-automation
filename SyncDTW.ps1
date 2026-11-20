@@ -1916,7 +1916,8 @@ while ($true) {
                 $req = $queries.$cleQ
                 if ($req.statut -ne 'en_attente') {
                     if ($req.statut -eq 'ok' -or $req.statut -eq 'erreur') {
-                        $age = ((Get-Date) - [datetime]$req.date).TotalMinutes
+                        $age = 999
+                        if ($req.date) { try { $age = ((Get-Date) - [datetime]$req.date).TotalMinutes } catch {} }
                         if ($age -gt 5) { try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_queries/$cleQ.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {} }
                     }
                     continue
@@ -1983,7 +1984,8 @@ while ($true) {
                 $upd = $updates.$cleU
                 if ($upd.statut -ne 'en_attente') {
                     if ($upd.statut -eq 'ok' -or $upd.statut -eq 'erreur') {
-                        $age = ((Get-Date) - [datetime]$upd.date).TotalMinutes
+                        $age = 999
+                        if ($upd.date) { try { $age = ((Get-Date) - [datetime]$upd.date).TotalMinutes } catch {} }
                         if ($age -gt 5) { try { Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/sap_updates/$cleU.json" -Method Delete -TimeoutSec 5 | Out-Null } catch {} }
                     }
                     continue
