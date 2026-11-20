@@ -1,11 +1,10 @@
 <#
-  GenererGestionPrix.ps1 - Genere GestionPrix.xlsm (une seule fois)
-  Apres generation, ouvrir GestionPrix.xlsm directement - tout est dedans.
+  GenererGestionPrix.ps1 - Genere GestionPrix.xlsm
+  Scenario 1: Appliquer facteurs par groupe de produits sur listes de prix clients
 #>
 
 $xlsmPath = "U:\GromecOutlook\GestionPrix.xlsm"
 
-# Supprimer ancien fichier
 if (Test-Path $xlsmPath) { Remove-Item $xlsmPath -Force }
 
 $xl = New-Object -ComObject Excel.Application
@@ -14,73 +13,65 @@ $xl.DisplayAlerts = $false
 
 $wb = $xl.Workbooks.Add()
 
-# Supprimer feuilles en trop
 while ($wb.Sheets.Count -gt 1) { $wb.Sheets($wb.Sheets.Count).Delete() }
 
-$wsClient = $wb.Sheets(1)
-$wsClient.Name = "Par client"
-$wsArticle = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsClient)
-$wsArticle.Name = "Par article"
-$wsListes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsArticle)
+# -- Feuilles --
+$wsFact = $wb.Sheets(1)
+$wsFact.Name = "Facteurs"
+$wsListes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsFact)
 $wsListes.Name = "Listes de prix"
+$wsGroupes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsListes)
+$wsGroupes.Name = "Groupes"
 
-# -- Onglet Par client --
-$wsClient.Cells(1,1).Value2 = "Code client:"
-$wsClient.Cells(2,1).Value2 = "Nom:"
-$wsClient.Cells(1,1).Font.Bold = $true
-$wsClient.Cells(2,1).Font.Bold = $true
-$hdrC = @("Article","Description","Prix","Devise","Escompte %","Liste #","Auto MAJ","Valide","Debut","Fin")
-for ($i = 0; $i -lt $hdrC.Count; $i++) {
-    $c = $wsClient.Cells(4, $i+1)
-    $c.Value2 = $hdrC[$i]
+# ===== ONGLET FACTEURS =====
+# Zone selection
+$wsFact.Cells(1,1).Value2 = "APPLIQUER FACTEURS PAR GROUPE DE PRODUITS"
+$wsFact.Cells(1,1).Font.Bold = $true
+$wsFact.Cells(1,1).Font.Size = 14
+
+$wsFact.Cells(3,1).Value2 = "Liste de prix cible:"
+$wsFact.Cells(3,1).Font.Bold = $true
+$wsFact.Cells(3,3).Value2 = "(Entrez le # de liste, ex: 4)"
+$wsFact.Cells(3,3).Font.Color = 0x808080
+
+$wsFact.Cells(4,1).Value2 = "Liste de base:"
+$wsFact.Cells(4,1).Font.Bold = $true
+$wsFact.Cells(4,3).Value2 = "(Entrez le # de la liste de base, ex: 1)"
+$wsFact.Cells(4,3).Font.Color = 0x808080
+
+$wsFact.Cells(6,1).Value2 = "GROUPES DE PRODUITS ET FACTEURS"
+$wsFact.Cells(6,1).Font.Bold = $true
+$wsFact.Cells(6,1).Font.Size = 11
+
+$hdrF = @("Code Grp","Nom du groupe","Facteur","Nb articles","Apercu prix base","Apercu prix calcule")
+for ($i = 0; $i -lt $hdrF.Count; $i++) {
+    $c = $wsFact.Cells(7, $i+1)
+    $c.Value2 = $hdrF[$i]
     $c.Font.Bold = $true
-    $c.Interior.Color = 0x2E231B
-    $c.Font.Color = 0xAE9B8C
+    $c.Interior.Color = 0x8B4513
+    $c.Font.Color = 0xFFFFFF
 }
-$wsClient.Columns("A:A").ColumnWidth = 16
-$wsClient.Columns("B:B").ColumnWidth = 35
-$wsClient.Columns("C:C").ColumnWidth = 12
-$wsClient.Columns("D:D").ColumnWidth = 8
-$wsClient.Columns("E:E").ColumnWidth = 12
-$wsClient.Columns("F:F").ColumnWidth = 8
-$wsClient.Columns("G:G").ColumnWidth = 10
-$wsClient.Columns("H:H").ColumnWidth = 8
-$wsClient.Columns("I:J").ColumnWidth = 12
+$wsFact.Columns("A:A").ColumnWidth = 10
+$wsFact.Columns("B:B").ColumnWidth = 35
+$wsFact.Columns("C:C").ColumnWidth = 12
+$wsFact.Columns("D:D").ColumnWidth = 12
+$wsFact.Columns("E:E").ColumnWidth = 16
+$wsFact.Columns("F:F").ColumnWidth = 18
 
-# -- Onglet Par article --
-$wsArticle.Cells(1,1).Value2 = "Code article:"
-$wsArticle.Cells(2,1).Value2 = "Description:"
-$wsArticle.Cells(1,1).Font.Bold = $true
-$wsArticle.Cells(2,1).Font.Bold = $true
-$wsArticle.Cells(3,1).Value2 = "PRIX PAR LISTE"
-$wsArticle.Cells(3,1).Font.Bold = $true
-$hdrA = @("#","Liste","Prix","Devise","Base #","Facteur","Brut")
-for ($i = 0; $i -lt $hdrA.Count; $i++) {
-    $c = $wsArticle.Cells(4, $i+1)
-    $c.Value2 = $hdrA[$i]
-    $c.Font.Bold = $true
-    $c.Interior.Color = 0x2E231B
-    $c.Font.Color = 0xAE9B8C
-}
-$wsArticle.Columns("A:A").ColumnWidth = 6
-$wsArticle.Columns("B:B").ColumnWidth = 28
-$wsArticle.Columns("C:C").ColumnWidth = 12
-$wsArticle.Columns("D:D").ColumnWidth = 8
-$wsArticle.Columns("E:E").ColumnWidth = 8
-$wsArticle.Columns("F:F").ColumnWidth = 10
-$wsArticle.Columns("G:G").ColumnWidth = 6
+$wsFact.Cells(3,2).Interior.Color = 0xE0FFFF
+$wsFact.Cells(4,2).Interior.Color = 0xE0FFFF
 
-# -- Onglet Listes de prix --
+# ===== ONGLET LISTES DE PRIX =====
 $hdrL = @("#","Nom","Base #","Facteur","Brut","Devise","Valide","Debut","Fin")
 for ($i = 0; $i -lt $hdrL.Count; $i++) {
     $c = $wsListes.Cells(1, $i+1)
     $c.Value2 = $hdrL[$i]
     $c.Font.Bold = $true
-    $c.Interior.Color = 0x2E231B
-    $c.Font.Color = 0xAE9B8C
+    $c.Interior.Color = 0x8B4513
+    $c.Font.Color = 0xFFFFFF
 }
 $wsListes.Columns("A:A").ColumnWidth = 6
-$wsListes.Columns("B:B").ColumnWidth = 30
+$wsListes.Columns("B:B").ColumnWidth = 35
 $wsListes.Columns("C:C").ColumnWidth = 8
 $wsListes.Columns("D:D").ColumnWidth = 10
 $wsListes.Columns("E:E").ColumnWidth = 6
@@ -88,28 +79,20 @@ $wsListes.Columns("F:F").ColumnWidth = 8
 $wsListes.Columns("G:G").ColumnWidth = 8
 $wsListes.Columns("H:I").ColumnWidth = 12
 
-# -- Boutons --
-$btn1 = $wsClient.Buttons.Add($wsClient.Cells(1,4).Left, $wsClient.Cells(1,4).Top, 90, 22)
-$btn1.Text = "Rechercher"
-$btn1.OnAction = "RechercherClient"
+# ===== ONGLET GROUPES =====
+$hdrG = @("Code","Nom du groupe","Nb articles")
+for ($i = 0; $i -lt $hdrG.Count; $i++) {
+    $c = $wsGroupes.Cells(1, $i+1)
+    $c.Value2 = $hdrG[$i]
+    $c.Font.Bold = $true
+    $c.Interior.Color = 0x8B4513
+    $c.Font.Color = 0xFFFFFF
+}
+$wsGroupes.Columns("A:A").ColumnWidth = 8
+$wsGroupes.Columns("B:B").ColumnWidth = 35
+$wsGroupes.Columns("C:C").ColumnWidth = 12
 
-$btn2 = $wsClient.Buttons.Add($wsClient.Cells(1,6).Left, $wsClient.Cells(1,6).Top, 90, 22)
-$btn2.Text = "Sauvegarder"
-$btn2.OnAction = "SauvegarderClient"
-
-$btn3 = $wsArticle.Buttons.Add($wsArticle.Cells(1,4).Left, $wsArticle.Cells(1,4).Top, 90, 22)
-$btn3.Text = "Rechercher"
-$btn3.OnAction = "RechercherArticle"
-
-$btn4 = $wsArticle.Buttons.Add($wsArticle.Cells(1,6).Left, $wsArticle.Cells(1,6).Top, 90, 22)
-$btn4.Text = "Sauvegarder"
-$btn4.OnAction = "SauvegarderArticle"
-
-$btn5 = $wsListes.Buttons.Add($wsListes.Cells(1,10).Left, $wsListes.Cells(1,10).Top, 110, 22)
-$btn5.Text = "Charger listes"
-$btn5.OnAction = "ChargerListes"
-
-$wsClient.Activate()
+$wsFact.Activate()
 
 # ========== INJECTION VBA ==========
 Write-Host "Injection du code VBA..."
@@ -191,176 +174,61 @@ Private Sub MN(rs As Object)
     CallByName rs, "MoveNext", VbMethod
 End Sub
 
-Public Sub RechercherClient()
-    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Par client")
-    Dim cd As String: cd = Trim(ws.Cells(1, 2).Value)
-    If cd = "" Then MsgBox "Entrez un code client en B1", vbExclamation: Exit Sub
-
+' ==========================================
+'  CHARGER GROUPES DE PRODUITS
+' ==========================================
+Public Sub ChargerGroupes()
     Application.StatusBar = "Connexion SAP..."
     Application.ScreenUpdating = False
     Dim co As Object: Set co = ConnectSAP()
     If co Is Nothing Then Application.StatusBar = False: Application.ScreenUpdating = True: Exit Sub
 
-    On Error GoTo ErrC
+    On Error GoTo ErrG
 
-    Application.StatusBar = "Recherche client..."
-    Dim ri As Object
-    Set ri = RunQuery(co, "SELECT ""CardCode"",""CardName"" FROM ""OCRD"" WHERE ""CardCode"" = '" & Replace(cd, "'", "''") & "'")
-    If RC(ri) = 0 Then
-        MsgBox "Client introuvable: " & cd, vbExclamation
-        GoTo CleanC
-    End If
-    ws.Cells(2, 2).Value = GF(ri, "CardName")
-    Set ri = Nothing
-
+    ' Charger dans onglet Groupes
+    Dim wsG As Worksheet: Set wsG = ThisWorkbook.Sheets("Groupes")
     Dim lr As Long
-    lr = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-    If lr > 4 Then ws.Range(ws.Cells(5, 1), ws.Cells(lr, 10)).ClearContents
+    lr = wsG.Cells(wsG.Rows.Count, 1).End(xlUp).Row
+    If lr > 1 Then wsG.Range(wsG.Cells(2, 1), wsG.Cells(lr, 3)).ClearContents
 
-    Application.StatusBar = "Chargement prix speciaux..."
-    Dim rsSP As Object
-    Set rsSP = RunQuery(co, "SELECT s.""ItemCode"", i.""ItemName"", s.""Price"", s.""Currency"", s.""Discount"", s.""ListNum"", s.""AutoUpdt"", s.""Valid"", s.""ValidFrom"", s.""ValidTo"" FROM ""OSPP"" s LEFT JOIN ""OITM"" i ON s.""ItemCode"" = i.""ItemCode"" WHERE s.""CardCode"" = '" & Replace(cd, "'", "''") & "' ORDER BY s.""ItemCode""")
-    Dim cnt As Long: cnt = RC(rsSP)
+    Application.StatusBar = "Chargement groupes de produits..."
+    Dim rsG As Object
+    Set rsG = RunQuery(co, "SELECT g.""ItmsGrpCod"", g.""ItmsGrpNam"", COUNT(i.""ItemCode"") AS ""NbItems"" FROM ""OITB"" g LEFT JOIN ""OITM"" i ON g.""ItmsGrpCod"" = i.""ItmsGrpCod"" GROUP BY g.""ItmsGrpCod"", g.""ItmsGrpNam"" ORDER BY g.""ItmsGrpCod""")
+    Dim cnt As Long: cnt = RC(rsG)
     Dim r As Long
     For r = 1 To cnt
-        If r > 5000 Then Exit For
-        ws.Cells(4 + r, 1).Value = GF(rsSP, "ItemCode")
-        ws.Cells(4 + r, 2).Value = GF(rsSP, "ItemName")
-        ws.Cells(4 + r, 3).Value = GF(rsSP, "Price")
-        ws.Cells(4 + r, 4).Value = GF(rsSP, "Currency")
-        ws.Cells(4 + r, 5).Value = GF(rsSP, "Discount")
-        ws.Cells(4 + r, 6).Value = GF(rsSP, "ListNum")
-        ws.Cells(4 + r, 7).Value = GF(rsSP, "AutoUpdt")
-        ws.Cells(4 + r, 8).Value = GF(rsSP, "Valid")
-        ws.Cells(4 + r, 9).Value = GF(rsSP, "ValidFrom")
-        ws.Cells(4 + r, 10).Value = GF(rsSP, "ValidTo")
-        MN rsSP
+        wsG.Cells(1 + r, 1).Value = GF(rsG, "ItmsGrpCod")
+        wsG.Cells(1 + r, 2).Value = GF(rsG, "ItmsGrpNam")
+        wsG.Cells(1 + r, 3).Value = GF(rsG, "NbItems")
+        MN rsG
     Next r
 
-    Application.StatusBar = cnt & " prix speciaux charges"
-    GoTo CleanC
-ErrC:
-    MsgBox "Erreur: " & Err.Description, vbCritical
-CleanC:
-    On Error Resume Next
-    co.Disconnect
-    Set co = Nothing
-    Application.ScreenUpdating = True
-    Application.StatusBar = False
-End Sub
+    ' Aussi charger dans onglet Facteurs (lignes 8+)
+    Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
+    lr = wsF.Cells(wsF.Rows.Count, 1).End(xlUp).Row
+    If lr > 7 Then wsF.Range(wsF.Cells(8, 1), wsF.Cells(lr, 6)).ClearContents
 
-Public Sub SauvegarderClient()
-    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Par client")
-    Dim cd As String: cd = Trim(ws.Cells(1, 2).Value)
-    If cd = "" Then Exit Sub
-
-    Dim co As Object: Set co = ConnectSAP()
-    If co Is Nothing Then Exit Sub
-
-    On Error GoTo ErrSC
-    Dim r As Long, cnt As Long, sql As String
-    r = 5
-    Do While ws.Cells(r, 1).Value <> ""
-        Dim ic As String: ic = ws.Cells(r, 1).Value
-        sql = "UPDATE ""OSPP"" SET " _
-            & """Price"" = " & ws.Cells(r, 3).Value _
-            & ", ""Discount"" = " & ws.Cells(r, 5).Value _
-            & ", ""ListNum"" = " & ws.Cells(r, 6).Value
-        If ws.Cells(r, 10).Value <> "" Then sql = sql & ", ""ValidTo"" = '" & Format(ws.Cells(r, 10).Value, "yyyy-MM-dd") & "'"
-        sql = sql & " WHERE ""CardCode"" = '" & Replace(cd, "'", "''") & "' AND ""ItemCode"" = '" & Replace(ic, "'", "''") & "'"
-        Dim rsU As Object
-        Set rsU = RunQuery(co, sql)
-        cnt = cnt + 1
-        r = r + 1
-    Loop
-    MsgBox cnt & " prix mis a jour", vbInformation
-    GoTo CleanSC
-ErrSC:
-    MsgBox "Erreur: " & Err.Description, vbCritical
-CleanSC:
-    On Error Resume Next
-    co.Disconnect: Set co = Nothing
-End Sub
-
-Public Sub RechercherArticle()
-    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Par article")
-    Dim cd As String: cd = Trim(ws.Cells(1, 2).Value)
-    If cd = "" Then MsgBox "Entrez un code article en B1", vbExclamation: Exit Sub
-
-    Application.StatusBar = "Connexion SAP..."
-    Application.ScreenUpdating = False
-    Dim co As Object: Set co = ConnectSAP()
-    If co Is Nothing Then Application.StatusBar = False: Application.ScreenUpdating = True: Exit Sub
-
-    On Error GoTo ErrA
-
-    Dim ri As Object
-    Set ri = RunQuery(co, "SELECT ""ItemCode"",""ItemName"" FROM ""OITM"" WHERE ""ItemCode"" = '" & Replace(cd, "'", "''") & "'")
-    If RC(ri) = 0 Then
-        MsgBox "Article introuvable: " & cd, vbExclamation
-        GoTo CleanA
-    End If
-    ws.Cells(2, 2).Value = GF(ri, "ItemName")
-    Set ri = Nothing
-
-    Dim lr As Long
-    lr = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-    If lr > 4 Then ws.Range(ws.Cells(5, 1), ws.Cells(lr, 7)).ClearContents
-
-    Application.StatusBar = "Chargement prix par liste..."
-    Dim rsPL As Object
-    Set rsPL = RunQuery(co, "SELECT p.""PriceList"", l.""ListName"", p.""Price"", p.""Currency"", l.""BASE_NUM"", l.""Factor"", l.""IsGrossPrc"" FROM ""ITM1"" p LEFT JOIN ""OPLN"" l ON p.""PriceList"" = l.""ListNum"" WHERE p.""ItemCode"" = '" & Replace(cd, "'", "''") & "' ORDER BY p.""PriceList""")
-    Dim cnt As Long: cnt = RC(rsPL)
-    Dim r As Long
     For r = 1 To cnt
-        ws.Cells(4 + r, 1).Value = GF(rsPL, "PriceList")
-        ws.Cells(4 + r, 2).Value = GF(rsPL, "ListName")
-        ws.Cells(4 + r, 3).Value = GF(rsPL, "Price")
-        ws.Cells(4 + r, 4).Value = GF(rsPL, "Currency")
-        ws.Cells(4 + r, 5).Value = GF(rsPL, "BASE_NUM")
-        ws.Cells(4 + r, 6).Value = GF(rsPL, "Factor")
-        ws.Cells(4 + r, 7).Value = GF(rsPL, "IsGrossPrc")
-        MN rsPL
+        wsF.Cells(7 + r, 1).Value = wsG.Cells(1 + r, 1).Value
+        wsF.Cells(7 + r, 2).Value = wsG.Cells(1 + r, 2).Value
+        wsF.Cells(7 + r, 3).Value = ""
+        wsF.Cells(7 + r, 3).Interior.Color = 15792383
+        wsF.Cells(7 + r, 4).Value = wsG.Cells(1 + r, 3).Value
     Next r
 
-    Application.StatusBar = cnt & " listes de prix chargees"
-    GoTo CleanA
-ErrA:
+    Application.StatusBar = cnt & " groupes charges - Entrez les facteurs en colonne C"
+    GoTo CleanG
+ErrG:
     MsgBox "Erreur: " & Err.Description, vbCritical
-CleanA:
+CleanG:
     On Error Resume Next
     co.Disconnect: Set co = Nothing
     Application.ScreenUpdating = True
-    Application.StatusBar = False
 End Sub
 
-Public Sub SauvegarderArticle()
-    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Par article")
-    Dim cd As String: cd = Trim(ws.Cells(1, 2).Value)
-    If cd = "" Then Exit Sub
-
-    Dim co As Object: Set co = ConnectSAP()
-    If co Is Nothing Then Exit Sub
-
-    On Error GoTo ErrSA
-    Dim r As Long, cnt As Long
-    r = 5
-    Do While ws.Cells(r, 1).Value <> ""
-        Dim ln As String: ln = ws.Cells(r, 1).Value
-        Dim rsU As Object
-        Set rsU = RunQuery(co, "UPDATE ""ITM1"" SET ""Price"" = " & ws.Cells(r, 3).Value & " WHERE ""ItemCode"" = '" & Replace(cd, "'", "''") & "' AND ""PriceList"" = " & ln)
-        cnt = cnt + 1
-        r = r + 1
-    Loop
-    MsgBox cnt & " prix de liste mis a jour", vbInformation
-    GoTo CleanSA
-ErrSA:
-    MsgBox "Erreur: " & Err.Description, vbCritical
-CleanSA:
-    On Error Resume Next
-    co.Disconnect: Set co = Nothing
-End Sub
-
+' ==========================================
+'  CHARGER LISTES DE PRIX
+' ==========================================
 Public Sub ChargerListes()
     Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Listes de prix")
     Application.StatusBar = "Connexion SAP..."
@@ -401,6 +269,194 @@ CleanL:
     Application.ScreenUpdating = True
     Application.StatusBar = False
 End Sub
+
+' ==========================================
+'  APERCU - Calculer prix avant application
+' ==========================================
+Public Sub ApercuFacteurs()
+    Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
+    Dim listeCible As Variant: listeCible = wsF.Cells(3, 2).Value
+    Dim listeBase As Variant: listeBase = wsF.Cells(4, 2).Value
+
+    If listeCible = "" Or listeBase = "" Then
+        MsgBox "Entrez le # de liste cible (B3) et liste de base (B4)", vbExclamation
+        Exit Sub
+    End If
+
+    Application.StatusBar = "Connexion SAP pour apercu..."
+    Application.ScreenUpdating = False
+    Dim co As Object: Set co = ConnectSAP()
+    If co Is Nothing Then Application.StatusBar = False: Application.ScreenUpdating = True: Exit Sub
+
+    On Error GoTo ErrAp
+
+    Dim r As Long, grpCode As Variant, facteur As Double
+    r = 8
+    Do While wsF.Cells(r, 1).Value <> ""
+        facteur = 0
+        If wsF.Cells(r, 3).Value <> "" Then
+            facteur = CDbl(wsF.Cells(r, 3).Value)
+        End If
+
+        If facteur <> 0 Then
+            grpCode = wsF.Cells(r, 1).Value
+            Dim rsAp As Object
+            Set rsAp = RunQuery(co, "SELECT AVG(p.""Price"") AS ""AvgBase"" FROM ""ITM1"" p INNER JOIN ""OITM"" i ON p.""ItemCode"" = i.""ItemCode"" WHERE i.""ItmsGrpCod"" = " & grpCode & " AND p.""PriceList"" = " & listeBase & " AND p.""Price"" > 0")
+            If RC(rsAp) > 0 Then
+                Dim avgBase As Double
+                avgBase = CDbl("0" & GF(rsAp, "AvgBase"))
+                wsF.Cells(r, 5).Value = Format(avgBase, "#,##0.00")
+                wsF.Cells(r, 6).Value = Format(avgBase * facteur, "#,##0.00")
+            End If
+            Set rsAp = Nothing
+        Else
+            wsF.Cells(r, 5).Value = ""
+            wsF.Cells(r, 6).Value = ""
+        End If
+        r = r + 1
+    Loop
+
+    Application.StatusBar = "Apercu calcule"
+    GoTo CleanAp
+ErrAp:
+    MsgBox "Erreur: " & Err.Description, vbCritical
+CleanAp:
+    On Error Resume Next
+    co.Disconnect: Set co = Nothing
+    Application.ScreenUpdating = True
+    Application.StatusBar = False
+End Sub
+
+' ==========================================
+'  APPLIQUER FACTEURS - Via DI API oItems
+' ==========================================
+Public Sub AppliquerFacteurs()
+    Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
+    Dim listeCible As Variant: listeCible = wsF.Cells(3, 2).Value
+    Dim listeBase As Variant: listeBase = wsF.Cells(4, 2).Value
+
+    If listeCible = "" Or listeBase = "" Then
+        MsgBox "Entrez le # de liste cible (B3) et liste de base (B4)", vbExclamation
+        Exit Sub
+    End If
+
+    ' Collecter groupes avec facteurs
+    Dim grpCodes() As String, grpFactors() As Double
+    Dim nbGrp As Long: nbGrp = 0
+    Dim r As Long: r = 8
+    Do While wsF.Cells(r, 1).Value <> ""
+        If wsF.Cells(r, 3).Value <> "" And CDbl("0" & wsF.Cells(r, 3).Value) <> 0 Then
+            nbGrp = nbGrp + 1
+            ReDim Preserve grpCodes(1 To nbGrp)
+            ReDim Preserve grpFactors(1 To nbGrp)
+            grpCodes(nbGrp) = CStr(wsF.Cells(r, 1).Value)
+            grpFactors(nbGrp) = CDbl(wsF.Cells(r, 3).Value)
+        End If
+        r = r + 1
+    Loop
+
+    If nbGrp = 0 Then
+        MsgBox "Aucun facteur saisi. Entrez des facteurs en colonne C.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Compter articles concernes
+    Application.StatusBar = "Comptage des articles..."
+    Dim co As Object: Set co = ConnectSAP()
+    If co Is Nothing Then Exit Sub
+
+    On Error GoTo ErrApp
+
+    Dim inList As String, g As Long
+    inList = ""
+    For g = 1 To nbGrp
+        If inList <> "" Then inList = inList & ","
+        inList = inList & grpCodes(g)
+    Next g
+
+    Dim rsCount As Object
+    Set rsCount = RunQuery(co, "SELECT COUNT(*) AS ""Total"" FROM ""OITM"" WHERE ""ItmsGrpCod"" IN (" & inList & ")")
+    Dim totalItems As Long: totalItems = CLng(GF(rsCount, "Total"))
+
+    ' Resume et confirmation
+    Dim msg As String
+    msg = "RESUME DE L'OPERATION" & vbCrLf & vbCrLf
+    msg = msg & "Liste cible: " & listeCible & vbCrLf
+    msg = msg & "Liste de base: " & listeBase & vbCrLf
+    msg = msg & "Articles concernes: " & totalItems & vbCrLf & vbCrLf
+    For g = 1 To nbGrp
+        msg = msg & "Groupe " & grpCodes(g) & " -> facteur " & grpFactors(g) & vbCrLf
+    Next g
+    msg = msg & vbCrLf & "CONFIRMER l'application?"
+
+    If MsgBox(msg, vbYesNo + vbQuestion, "Confirmer") <> vbYes Then
+        GoTo CleanApp
+    End If
+
+    ' Appliquer via DI API - Update Items prices
+    Dim cntOK As Long, cntErr As Long
+    cntOK = 0: cntErr = 0
+
+    For g = 1 To nbGrp
+        Application.StatusBar = "Groupe " & grpCodes(g) & " - Chargement articles..."
+        Dim rsItems As Object
+        Set rsItems = RunQuery(co, "SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & grpCodes(g))
+        Dim nbItems As Long: nbItems = RC(rsItems)
+        Dim i As Long
+
+        For i = 1 To nbItems
+            Dim itemCode As String
+            itemCode = CStr(GF(rsItems, "ItemCode"))
+            Application.StatusBar = "Groupe " & grpCodes(g) & " - " & i & "/" & nbItems & " - " & itemCode
+
+            ' Charger l'item via DI API (oItems = 4)
+            Dim oItem As Object
+            Set oItem = co.GetBusinessObject(4)
+            Dim found As Boolean
+            found = CallByName(oItem, "GetByKey", VbMethod, itemCode)
+
+            If found Then
+                ' Acceder a Prices (collection de lignes de prix)
+                Dim oPrices As Object
+                Set oPrices = CallByName(oItem, "PriceList", VbGet)
+
+                ' Trouver la ligne de la liste cible via SetCurrentLine
+                CallByName oPrices, "SetCurrentLine", VbMethod, CLng(listeCible)
+
+                ' Setter BasePriceList et Factor
+                CallByName oPrices, "BasePriceList", VbLet, CLng(listeBase)
+                CallByName oPrices, "Factor", VbLet, grpFactors(g)
+
+                Dim retU As Long
+                retU = CallByName(oItem, "Update", VbMethod)
+                If retU = 0 Then
+                    cntOK = cntOK + 1
+                Else
+                    cntErr = cntErr + 1
+                End If
+            Else
+                cntErr = cntErr + 1
+            End If
+
+            Set oItem = Nothing
+            MN rsItems
+            DoEvents
+        Next i
+        Set rsItems = Nothing
+    Next g
+
+    MsgBox "Termine!" & vbCrLf & "Succes: " & cntOK & vbCrLf & "Erreurs: " & cntErr, vbInformation
+    Application.StatusBar = "Termine - " & cntOK & " articles mis a jour, " & cntErr & " erreurs"
+    GoTo CleanApp
+
+ErrApp:
+    MsgBox "Erreur: " & Err.Description, vbCritical
+    Application.StatusBar = False
+CleanApp:
+    On Error Resume Next
+    co.Disconnect: Set co = Nothing
+    Application.ScreenUpdating = True
+End Sub
 '@
 
 try {
@@ -416,7 +472,7 @@ try {
 }
 
 # Sauvegarder en xlsm
-$wb.SaveAs($xlsmPath, 52)  # 52 = xlOpenXMLWorkbookMacroEnabled
+$wb.SaveAs($xlsmPath, 52)
 Write-Host "Fichier sauvegarde: $xlsmPath"
 $wb.Close($false)
 $xl.Quit()
@@ -425,4 +481,9 @@ Write-Host ""
 Write-Host "====================================="
 Write-Host "  GestionPrix.xlsm cree avec succes!"
 Write-Host "  Ouvrez: $xlsmPath"
+Write-Host "  Macros (Alt+F8):"
+Write-Host "    - ChargerGroupes : Charge les groupes de produits"
+Write-Host "    - ChargerListes  : Charge les listes de prix"
+Write-Host "    - ApercuFacteurs : Calcule un apercu avant application"
+Write-Host "    - AppliquerFacteurs : Applique les facteurs via DI API"
 Write-Host "====================================="
