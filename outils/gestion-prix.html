@@ -38,7 +38,7 @@
   .panel.active{display:block}
 
   .search-bar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
-  .search-bar input{
+  .search-bar input,.search-bar select{
     background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;
     color:var(--text);padding:8px 14px;font-size:14px;min-width:200px;
     font-family:'IBM Plex Mono',monospace;
@@ -66,10 +66,10 @@
   .status.ok{color:var(--ok)}
 
   table{width:100%;border-collapse:collapse;font-size:13px;font-family:'IBM Plex Mono',monospace}
-  th{text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--rule);font-size:12px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;background:var(--panel)}
+  th{text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--rule);font-size:12px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;background:var(--panel);white-space:nowrap}
   td{padding:7px 10px;border-bottom:1px solid var(--rule)}
   tr:hover td{background:rgba(94,168,255,0.04)}
-  .table-wrap{max-height:60vh;overflow-y:auto;border-radius:0 0 8px 8px}
+  .table-wrap{max-height:60vh;overflow-y:auto;overflow-x:auto;border-radius:0 0 8px 8px}
 
   td input,td select{
     background:transparent;border:1px solid transparent;border-radius:4px;
@@ -77,7 +77,7 @@
     font-family:'IBM Plex Mono',monospace;
   }
   td input:focus,td select:focus{outline:none;border-color:var(--accent);background:var(--panel-2)}
-  td.modified input{border-color:var(--warn);background:var(--warn-bg)}
+  td.modified input,td.modified select{border-color:var(--warn);background:var(--warn-bg)}
 
   .info-box{background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;padding:14px 18px;margin-bottom:14px}
   .info-box h3{margin:0 0 6px;font-size:15px;font-family:'Space Grotesk',sans-serif}
@@ -87,16 +87,14 @@
   .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
   .badge-ok{background:var(--ok-bg);color:var(--ok)}
   .badge-warn{background:var(--warn-bg);color:var(--warn)}
-  .badge-err{background:var(--ecart-bg);color:var(--ecart)}
 
   .toolbar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap}
   .toolbar-left{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .toolbar-right{display:flex;gap:8px;align-items:center}
+  .toolbar-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 
   .chip{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;background:var(--panel-2);color:var(--muted);border:1px solid var(--rule)}
 
   .empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
-  .empty-state .icon{font-size:40px;margin-bottom:10px}
 
   .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center}
   .modal-overlay.show{display:flex}
@@ -109,6 +107,18 @@
   }
   .modal input:focus,.modal select:focus{outline:none;border-color:var(--accent)}
   .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+
+  .bulk-bar{background:var(--panel-2);border:1px solid var(--warn);border-radius:8px;padding:12px 16px;margin-bottom:12px;display:none;gap:10px;align-items:center;flex-wrap:wrap}
+  .bulk-bar.show{display:flex}
+  .bulk-bar input,.bulk-bar select{
+    background:var(--bg);border:1px solid var(--rule);border-radius:6px;
+    color:var(--text);padding:6px 10px;font-size:13px;font-family:'IBM Plex Mono',monospace;
+  }
+  .bulk-bar label{color:var(--muted);font-size:12px;margin-right:4px}
+
+  .section-title{font-family:'Space Grotesk',sans-serif;font-size:15px;margin:16px 0 8px;font-weight:600}
+
+  input[type="checkbox"]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
 </style>
 </head>
 <body>
@@ -116,7 +126,7 @@
   <a class="back" href="../index.html">← Dashboard</a>
   <header>
     <h1>Gestion des Prix SAP</h1>
-    <p>Recherche, consultation et modification des prix — listes de prix, prix speciaux, remises</p>
+    <p>Consultation et modification des prix — listes de prix, prix speciaux, remises, facteurs</p>
   </header>
 
   <div class="tabs">
@@ -126,7 +136,7 @@
     <div class="tab" data-panel="panelImport">Import prix</div>
   </div>
 
-  <!-- ═══════════════════ ONGLET : PAR CLIENT ═══════════════════ -->
+  <!-- ═══════════════════ PAR CLIENT ═══════════════════ -->
   <div class="panel active" id="panelClient">
     <div class="search-bar">
       <input type="text" id="inputClient" placeholder="Code client (ex: C10045)" autocomplete="off">
@@ -140,16 +150,29 @@
         <span class="chip" id="clientCountChip"></span>
       </div>
       <div class="toolbar-right">
+        <button class="btn btn-sm btn-ghost" id="btnBulkClient">Modification en lot</button>
         <button class="btn btn-sm btn-ghost" id="btnAddSpecialPrice">+ Ajouter prix</button>
-        <button class="btn btn-sm btn-ok" id="btnSaveClient" style="display:none">Sauvegarder</button>
+        <button class="btn btn-sm btn-ok" id="btnSaveClient" style="display:none">Sauvegarder modifications</button>
       </div>
+    </div>
+    <div class="bulk-bar" id="bulkBarClient">
+      <label>Action:</label>
+      <select id="bulkClientAction">
+        <option value="discount">Appliquer escompte %</option>
+        <option value="price_pct">Ajuster prix +/- %</option>
+        <option value="valid_to">Changer date fin</option>
+        <option value="list_num">Changer liste prix</option>
+      </select>
+      <input type="text" id="bulkClientValue" placeholder="Valeur" style="width:120px">
+      <button class="btn btn-sm btn-primary" id="btnApplyBulkClient">Appliquer aux selectionnes</button>
+      <button class="btn btn-sm btn-ghost" onclick="document.getElementById('bulkBarClient').classList.remove('show')">Fermer</button>
     </div>
     <div class="table-wrap">
       <table id="tableClient"><thead></thead><tbody></tbody></table>
     </div>
   </div>
 
-  <!-- ═══════════════════ ONGLET : PAR ARTICLE ═══════════════════ -->
+  <!-- ═══════════════════ PAR ARTICLE ═══════════════════ -->
   <div class="panel" id="panelArticle">
     <div class="search-bar">
       <input type="text" id="inputArticle" placeholder="Code article (ex: 551250)" autocomplete="off">
@@ -157,18 +180,28 @@
       <span class="status" id="statusArticle"></span>
     </div>
     <div id="articleInfo" style="display:none"></div>
+
     <div id="articlePriceListSection" style="display:none">
-      <h3 style="font-family:'Space Grotesk',sans-serif;font-size:15px;margin:16px 0 8px">Listes de prix</h3>
+      <div class="toolbar">
+        <div class="toolbar-left"><h3 class="section-title" style="margin:0">Prix par liste</h3></div>
+        <div class="toolbar-right">
+          <button class="btn btn-sm btn-ok" id="btnSaveArticlePL" style="display:none">Sauvegarder listes</button>
+        </div>
+      </div>
       <div class="table-wrap">
         <table id="tableArticlePL"><thead></thead><tbody></tbody></table>
       </div>
     </div>
+
     <div id="articleSpecialSection" style="display:none">
-      <h3 style="font-family:'Space Grotesk',sans-serif;font-size:15px;margin:16px 0 8px">Prix speciaux par client</h3>
       <div class="toolbar">
-        <div class="toolbar-left"><span class="chip" id="articleSpecialCount"></span></div>
+        <div class="toolbar-left">
+          <h3 class="section-title" style="margin:0">Prix speciaux par client</h3>
+          <span class="chip" id="articleSpecialCount"></span>
+        </div>
         <div class="toolbar-right">
-          <button class="btn btn-sm btn-ok" id="btnSaveArticle" style="display:none">Sauvegarder</button>
+          <button class="btn btn-sm btn-ghost" id="btnAddSpecialFromArticle">+ Ajouter prix special</button>
+          <button class="btn btn-sm btn-ok" id="btnSaveArticleSP" style="display:none">Sauvegarder speciaux</button>
         </div>
       </div>
       <div class="table-wrap">
@@ -177,7 +210,7 @@
     </div>
   </div>
 
-  <!-- ═══════════════════ ONGLET : LISTES DE PRIX ═══════════════════ -->
+  <!-- ═══════════════════ LISTES DE PRIX ═══════════════════ -->
   <div class="panel" id="panelListes">
     <div class="search-bar">
       <input type="text" id="inputListeFilter" placeholder="Filtrer par nom de liste..." autocomplete="off">
@@ -195,8 +228,19 @@
         </div>
         <div class="toolbar-right">
           <input type="text" id="inputListeArticleFilter" placeholder="Filtrer articles..." style="background:var(--panel-2);border:1px solid var(--rule);border-radius:6px;color:var(--text);padding:6px 12px;font-size:13px;font-family:'IBM Plex Mono',monospace">
+          <button class="btn btn-sm btn-ghost" id="btnBulkListe">Modification en lot</button>
           <button class="btn btn-sm btn-ok" id="btnSaveListe" style="display:none">Sauvegarder</button>
         </div>
+      </div>
+      <div class="bulk-bar" id="bulkBarListe">
+        <label>Action:</label>
+        <select id="bulkListeAction">
+          <option value="price_pct">Ajuster prix +/- %</option>
+          <option value="price_set">Fixer prix</option>
+        </select>
+        <input type="text" id="bulkListeValue" placeholder="Valeur" style="width:120px">
+        <button class="btn btn-sm btn-primary" id="btnApplyBulkListe">Appliquer aux selectionnes</button>
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('bulkBarListe').classList.remove('show')">Fermer</button>
       </div>
       <div class="table-wrap">
         <table id="tableListeDetail"><thead></thead><tbody></tbody></table>
@@ -204,7 +248,7 @@
     </div>
   </div>
 
-  <!-- ═══════════════════ ONGLET : IMPORT PRIX ═══════════════════ -->
+  <!-- ═══════════════════ IMPORT PRIX ═══════════════════ -->
   <div class="panel" id="panelImport">
     <div class="info-box">
       <h3>Import de prix en lot</h3>
@@ -237,6 +281,16 @@
     <input type="text" id="addPriceItem" placeholder="551250">
     <label>Prix</label>
     <input type="number" id="addPriceValue" step="0.01" placeholder="0.00">
+    <label>Devise</label>
+    <input type="text" id="addPriceCurrency" value="CAD" placeholder="CAD">
+    <label>Escompte %</label>
+    <input type="number" id="addPriceDiscount" step="0.01" value="0">
+    <label>Liste de prix liee</label>
+    <input type="number" id="addPriceListNum" value="-1" placeholder="-1 = aucune">
+    <label>Date debut</label>
+    <input type="date" id="addPriceFrom">
+    <label>Date fin</label>
+    <input type="date" id="addPriceTo">
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="document.getElementById('modalAddPrice').classList.remove('show')">Annuler</button>
       <button class="btn btn-ok" id="btnConfirmAddPrice">Ajouter</button>
@@ -246,10 +300,9 @@
 
 <script>
 const FIREBASE_URL = 'https://gromec-outlook-vba-default-rtdb.firebaseio.com/';
-let pendingChanges = {};
 let queryCounter = 0;
 
-// ── Tabs ──────────────────────────────────────────────────────
+// ── Tabs ──
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
@@ -259,27 +312,24 @@ document.querySelectorAll('.tab').forEach(t => {
   });
 });
 
-// ── SAP Query Engine ──────────────────────────────────────────
+// ── SAP Query Engine ──
 function sapQuery(sql, limite) {
   return new Promise((resolve, reject) => {
     const id = 'q_' + Date.now() + '_' + (++queryCounter);
     const payload = { sql, statut: 'en_attente', date: new Date().toISOString() };
     if (limite) payload.limite = limite;
     fetch(FIREBASE_URL + 'gromec_vba/sap_queries/' + id + '.json', {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-      headers: { 'Content-Type': 'application/json' }
+      method: 'PUT', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' }
     }).then(() => {
       let attempts = 0;
       const poll = setInterval(() => {
         attempts++;
         if (attempts > 60) { clearInterval(poll); reject(new Error('Timeout — SyncDTW ne repond pas')); return; }
         fetch(FIREBASE_URL + 'gromec_vba/sap_queries/' + id + '.json')
-          .then(r => r.json())
-          .then(data => {
+          .then(r => r.json()).then(data => {
             if (!data) { clearInterval(poll); reject(new Error('Requete disparue')); return; }
             if (data.statut === 'ok') { clearInterval(poll); resolve(data); }
-            else if (data.statut === 'erreur') { clearInterval(poll); reject(new Error(data.erreur)); }
+            else if (data.statut === 'erreur') { clearInterval(poll); reject(new Error(data.erreur || 'Erreur SAP')); }
           }).catch(() => {});
       }, 1000);
     }).catch(reject);
@@ -291,20 +341,17 @@ function sapUpdate(sql) {
     const id = 'u_' + Date.now() + '_' + (++queryCounter);
     const payload = { sql, statut: 'en_attente', date: new Date().toISOString() };
     fetch(FIREBASE_URL + 'gromec_vba/sap_updates/' + id + '.json', {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-      headers: { 'Content-Type': 'application/json' }
+      method: 'PUT', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' }
     }).then(() => {
       let attempts = 0;
       const poll = setInterval(() => {
         attempts++;
         if (attempts > 60) { clearInterval(poll); reject(new Error('Timeout')); return; }
         fetch(FIREBASE_URL + 'gromec_vba/sap_updates/' + id + '.json')
-          .then(r => r.json())
-          .then(data => {
+          .then(r => r.json()).then(data => {
             if (!data) { clearInterval(poll); reject(new Error('MAJ disparue')); return; }
             if (data.statut === 'ok') { clearInterval(poll); resolve(data); }
-            else if (data.statut === 'erreur') { clearInterval(poll); reject(new Error(data.erreur)); }
+            else if (data.statut === 'erreur') { clearInterval(poll); reject(new Error(data.erreur || 'Erreur SAP')); }
           }).catch(() => {});
       }, 1000);
     }).catch(reject);
@@ -312,61 +359,6 @@ function sapUpdate(sql) {
 }
 
 function escSql(v) { return ('' + v).replace(/'/g, "''"); }
-
-// ── PAR CLIENT ────────────────────────────────────────────────
-document.getElementById('btnSearchClient').addEventListener('click', searchClient);
-document.getElementById('inputClient').addEventListener('keydown', e => { if (e.key === 'Enter') searchClient(); });
-
-async function searchClient() {
-  const code = document.getElementById('inputClient').value.trim();
-  if (!code) return;
-  const st = document.getElementById('statusClient');
-  st.textContent = 'Recherche en cours...'; st.className = 'status loading';
-  document.getElementById('clientInfo').style.display = 'none';
-  document.getElementById('clientToolbar').style.display = 'none';
-  document.getElementById('tableClient').querySelector('thead').innerHTML = '';
-  document.getElementById('tableClient').querySelector('tbody').innerHTML = '';
-
-  try {
-    // Info client
-    const infoR = await sapQuery(`SELECT "CardCode","CardName","GroupCode","Currency","Phone1","E_Mail" FROM "OCRD" WHERE "CardCode" = '${escSql(code)}'`, 1);
-    if (!infoR.donnees || infoR.donnees.length === 0) {
-      st.textContent = 'Client introuvable'; st.className = 'status error'; return;
-    }
-    const client = infoR.donnees[0];
-    document.getElementById('clientInfo').style.display = 'block';
-    document.getElementById('clientInfo').innerHTML = `<div class="info-box"><h3>${client.CardCode} — ${client.CardName || ''}</h3><div class="detail">Groupe: <span>${client.GroupCode || '-'}</span> | Devise: <span>${client.Currency || '-'}</span> | Tel: <span>${client.Phone1 || '-'}</span> | Courriel: <span>${client.E_Mail || '-'}</span></div></div>`;
-
-    // Prix speciaux
-    const spR = await sapQuery(`SELECT s."ItemCode", i."ItemName", s."Price", s."Currency", s."StartDate", s."EndDate", s."Amount", s."Discount" FROM "OSPP" s LEFT JOIN "OITM" i ON s."ItemCode" = i."ItemCode" WHERE s."CardCode" = '${escSql(code)}' ORDER BY s."ItemCode"`, 1000);
-
-    document.getElementById('clientToolbar').style.display = 'flex';
-    document.getElementById('clientChip').textContent = client.CardCode;
-    document.getElementById('clientCountChip').textContent = (spR.donnees ? spR.donnees.length : 0) + ' prix speciaux';
-
-    const thead = document.getElementById('tableClient').querySelector('thead');
-    const tbody = document.getElementById('tableClient').querySelector('tbody');
-    thead.innerHTML = '<tr><th>Article</th><th>Description</th><th>Prix</th><th>Devise</th><th>Debut</th><th>Fin</th><th>Escompte %</th><th></th></tr>';
-
-    if (!spR.donnees || spR.donnees.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px">Aucun prix special pour ce client</td></tr>';
-    } else {
-      tbody.innerHTML = spR.donnees.map((r, i) => `<tr data-idx="${i}" data-card="${escSql(code)}" data-item="${r.ItemCode}">
-        <td><span style="color:var(--accent)">${r.ItemCode}</span></td>
-        <td>${r.ItemName || ''}</td>
-        <td><input type="number" step="0.01" value="${r.Price || 0}" data-field="Price" data-orig="${r.Price || 0}" onchange="markChanged(this)"></td>
-        <td>${r.Currency || 'CAD'}</td>
-        <td><input type="date" value="${formatDate(r.StartDate)}" data-field="StartDate" data-orig="${formatDate(r.StartDate)}" onchange="markChanged(this)"></td>
-        <td><input type="date" value="${formatDate(r.EndDate)}" data-field="EndDate" data-orig="${formatDate(r.EndDate)}" onchange="markChanged(this)"></td>
-        <td><input type="number" step="0.01" value="${r.Discount || 0}" data-field="Discount" data-orig="${r.Discount || 0}" onchange="markChanged(this)"></td>
-        <td><button class="btn btn-sm btn-danger" onclick="deleteSpecialPrice('${escSql(code)}','${escSql(r.ItemCode)}',this)">X</button></td>
-      </tr>`).join('');
-    }
-    st.textContent = 'OK'; st.className = 'status ok';
-  } catch (err) {
-    st.textContent = err.message; st.className = 'status error';
-  }
-}
 
 function formatDate(d) {
   if (!d) return '';
@@ -379,33 +371,99 @@ function formatDate(d) {
 
 function markChanged(input) {
   const td = input.parentElement;
-  if (input.value !== input.dataset.orig) {
-    td.classList.add('modified');
-    document.getElementById('btnSaveClient').style.display = '';
-    document.getElementById('btnSaveArticle').style.display = '';
-  } else {
-    td.classList.remove('modified');
+  if (input.value !== input.dataset.orig) td.classList.add('modified');
+  else td.classList.remove('modified');
+  // Show all save buttons if anything modified
+  document.querySelectorAll('.modified').length > 0
+    ? document.querySelectorAll('[id^="btnSave"]').forEach(b => b.style.display = '')
+    : document.querySelectorAll('[id^="btnSave"]').forEach(b => b.style.display = 'none');
+}
+
+// ══════════════════════════════════════════════════════════════
+// PAR CLIENT
+// ══════════════════════════════════════════════════════════════
+document.getElementById('btnSearchClient').addEventListener('click', searchClient);
+document.getElementById('inputClient').addEventListener('keydown', e => { if (e.key === 'Enter') searchClient(); });
+
+async function searchClient() {
+  const code = document.getElementById('inputClient').value.trim();
+  if (!code) return;
+  const st = document.getElementById('statusClient');
+  st.textContent = 'Recherche...'; st.className = 'status loading';
+  document.getElementById('clientInfo').style.display = 'none';
+  document.getElementById('clientToolbar').style.display = 'none';
+  document.getElementById('tableClient').querySelector('thead').innerHTML = '';
+  document.getElementById('tableClient').querySelector('tbody').innerHTML = '';
+
+  try {
+    const infoR = await sapQuery(`SELECT "CardCode","CardName","GroupCode","Currency","Phone1","E_Mail" FROM "OCRD" WHERE "CardCode" = '${escSql(code)}'`, 1);
+    if (!infoR.donnees || infoR.donnees.length === 0) {
+      st.textContent = 'Client introuvable'; st.className = 'status error'; return;
+    }
+    const client = infoR.donnees[0];
+    document.getElementById('clientInfo').style.display = 'block';
+    document.getElementById('clientInfo').innerHTML = `<div class="info-box"><h3>${client.CardCode} — ${client.CardName || ''}</h3><div class="detail">Groupe: <span>${client.GroupCode || '-'}</span> | Devise: <span>${client.Currency || '-'}</span> | Tel: <span>${client.Phone1 || '-'}</span> | Courriel: <span>${client.E_Mail || '-'}</span></div></div>`;
+
+    // OSPP: ItemCode, CardCode, Price, Currency, Discount, ListNum, AutoUpdt, Valid, ValidFrom, ValidTo
+    const spR = await sapQuery(`SELECT s."ItemCode", i."ItemName", s."Price", s."Currency", s."Discount", s."ListNum", s."AutoUpdt", s."Valid", s."ValidFrom", s."ValidTo" FROM "OSPP" s LEFT JOIN "OITM" i ON s."ItemCode" = i."ItemCode" WHERE s."CardCode" = '${escSql(code)}' ORDER BY s."ItemCode"`, 2000);
+
+    document.getElementById('clientToolbar').style.display = 'flex';
+    document.getElementById('clientChip').textContent = client.CardCode;
+    const cnt = spR.donnees ? spR.donnees.length : 0;
+    document.getElementById('clientCountChip').textContent = cnt + ' prix speciaux';
+
+    const thead = document.getElementById('tableClient').querySelector('thead');
+    const tbody = document.getElementById('tableClient').querySelector('tbody');
+    thead.innerHTML = '<tr><th><input type="checkbox" id="chkAllClient" title="Tout selectionner"></th><th>Article</th><th>Description</th><th>Prix</th><th>Devise</th><th>Escompte %</th><th>Liste #</th><th>Auto MAJ</th><th>Valide</th><th>Debut</th><th>Fin</th><th></th></tr>';
+
+    if (!spR.donnees || cnt === 0) {
+      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:30px">Aucun prix special pour ce client</td></tr>';
+    } else {
+      tbody.innerHTML = spR.donnees.map((r, i) => `<tr data-idx="${i}" data-card="${escSql(code)}" data-item="${escSql(r.ItemCode)}">
+        <td><input type="checkbox" class="chkClient"></td>
+        <td><a href="#" style="color:var(--accent)" onclick="document.getElementById('inputArticle').value='${r.ItemCode}';document.querySelectorAll('.tab')[1].click();searchArticle();return false">${r.ItemCode}</a></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.ItemName||'').replace(/"/g,'&quot;')}">${r.ItemName || ''}</td>
+        <td><input type="number" step="0.01" value="${r.Price || 0}" data-field="Price" data-orig="${r.Price || 0}" onchange="markChanged(this)"></td>
+        <td>${r.Currency || 'CAD'}</td>
+        <td><input type="number" step="0.01" value="${r.Discount || 0}" data-field="Discount" data-orig="${r.Discount || 0}" onchange="markChanged(this)"></td>
+        <td><input type="number" value="${r.ListNum != null ? r.ListNum : -1}" data-field="ListNum" data-orig="${r.ListNum != null ? r.ListNum : -1}" onchange="markChanged(this)" style="width:60px"></td>
+        <td><select data-field="AutoUpdt" data-orig="${r.AutoUpdt || 'N'}" onchange="markChanged(this)"><option value="Y" ${r.AutoUpdt==='Y'?'selected':''}>Oui</option><option value="N" ${r.AutoUpdt!=='Y'?'selected':''}>Non</option></select></td>
+        <td><select data-field="Valid" data-orig="${r.Valid || 'N'}" onchange="markChanged(this)"><option value="Y" ${r.Valid==='Y'?'selected':''}>Oui</option><option value="N" ${r.Valid!=='Y'?'selected':''}>Non</option></select></td>
+        <td><input type="date" value="${formatDate(r.ValidFrom)}" data-field="ValidFrom" data-orig="${formatDate(r.ValidFrom)}" onchange="markChanged(this)"></td>
+        <td><input type="date" value="${formatDate(r.ValidTo)}" data-field="ValidTo" data-orig="${formatDate(r.ValidTo)}" onchange="markChanged(this)"></td>
+        <td><button class="btn btn-sm btn-danger" onclick="deleteSpecialPrice('${escSql(code)}','${escSql(r.ItemCode)}',this)">X</button></td>
+      </tr>`).join('');
+    }
+    document.getElementById('chkAllClient').addEventListener('change', e => {
+      document.querySelectorAll('.chkClient').forEach(c => c.checked = e.target.checked);
+    });
+    st.textContent = 'OK — ' + cnt + ' lignes'; st.className = 'status ok';
+  } catch (err) {
+    st.textContent = err.message; st.className = 'status error';
   }
 }
 
+// Save client changes
 document.getElementById('btnSaveClient').addEventListener('click', async () => {
   const btn = document.getElementById('btnSaveClient');
   const st = document.getElementById('statusClient');
   btn.disabled = true; st.textContent = 'Sauvegarde...'; st.className = 'status loading';
   const rows = document.querySelectorAll('#tableClient tbody tr[data-card]');
-  let count = 0;
+  let count = 0, errors = 0;
   for (const row of rows) {
-    const inputs = row.querySelectorAll('input');
-    const card = row.dataset.card;
-    const item = row.dataset.item;
+    const inputs = row.querySelectorAll('input[data-field], select[data-field]');
+    const card = row.dataset.card, item = row.dataset.item;
     const sets = [];
     inputs.forEach(inp => {
       if (inp.value !== inp.dataset.orig) {
         const f = inp.dataset.field;
-        if (f === 'Price' || f === 'Discount') sets.push(`"${f}" = ${inp.value || 0}`);
-        else if (f === 'StartDate' || f === 'EndDate') {
+        if (['Price','Discount'].includes(f)) sets.push(`"${f}" = ${inp.value || 0}`);
+        else if (f === 'ListNum') sets.push(`"${f}" = ${inp.value || -1}`);
+        else if (['ValidFrom','ValidTo'].includes(f)) {
           if (inp.value) sets.push(`"${f}" = '${inp.value}'`);
+          else sets.push(`"${f}" = NULL`);
         }
+        else if (['AutoUpdt','Valid'].includes(f)) sets.push(`"${f}" = '${inp.value}'`);
       }
     });
     if (sets.length === 0) continue;
@@ -413,17 +471,46 @@ document.getElementById('btnSaveClient').addEventListener('click', async () => {
       await sapUpdate(`UPDATE "OSPP" SET ${sets.join(', ')} WHERE "CardCode" = '${card}' AND "ItemCode" = '${item}'`);
       inputs.forEach(inp => { inp.dataset.orig = inp.value; inp.parentElement.classList.remove('modified'); });
       count++;
-    } catch (err) {
-      st.textContent = 'Erreur: ' + err.message; st.className = 'status error'; btn.disabled = false; return;
-    }
+    } catch (err) { errors++; }
   }
-  st.textContent = count + ' prix mis a jour'; st.className = 'status ok';
+  st.textContent = count + ' mis a jour' + (errors ? ', ' + errors + ' erreurs' : ''); st.className = errors ? 'status error' : 'status ok';
   btn.style.display = 'none'; btn.disabled = false;
 });
 
+// Bulk client operations
+document.getElementById('btnBulkClient').addEventListener('click', () => {
+  document.getElementById('bulkBarClient').classList.toggle('show');
+});
+
+document.getElementById('btnApplyBulkClient').addEventListener('click', () => {
+  const action = document.getElementById('bulkClientAction').value;
+  const val = document.getElementById('bulkClientValue').value;
+  if (!val) return;
+  const checked = document.querySelectorAll('.chkClient:checked');
+  if (checked.length === 0) { alert('Selectionnez des lignes'); return; }
+  checked.forEach(chk => {
+    const row = chk.closest('tr');
+    if (action === 'discount') {
+      const inp = row.querySelector('[data-field="Discount"]');
+      if (inp) { inp.value = parseFloat(val); markChanged(inp); }
+    } else if (action === 'price_pct') {
+      const inp = row.querySelector('[data-field="Price"]');
+      if (inp) { inp.value = (parseFloat(inp.dataset.orig) * (1 + parseFloat(val)/100)).toFixed(2); markChanged(inp); }
+    } else if (action === 'valid_to') {
+      const inp = row.querySelector('[data-field="ValidTo"]');
+      if (inp) { inp.value = val; markChanged(inp); }
+    } else if (action === 'list_num') {
+      const inp = row.querySelector('[data-field="ListNum"]');
+      if (inp) { inp.value = parseInt(val); markChanged(inp); }
+    }
+  });
+});
+
+// Add special price
 document.getElementById('btnAddSpecialPrice').addEventListener('click', () => {
   const code = document.getElementById('inputClient').value.trim();
   if (code) document.getElementById('addPriceClient').value = code;
+  document.getElementById('addPriceItem').value = '';
   document.getElementById('modalAddPrice').classList.add('show');
 });
 
@@ -431,14 +518,29 @@ document.getElementById('btnConfirmAddPrice').addEventListener('click', async ()
   const card = document.getElementById('addPriceClient').value.trim();
   const item = document.getElementById('addPriceItem').value.trim();
   const price = document.getElementById('addPriceValue').value;
-  if (!card || !item || !price) return;
-  const st = document.getElementById('statusClient');
+  if (!card || !item) { alert('Client et article requis'); return; }
+  const st = document.getElementById('statusClient').textContent ? document.getElementById('statusClient') : document.getElementById('statusArticle');
   st.textContent = 'Ajout...'; st.className = 'status loading';
+
+  const cols = ['"CardCode"','"ItemCode"'];
+  const vals = [`'${escSql(card)}'`,`'${escSql(item)}'`];
+  if (price) { cols.push('"Price"'); vals.push(price); }
+  const disc = document.getElementById('addPriceDiscount').value;
+  if (disc && disc !== '0') { cols.push('"Discount"'); vals.push(disc); }
+  const cur = document.getElementById('addPriceCurrency').value.trim();
+  if (cur) { cols.push('"Currency"'); vals.push(`'${escSql(cur)}'`); }
+  const ln = document.getElementById('addPriceListNum').value;
+  if (ln && ln !== '-1') { cols.push('"ListNum"'); vals.push(ln); }
+  const df = document.getElementById('addPriceFrom').value;
+  if (df) { cols.push('"ValidFrom"'); vals.push(`'${df}'`); cols.push('"Valid"'); vals.push("'Y'"); }
+  const dt = document.getElementById('addPriceTo').value;
+  if (dt) { cols.push('"ValidTo"'); vals.push(`'${dt}'`); if (!df) { cols.push('"Valid"'); vals.push("'Y'"); } }
+
   try {
-    await sapUpdate(`INSERT INTO "OSPP" ("CardCode","ItemCode","Price") VALUES ('${escSql(card)}','${escSql(item)}',${price})`);
+    await sapUpdate(`INSERT INTO "OSPP" (${cols.join(',')}) VALUES (${vals.join(',')})`);
     document.getElementById('modalAddPrice').classList.remove('show');
     st.textContent = 'Prix ajoute'; st.className = 'status ok';
-    searchClient();
+    if (document.getElementById('inputClient').value.trim()) searchClient();
   } catch (err) {
     st.textContent = err.message; st.className = 'status error';
   }
@@ -457,7 +559,9 @@ async function deleteSpecialPrice(card, item, btn) {
   }
 }
 
-// ── PAR ARTICLE ───────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// PAR ARTICLE
+// ══════════════════════════════════════════════════════════════
 document.getElementById('btnSearchArticle').addEventListener('click', searchArticle);
 document.getElementById('inputArticle').addEventListener('keydown', e => { if (e.key === 'Enter') searchArticle(); });
 
@@ -466,9 +570,11 @@ async function searchArticle() {
   if (!code) return;
   const st = document.getElementById('statusArticle');
   st.textContent = 'Recherche...'; st.className = 'status loading';
+  document.getElementById('articleInfo').style.display = 'none';
+  document.getElementById('articlePriceListSection').style.display = 'none';
+  document.getElementById('articleSpecialSection').style.display = 'none';
 
   try {
-    // Info article
     const infoR = await sapQuery(`SELECT "ItemCode","ItemName","ItmsGrpCod","BuyUnitMsr","SalUnitMsr" FROM "OITM" WHERE "ItemCode" = '${escSql(code)}'`, 1);
     if (!infoR.donnees || infoR.donnees.length === 0) {
       st.textContent = 'Article introuvable'; st.className = 'status error'; return;
@@ -477,42 +583,48 @@ async function searchArticle() {
     document.getElementById('articleInfo').style.display = 'block';
     document.getElementById('articleInfo').innerHTML = `<div class="info-box"><h3>${item.ItemCode} — ${item.ItemName || ''}</h3><div class="detail">Groupe: <span>${item.ItmsGrpCod || '-'}</span> | Unite achat: <span>${item.BuyUnitMsr || '-'}</span> | Unite vente: <span>${item.SalUnitMsr || '-'}</span></div></div>`;
 
-    // Prix dans toutes les listes
-    const plR = await sapQuery(`SELECT p."PriceList", l."ListName", p."Price", p."Currency" FROM "ITM1" p LEFT JOIN "OPLN" l ON p."PriceList" = l."ListNum" WHERE p."ItemCode" = '${escSql(code)}' ORDER BY p."PriceList"`, 100);
+    // ITM1 + OPLN: price per list with base list and factor
+    const plR = await sapQuery(`SELECT p."PriceList", l."ListName", p."Price", p."Currency", l."BASE_NUM", l."Factor", l."IsGrossPrc" FROM "ITM1" p LEFT JOIN "OPLN" l ON p."PriceList" = l."ListNum" WHERE p."ItemCode" = '${escSql(code)}' ORDER BY p."PriceList"`, 100);
     document.getElementById('articlePriceListSection').style.display = 'block';
     const plThead = document.getElementById('tableArticlePL').querySelector('thead');
     const plTbody = document.getElementById('tableArticlePL').querySelector('tbody');
-    plThead.innerHTML = '<tr><th>#</th><th>Liste</th><th>Prix</th><th>Devise</th></tr>';
+    plThead.innerHTML = '<tr><th>#</th><th>Liste</th><th>Prix</th><th>Devise</th><th>Base #</th><th>Facteur</th><th>Brut</th></tr>';
     if (plR.donnees && plR.donnees.length > 0) {
-      plTbody.innerHTML = plR.donnees.map(r => `<tr>
+      plTbody.innerHTML = plR.donnees.map(r => `<tr data-list="${r.PriceList}" data-item="${escSql(code)}">
         <td>${r.PriceList}</td>
         <td>${r.ListName || ''}</td>
-        <td style="color:${r.Price > 0 ? 'var(--ok)' : 'var(--muted)'}">${r.Price != null ? Number(r.Price).toFixed(2) : '-'}</td>
+        <td><input type="number" step="0.01" value="${r.Price != null ? Number(r.Price).toFixed(2) : 0}" data-field="Price" data-orig="${r.Price != null ? Number(r.Price).toFixed(2) : 0}" onchange="markChanged(this)"></td>
         <td>${r.Currency || ''}</td>
+        <td>${r.BASE_NUM != null ? r.BASE_NUM : '-'}</td>
+        <td>${r.Factor != null ? r.Factor : '-'}</td>
+        <td>${r.IsGrossPrc === 'Y' ? 'Oui' : 'Non'}</td>
       </tr>`).join('');
     } else {
-      plTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Aucun prix</td></tr>';
+      plTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Aucun prix</td></tr>';
     }
 
-    // Prix speciaux — qui paie combien?
-    const spR = await sapQuery(`SELECT s."CardCode", c."CardName", s."Price", s."Currency", s."StartDate", s."EndDate", s."Discount" FROM "OSPP" s LEFT JOIN "OCRD" c ON s."CardCode" = c."CardCode" WHERE s."ItemCode" = '${escSql(code)}' ORDER BY s."CardCode"`, 500);
+    // OSPP: special prices for this article
+    const spR = await sapQuery(`SELECT s."CardCode", c."CardName", s."Price", s."Currency", s."Discount", s."ListNum", s."Valid", s."ValidFrom", s."ValidTo" FROM "OSPP" s LEFT JOIN "OCRD" c ON s."CardCode" = c."CardCode" WHERE s."ItemCode" = '${escSql(code)}' ORDER BY s."CardCode"`, 500);
     document.getElementById('articleSpecialSection').style.display = 'block';
-    document.getElementById('articleSpecialCount').textContent = (spR.donnees ? spR.donnees.length : 0) + ' clients avec prix special';
+    const spCnt = spR.donnees ? spR.donnees.length : 0;
+    document.getElementById('articleSpecialCount').textContent = spCnt + ' clients';
     const spThead = document.getElementById('tableArticleSP').querySelector('thead');
     const spTbody = document.getElementById('tableArticleSP').querySelector('tbody');
-    spThead.innerHTML = '<tr><th>Client</th><th>Nom</th><th>Prix</th><th>Devise</th><th>Debut</th><th>Fin</th><th>Escompte %</th></tr>';
-    if (spR.donnees && spR.donnees.length > 0) {
-      spTbody.innerHTML = spR.donnees.map(r => `<tr>
+    spThead.innerHTML = '<tr><th>Client</th><th>Nom</th><th>Prix</th><th>Devise</th><th>Escompte %</th><th>Liste #</th><th>Valide</th><th>Debut</th><th>Fin</th></tr>';
+    if (spR.donnees && spCnt > 0) {
+      spTbody.innerHTML = spR.donnees.map(r => `<tr data-card="${escSql(r.CardCode)}" data-item="${escSql(code)}">
         <td><a href="#" style="color:var(--accent)" onclick="document.getElementById('inputClient').value='${r.CardCode}';document.querySelectorAll('.tab')[0].click();searchClient();return false">${r.CardCode}</a></td>
-        <td>${r.CardName || ''}</td>
-        <td style="color:var(--ok)">${r.Price != null ? Number(r.Price).toFixed(2) : '-'}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.CardName || ''}</td>
+        <td><input type="number" step="0.01" value="${r.Price || 0}" data-field="Price" data-orig="${r.Price || 0}" onchange="markChanged(this)"></td>
         <td>${r.Currency || 'CAD'}</td>
-        <td>${formatDate(r.StartDate)}</td>
-        <td>${formatDate(r.EndDate)}</td>
-        <td>${r.Discount || '-'}</td>
+        <td><input type="number" step="0.01" value="${r.Discount || 0}" data-field="Discount" data-orig="${r.Discount || 0}" onchange="markChanged(this)"></td>
+        <td><input type="number" value="${r.ListNum != null ? r.ListNum : -1}" data-field="ListNum" data-orig="${r.ListNum != null ? r.ListNum : -1}" onchange="markChanged(this)" style="width:60px"></td>
+        <td>${r.Valid === 'Y' ? '<span class="badge badge-ok">Oui</span>' : '<span class="badge badge-warn">Non</span>'}</td>
+        <td><input type="date" value="${formatDate(r.ValidFrom)}" data-field="ValidFrom" data-orig="${formatDate(r.ValidFrom)}" onchange="markChanged(this)"></td>
+        <td><input type="date" value="${formatDate(r.ValidTo)}" data-field="ValidTo" data-orig="${formatDate(r.ValidTo)}" onchange="markChanged(this)"></td>
       </tr>`).join('');
     } else {
-      spTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Aucun prix special</td></tr>';
+      spTbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted)">Aucun prix special</td></tr>';
     }
 
     st.textContent = 'OK'; st.className = 'status ok';
@@ -521,24 +633,94 @@ async function searchArticle() {
   }
 }
 
-// ── LISTES DE PRIX ────────────────────────────────────────────
+// Save article price list changes (ITM1)
+document.getElementById('btnSaveArticlePL').addEventListener('click', async () => {
+  const btn = document.getElementById('btnSaveArticlePL');
+  const st = document.getElementById('statusArticle');
+  btn.disabled = true; st.textContent = 'Sauvegarde listes...'; st.className = 'status loading';
+  const rows = document.querySelectorAll('#tableArticlePL tbody tr[data-list]');
+  let count = 0;
+  for (const row of rows) {
+    const inp = row.querySelector('input[data-field="Price"]');
+    if (!inp || inp.value === inp.dataset.orig) continue;
+    try {
+      await sapUpdate(`UPDATE "ITM1" SET "Price" = ${inp.value || 0} WHERE "ItemCode" = '${row.dataset.item}' AND "PriceList" = ${row.dataset.list}`);
+      inp.dataset.orig = inp.value; inp.parentElement.classList.remove('modified');
+      count++;
+    } catch (err) {
+      st.textContent = 'Erreur: ' + err.message; st.className = 'status error'; btn.disabled = false; return;
+    }
+  }
+  st.textContent = count + ' prix de liste mis a jour'; st.className = 'status ok';
+  btn.style.display = 'none'; btn.disabled = false;
+});
+
+// Save article special prices changes (OSPP)
+document.getElementById('btnSaveArticleSP').addEventListener('click', async () => {
+  const btn = document.getElementById('btnSaveArticleSP');
+  const st = document.getElementById('statusArticle');
+  btn.disabled = true; st.textContent = 'Sauvegarde speciaux...'; st.className = 'status loading';
+  const rows = document.querySelectorAll('#tableArticleSP tbody tr[data-card]');
+  let count = 0;
+  for (const row of rows) {
+    const inputs = row.querySelectorAll('input[data-field]');
+    const card = row.dataset.card, item = row.dataset.item;
+    const sets = [];
+    inputs.forEach(inp => {
+      if (inp.value !== inp.dataset.orig) {
+        const f = inp.dataset.field;
+        if (['Price','Discount'].includes(f)) sets.push(`"${f}" = ${inp.value || 0}`);
+        else if (f === 'ListNum') sets.push(`"${f}" = ${inp.value || -1}`);
+        else if (['ValidFrom','ValidTo'].includes(f)) {
+          if (inp.value) sets.push(`"${f}" = '${inp.value}'`);
+          else sets.push(`"${f}" = NULL`);
+        }
+      }
+    });
+    if (sets.length === 0) continue;
+    try {
+      await sapUpdate(`UPDATE "OSPP" SET ${sets.join(', ')} WHERE "CardCode" = '${card}' AND "ItemCode" = '${item}'`);
+      inputs.forEach(inp => { inp.dataset.orig = inp.value; inp.parentElement.classList.remove('modified'); });
+      count++;
+    } catch (err) { st.textContent = 'Erreur: ' + err.message; st.className = 'status error'; btn.disabled = false; return; }
+  }
+  st.textContent = count + ' prix speciaux mis a jour'; st.className = 'status ok';
+  btn.style.display = 'none'; btn.disabled = false;
+});
+
+// Add special from article tab
+document.getElementById('btnAddSpecialFromArticle').addEventListener('click', () => {
+  const code = document.getElementById('inputArticle').value.trim();
+  if (code) document.getElementById('addPriceItem').value = code;
+  document.getElementById('addPriceClient').value = '';
+  document.getElementById('modalAddPrice').classList.add('show');
+});
+
+// ══════════════════════════════════════════════════════════════
+// LISTES DE PRIX
+// ══════════════════════════════════════════════════════════════
 document.getElementById('btnLoadListes').addEventListener('click', loadListes);
 
 async function loadListes() {
   const st = document.getElementById('statusListes');
   st.textContent = 'Chargement...'; st.className = 'status loading';
   try {
-    const r = await sapQuery(`SELECT "ListNum","ListName","IsGrossPrc","PrimCurr" FROM "OPLN" ORDER BY "ListNum"`, 100);
+    const r = await sapQuery(`SELECT "ListNum","ListName","BASE_NUM","Factor","IsGrossPrc","PrimCurr","ValidFor","ValidFrom","ValidTo" FROM "OPLN" ORDER BY "ListNum"`, 100);
     const thead = document.getElementById('tableListes').querySelector('thead');
     const tbody = document.getElementById('tableListes').querySelector('tbody');
-    thead.innerHTML = '<tr><th>#</th><th>Nom</th><th>Brut</th><th>Devise</th><th></th></tr>';
+    thead.innerHTML = '<tr><th>#</th><th>Nom</th><th>Base #</th><th>Facteur</th><th>Brut</th><th>Devise</th><th>Valide</th><th>Debut</th><th>Fin</th><th></th></tr>';
     if (r.donnees && r.donnees.length > 0) {
       tbody.innerHTML = r.donnees.map(l => `<tr>
         <td>${l.ListNum}</td>
         <td>${l.ListName}</td>
-        <td>${l.IsGrossPrc === 'Y' ? 'Oui' : 'Non'}</td>
+        <td>${l.BASE_NUM != null ? l.BASE_NUM : '-'}</td>
+        <td>${l.Factor != null ? l.Factor : '-'}</td>
+        <td>${l.IsGrossPrc === 'Y' ? '<span class="badge badge-ok">Oui</span>' : 'Non'}</td>
         <td>${l.PrimCurr || '-'}</td>
-        <td><button class="btn btn-sm btn-primary" onclick="loadListeDetail(${l.ListNum},'${escSql(l.ListName)}')">Voir articles</button></td>
+        <td>${l.ValidFor === 'Y' ? '<span class="badge badge-ok">Oui</span>' : '-'}</td>
+        <td>${formatDate(l.ValidFrom)}</td>
+        <td>${formatDate(l.ValidTo)}</td>
+        <td><button class="btn btn-sm btn-primary" onclick="loadListeDetail(${l.ListNum},'${escSql(l.ListName)}')">Voir</button></td>
       </tr>`).join('');
     }
     st.textContent = r.donnees.length + ' listes'; st.className = 'status ok';
@@ -547,22 +729,27 @@ async function loadListes() {
   }
 }
 
+let _listeDetailData = null;
+let _listeDetailNum = null;
+
 async function loadListeDetail(listNum, listName) {
   const st = document.getElementById('statusListes');
   st.textContent = 'Chargement liste #' + listNum + '...'; st.className = 'status loading';
   document.getElementById('listeDetail').style.display = 'block';
   document.getElementById('listeDetailTitle').textContent = 'Liste #' + listNum + ' — ' + listName;
+  _listeDetailNum = listNum;
   try {
     const r = await sapQuery(`SELECT p."ItemCode", i."ItemName", p."Price", p."Currency" FROM "ITM1" p LEFT JOIN "OITM" i ON p."ItemCode" = i."ItemCode" WHERE p."PriceList" = ${listNum} AND p."Price" > 0 ORDER BY p."ItemCode"`, 2000);
-    document.getElementById('listeDetailCount').textContent = (r.donnees ? r.donnees.length : 0) + ' articles';
+    const cnt = r.donnees ? r.donnees.length : 0;
+    document.getElementById('listeDetailCount').textContent = cnt + ' articles';
     const thead = document.getElementById('tableListeDetail').querySelector('thead');
-    const tbody = document.getElementById('tableListeDetail').querySelector('tbody');
-    thead.innerHTML = '<tr><th>Article</th><th>Description</th><th>Prix</th><th>Devise</th></tr>';
-    if (r.donnees && r.donnees.length > 0) {
-      window._listeDetailData = r.donnees;
-      renderListeDetail(r.donnees);
-    }
-    st.textContent = 'OK'; st.className = 'status ok';
+    thead.innerHTML = '<tr><th><input type="checkbox" id="chkAllListe" title="Tout selectionner"></th><th>Article</th><th>Description</th><th>Prix</th><th>Devise</th></tr>';
+    _listeDetailData = r.donnees || [];
+    renderListeDetail(_listeDetailData);
+    document.getElementById('chkAllListe').addEventListener('change', e => {
+      document.querySelectorAll('.chkListe').forEach(c => c.checked = e.target.checked);
+    });
+    st.textContent = 'OK — ' + cnt + ' articles'; st.className = 'status ok';
   } catch (err) {
     st.textContent = err.message; st.className = 'status error';
   }
@@ -572,16 +759,17 @@ function renderListeDetail(data) {
   const filter = (document.getElementById('inputListeArticleFilter').value || '').toLowerCase();
   const filtered = filter ? data.filter(r => (r.ItemCode + ' ' + (r.ItemName || '')).toLowerCase().includes(filter)) : data;
   const tbody = document.getElementById('tableListeDetail').querySelector('tbody');
-  tbody.innerHTML = filtered.slice(0, 500).map(r => `<tr>
+  tbody.innerHTML = filtered.slice(0, 500).map(r => `<tr data-item="${escSql(r.ItemCode)}" data-list="${_listeDetailNum}">
+    <td><input type="checkbox" class="chkListe"></td>
     <td><a href="#" style="color:var(--accent)" onclick="document.getElementById('inputArticle').value='${r.ItemCode}';document.querySelectorAll('.tab')[1].click();searchArticle();return false">${r.ItemCode}</a></td>
-    <td>${r.ItemName || ''}</td>
-    <td style="color:var(--ok)">${Number(r.Price).toFixed(2)}</td>
+    <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.ItemName || ''}</td>
+    <td><input type="number" step="0.01" value="${Number(r.Price).toFixed(2)}" data-field="Price" data-orig="${Number(r.Price).toFixed(2)}" onchange="markChanged(this)"></td>
     <td>${r.Currency || ''}</td>
   </tr>`).join('');
 }
 
 document.getElementById('inputListeArticleFilter').addEventListener('input', () => {
-  if (window._listeDetailData) renderListeDetail(window._listeDetailData);
+  if (_listeDetailData) renderListeDetail(_listeDetailData);
 });
 
 document.getElementById('inputListeFilter').addEventListener('input', () => {
@@ -591,7 +779,55 @@ document.getElementById('inputListeFilter').addEventListener('input', () => {
   });
 });
 
-// ── IMPORT ────────────────────────────────────────────────────
+// Bulk liste operations
+document.getElementById('btnBulkListe').addEventListener('click', () => {
+  document.getElementById('bulkBarListe').classList.toggle('show');
+});
+
+document.getElementById('btnApplyBulkListe').addEventListener('click', () => {
+  const action = document.getElementById('bulkListeAction').value;
+  const val = document.getElementById('bulkListeValue').value;
+  if (!val) return;
+  const checked = document.querySelectorAll('.chkListe:checked');
+  if (checked.length === 0) { alert('Selectionnez des lignes'); return; }
+  checked.forEach(chk => {
+    const row = chk.closest('tr');
+    const inp = row.querySelector('[data-field="Price"]');
+    if (!inp) return;
+    if (action === 'price_pct') {
+      inp.value = (parseFloat(inp.dataset.orig) * (1 + parseFloat(val)/100)).toFixed(2);
+    } else if (action === 'price_set') {
+      inp.value = parseFloat(val).toFixed(2);
+    }
+    markChanged(inp);
+  });
+});
+
+// Save liste detail changes
+document.getElementById('btnSaveListe').addEventListener('click', async () => {
+  const btn = document.getElementById('btnSaveListe');
+  const st = document.getElementById('statusListes');
+  btn.disabled = true; st.textContent = 'Sauvegarde...'; st.className = 'status loading';
+  const rows = document.querySelectorAll('#tableListeDetail tbody tr[data-item]');
+  let count = 0;
+  for (const row of rows) {
+    const inp = row.querySelector('input[data-field="Price"]');
+    if (!inp || inp.value === inp.dataset.orig) continue;
+    try {
+      await sapUpdate(`UPDATE "ITM1" SET "Price" = ${inp.value || 0} WHERE "ItemCode" = '${row.dataset.item}' AND "PriceList" = ${row.dataset.list}`);
+      inp.dataset.orig = inp.value; inp.parentElement.classList.remove('modified');
+      count++;
+    } catch (err) {
+      st.textContent = 'Erreur: ' + err.message; st.className = 'status error'; btn.disabled = false; return;
+    }
+  }
+  st.textContent = count + ' prix mis a jour'; st.className = 'status ok';
+  btn.style.display = 'none'; btn.disabled = false;
+});
+
+// ══════════════════════════════════════════════════════════════
+// IMPORT
+// ══════════════════════════════════════════════════════════════
 document.getElementById('btnImport').addEventListener('click', async () => {
   const type = document.getElementById('selectImportType').value;
   const data = document.getElementById('importData').value.trim();
