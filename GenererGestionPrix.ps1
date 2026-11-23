@@ -103,21 +103,62 @@ Option Explicit
 Private mSapUser As String
 Private mSapPass As String
 
+Private Function GetSAPLogin() As Boolean
+    Dim fso As Object, tempHta As String, resultFile As String
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    tempHta = Environ("TEMP") & "\sap_login.hta"
+    resultFile = Environ("TEMP") & "\sap_login_result.txt"
+
+    If fso.FileExists(resultFile) Then fso.DeleteFile resultFile
+
+    Dim h As String
+    h = "<html><head><title>Connexion SAP</title>" & _
+        "<hta:application border=""dialog"" maximizeButton=""no"" minimizeButton=""no"" scroll=""no"" />" & _
+        "<style>body{font:12px Tahoma;margin:20px}td{padding:5px}input{width:160px;padding:3px}" & _
+        "button{width:85px;padding:5px;cursor:pointer}</style>" & _
+        "<script language=""VBScript"">" & vbCrLf & _
+        "Sub DoOK()" & vbCrLf & _
+        "  Dim f : Set f = CreateObject(""Scripting.FileSystemObject"").CreateTextFile(""" & resultFile & """, True)" & vbCrLf & _
+        "  f.WriteLine document.getElementById(""usr"").value" & vbCrLf & _
+        "  f.WriteLine document.getElementById(""pwd"").value" & vbCrLf & _
+        "  f.Close : window.close" & vbCrLf & _
+        "End Sub" & vbCrLf & _
+        "Sub DoCancel() : window.close : End Sub" & vbCrLf & _
+        "Sub Window_OnLoad() : window.resizeTo 350, 220 : document.getElementById(""usr"").focus : End Sub" & vbCrLf & _
+        "</script></head><body>" & _
+        "<table><tr><td><b>Usager</b></td><td><input id=""usr"" value=""" & mSapUser & """></td></tr>" & _
+        "<tr><td><b>Mot de passe</b></td><td><input id=""pwd"" type=""password""></td></tr></table><br>" & _
+        "<center><button onclick=""DoOK()"">OK</button>&nbsp;&nbsp;" & _
+        "<button onclick=""DoCancel()"">ANNULER</button></center></body></html>"
+
+    Dim f As Object
+    Set f = fso.CreateTextFile(tempHta, True)
+    f.Write h
+    f.Close
+
+    Dim wsh As Object
+    Set wsh = CreateObject("WScript.Shell")
+    wsh.Run """" & tempHta & """", 1, True
+
+    If fso.FileExists(resultFile) Then
+        Set f = fso.OpenTextFile(resultFile, 1)
+        mSapUser = f.ReadLine
+        mSapPass = f.ReadLine
+        f.Close
+        fso.DeleteFile resultFile
+        GetSAPLogin = True
+    Else
+        GetSAPLogin = False
+    End If
+    If fso.FileExists(tempHta) Then fso.DeleteFile tempHta
+End Function
+
 Private Function ConnectSAP() As Object
     Dim company As Object
     Set company = CreateObject("SAPbobsCOM.Company")
 
-    If mSapUser = "" Then
-        mSapUser = InputBox("Nom d'utilisateur SAP:", "Connexion SAP")
-        If mSapUser = "" Then
-            Set ConnectSAP = Nothing: Exit Function
-        End If
-    End If
-
-    If mSapPass = "" Then
-        mSapPass = InputBox("Mot de passe SAP:", "Connexion SAP")
-        If mSapPass = "" Then
-            mSapUser = ""
+    If mSapUser = "" Or mSapPass = "" Then
+        If Not GetSAPLogin() Then
             Set ConnectSAP = Nothing: Exit Function
         End If
     End If
@@ -467,33 +508,6 @@ try {
     Write-Host "Verifiez que 'Acces approuve au modele objet VBA' est active dans Excel."
     $xl.Quit()
     exit 1
-}
-
-# Creer les boutons Form Controls sur l'onglet Facteurs
-Write-Host "Creation des boutons..."
-
-try {
-    $btn1 = $wsFact.Buttons.Add(560, 10, 160, 30)
-    $btn1.Caption = "Charger les donnees"
-    $btn1.OnAction = "ChargerGroupesEtListes"
-    $btn1.Font.Size = 10
-    Write-Host "  Bouton 1 cree"
-
-    $btn2 = $wsFact.Buttons.Add(560, 50, 160, 30)
-    $btn2.Caption = "Apercu"
-    $btn2.OnAction = "ApercuFacteurs"
-    $btn2.Font.Size = 10
-    Write-Host "  Bouton 2 cree"
-
-    $btn3 = $wsFact.Buttons.Add(560, 90, 160, 30)
-    $btn3.Caption = "Appliquer facteur"
-    $btn3.OnAction = "AppliquerFacteurs"
-    $btn3.Font.Size = 10
-    Write-Host "  Bouton 3 cree"
-
-    Write-Host "Boutons crees avec succes!"
-} catch {
-    Write-Host "AVERT Boutons non crees: $($_.Exception.Message) -- utilisez Alt+F8"
 }
 
 # Sauvegarder en xlsm
