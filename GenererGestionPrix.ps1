@@ -35,7 +35,7 @@ $wsFact.Cells(3,1).Font.Color = 0x808080
 $wsFact.Cells(3,1).Font.Italic = $true
 
 # Headers row 5
-$hdrF = @("Code Grp","Nom du groupe","Liste cible","Liste base","Facteur")
+$hdrF = @("Code Famille","Nom du groupe","Liste cible","Liste base","Facteur")
 for ($i = 0; $i -lt $hdrF.Count; $i++) {
     $c = $wsFact.Cells(5, $i+1)
     $c.Value2 = $hdrF[$i]
@@ -89,7 +89,7 @@ $wsFact.Columns("J:J").ColumnWidth = 12
 $wsFact.Columns("F:F").ColumnWidth = 3
 
 # ===== ONGLET GROUPES =====
-$hdrG = @("Code","Nom du groupe","Nb articles")
+$hdrG = @("Code Famille","Nom du groupe","Code SAP","Nb articles")
 for ($i = 0; $i -lt $hdrG.Count; $i++) {
     $c = $wsGroupes.Cells(1, $i+1)
     $c.Value2 = $hdrG[$i]
@@ -97,9 +97,10 @@ for ($i = 0; $i -lt $hdrG.Count; $i++) {
     $c.Interior.Color = 0x8B4513
     $c.Font.Color = 0xFFFFFF
 }
-$wsGroupes.Columns("A:A").ColumnWidth = 8
+$wsGroupes.Columns("A:A").ColumnWidth = 12
 $wsGroupes.Columns("B:B").ColumnWidth = 35
-$wsGroupes.Columns("C:C").ColumnWidth = 12
+$wsGroupes.Columns("C:C").ColumnWidth = 10
+$wsGroupes.Columns("D:D").ColumnWidth = 12
 
 # ===== ONGLET LISTES =====
 $hdrL = @("#","Nom de la liste","Base #","Facteur")
@@ -247,7 +248,7 @@ Public Sub ChargerGroupesEtListes()
     ' --- Charger groupes ---
     Dim lr As Long
     lr = wsG.Cells(wsG.Rows.Count, 1).End(xlUp).Row
-    If lr > 1 Then wsG.Range(wsG.Cells(2, 1), wsG.Cells(lr, 3)).ClearContents
+    If lr > 1 Then wsG.Range(wsG.Cells(2, 1), wsG.Cells(lr, 4)).ClearContents
 
     Application.StatusBar = "Chargement groupes de produits..."
     Dim rsG As Object
@@ -255,9 +256,18 @@ Public Sub ChargerGroupesEtListes()
     Dim cntG As Long: cntG = RC(rsG)
     Dim r As Long
     For r = 1 To cntG
-        wsG.Cells(1 + r, 1).Value = GF(rsG, "ItmsGrpCod")
-        wsG.Cells(1 + r, 2).Value = GF(rsG, "ItmsGrpNam")
-        wsG.Cells(1 + r, 3).Value = GF(rsG, "NbItems")
+        Dim grpNam As String: grpNam = CStr(GF(rsG, "ItmsGrpNam"))
+        Dim codeFam As String: codeFam = ""
+        Dim nomGrp As String: nomGrp = grpNam
+        Dim dashPos As Long: dashPos = InStr(grpNam, "-")
+        If dashPos > 1 Then
+            codeFam = Trim(Left(grpNam, dashPos - 1))
+            nomGrp = Trim(Mid(grpNam, dashPos + 1))
+        End If
+        wsG.Cells(1 + r, 1).Value = codeFam
+        wsG.Cells(1 + r, 2).Value = nomGrp
+        wsG.Cells(1 + r, 3).Value = GF(rsG, "ItmsGrpCod")
+        wsG.Cells(1 + r, 4).Value = GF(rsG, "NbItems")
         MN rsG
     Next r
 
@@ -309,6 +319,7 @@ End Sub
 ' ==========================================
 Public Sub AppliquerFacteurs()
     Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
+    Dim wsG As Worksheet: Set wsG = ThisWorkbook.Sheets("Groupes")
 
     Dim ops() As String
     Dim nbOps As Long: nbOps = 0
@@ -316,19 +327,35 @@ Public Sub AppliquerFacteurs()
 
     r = 6
     Do While r <= 55
-        Dim grpCode As Variant: grpCode = wsF.Cells(r, 1).Value
+        Dim codeFamille As Variant: codeFamille = wsF.Cells(r, 1).Value
         Dim listeCible As Variant: listeCible = wsF.Cells(r, 3).Value
         Dim listeBase As Variant: listeBase = wsF.Cells(r, 4).Value
         Dim facteur As Variant: facteur = wsF.Cells(r, 5).Value
 
-        If grpCode <> "" And listeCible <> "" And facteur <> "" Then
+        If codeFamille <> "" And listeCible <> "" And facteur <> "" Then
             If listeBase = "" Then listeBase = 1
+            ' Chercher le code SAP correspondant au code famille
+            Dim sapCode As String: sapCode = ""
+            Dim rg As Long
+            Dim lastG As Long: lastG = wsG.Cells(wsG.Rows.Count, 1).End(xlUp).Row
+            For rg = 2 To lastG
+                If CStr(wsG.Cells(rg, 1).Value) = CStr(codeFamille) Then
+                    sapCode = CStr(wsG.Cells(rg, 3).Value)
+                    Exit For
+                End If
+            Next rg
+            If sapCode = "" Then
+                MsgBox "Code famille " & codeFamille & " introuvable dans l'onglet Groupes (ligne " & r & ")." & vbCrLf & _
+                       "Avez-vous charge les groupes?", vbExclamation
+                Exit Sub
+            End If
             nbOps = nbOps + 1
-            ReDim Preserve ops(1 To 4, 1 To nbOps)
-            ops(1, nbOps) = CStr(grpCode)
+            ReDim Preserve ops(1 To 5, 1 To nbOps)
+            ops(1, nbOps) = CStr(codeFamille)
             ops(2, nbOps) = CStr(listeCible)
             ops(3, nbOps) = CStr(facteur)
             ops(4, nbOps) = CStr(listeBase)
+            ops(5, nbOps) = sapCode
         End If
         r = r + 1
     Loop
@@ -336,7 +363,7 @@ Public Sub AppliquerFacteurs()
     If nbOps = 0 Then
         MsgBox "Aucune operation saisie." & vbCrLf & vbCrLf & _
                "Remplissez les colonnes:" & vbCrLf & _
-               "A = Code Grp, C = Liste cible, D = Liste base, E = Facteur", vbExclamation
+               "A = Code Famille, C = Liste cible, D = Liste base, E = Facteur", vbExclamation
         Exit Sub
     End If
 
@@ -351,7 +378,7 @@ Public Sub AppliquerFacteurs()
     For g = 1 To nbOps
         Dim grpNom As String: grpNom = CStr(wsF.Cells(5 + g, 2).Value)
         If Len(grpNom) > 20 Then grpNom = Left(grpNom, 20) & "..."
-        msg = msg & "Grp " & ops(1, g) & " (" & grpNom & ") -> Liste " & ops(2, g) & " (base " & ops(4, g) & ") x" & ops(3, g) & vbCrLf
+        msg = msg & "Fam " & ops(1, g) & " (" & grpNom & ") -> Liste " & ops(2, g) & " (base " & ops(4, g) & ") x" & ops(3, g) & vbCrLf
         If g >= 20 And nbOps > 20 Then
             msg = msg & "... et " & (nbOps - 20) & " autres" & vbCrLf
             Exit For
@@ -366,11 +393,11 @@ Public Sub AppliquerFacteurs()
     Dim cntOK As Long: cntOK = 0
 
     For g = 1 To nbOps
-        Application.StatusBar = "Operation " & g & "/" & nbOps & " - Grp " & ops(1, g) & " Liste " & ops(2, g) & "..."
+        Application.StatusBar = "Operation " & g & "/" & nbOps & " - Fam " & ops(1, g) & " (SAP " & ops(5, g) & ") Liste " & ops(2, g) & "..."
         Dim sql As String
         sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & ops(4, g) & ", ""Factor"" = " & Replace(ops(3, g), ",", ".") & _
               " WHERE ""PriceList"" = " & ops(2, g) & _
-              " AND ""ItemCode"" IN (SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & ops(1, g) & _
+              " AND ""ItemCode"" IN (SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & ops(5, g) & _
               " AND LEFT(""ItemCode"",2) NOT IN ('PT','PR','TA','TB','TC','TD'))"
         Dim rsUpd As Object
         Set rsUpd = co.GetBusinessObject(300)
