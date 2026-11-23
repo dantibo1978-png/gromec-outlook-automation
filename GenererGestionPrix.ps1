@@ -52,20 +52,6 @@ $wsFact.Columns("A:A").ColumnWidth = 10
 $wsFact.Columns("B:B").ColumnWidth = 35
 $wsFact.Columns("C:C").ColumnWidth = 12
 
-# ===== LISTES DE PRIX (reference, colonnes J-M sur Facteurs) =====
-$hdrL = @("#","Nom","Base #","Facteur")
-for ($i = 0; $i -lt $hdrL.Count; $i++) {
-    $c = $wsFact.Cells(1, 10 + $i)
-    $c.Value2 = $hdrL[$i]
-    $c.Font.Bold = $true
-    $c.Interior.Color = 0x003366
-    $c.Font.Color = 0xFFFFFF
-}
-$wsFact.Columns("J:J").ColumnWidth = 6
-$wsFact.Columns("K:K").ColumnWidth = 35
-$wsFact.Columns("L:L").ColumnWidth = 8
-$wsFact.Columns("M:M").ColumnWidth = 10
-
 # ===== ONGLET GROUPES =====
 $hdrG = @("Code","Nom du groupe","Nb articles")
 for ($i = 0; $i -lt $hdrG.Count; $i++) {
@@ -233,12 +219,8 @@ Public Sub ChargerGroupesEtListes()
         wsF.Cells(6 + r, 3).Value = wsG.Cells(1 + r, 3).Value
     Next r
 
-    ' --- Charger listes de prix (colonnes D+ en matrice ET J-M en reference) ---
+    ' --- Charger listes de prix (colonnes D+ en matrice) ---
     Application.StatusBar = "Chargement listes de prix..."
-
-    ' Reference J-M
-    lr = wsF.Cells(wsF.Rows.Count, 10).End(xlUp).Row
-    If lr > 1 Then wsF.Range(wsF.Cells(2, 10), wsF.Cells(lr, 13)).ClearContents
 
     Dim rsL As Object
     Set rsL = RunQuery(co, "SELECT ""ListNum"",""ListName"",""BASE_NUM"",""Factor"" FROM ""OPLN"" ORDER BY ""ListNum""")
@@ -247,7 +229,7 @@ Public Sub ChargerGroupesEtListes()
     ' Nettoyer anciennes colonnes matrice (D jusqu'a I max ou plus)
     Dim lastCol As Long
     lastCol = wsF.Cells(6, wsF.Columns.Count).End(-4159).Column
-    If lastCol > 3 And lastCol < 10 Then
+    If lastCol > 3 Then
         wsF.Range(wsF.Cells(5, 4), wsF.Cells(wsF.Rows.Count, lastCol)).ClearContents
         wsF.Range(wsF.Cells(5, 4), wsF.Cells(wsF.Rows.Count, lastCol)).Interior.ColorIndex = 0
     End If
@@ -256,12 +238,6 @@ Public Sub ChargerGroupesEtListes()
     For r = 1 To cntL
         Dim listNum As Variant: listNum = GF(rsL, "ListNum")
         Dim listName As Variant: listName = GF(rsL, "ListName")
-
-        ' Reference J-M
-        wsF.Cells(1 + r, 10).Value = listNum
-        wsF.Cells(1 + r, 11).Value = listName
-        wsF.Cells(1 + r, 12).Value = GF(rsL, "BASE_NUM")
-        wsF.Cells(1 + r, 13).Value = GF(rsL, "Factor")
 
         ' Matrice: colonne D + (r-1) = header avec # et nom de liste
         col = 3 + r
