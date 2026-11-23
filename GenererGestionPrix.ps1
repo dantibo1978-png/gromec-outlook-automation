@@ -99,7 +99,7 @@ $wsPrixNet.Cells(3,1).Value2 = "Inscrivez le code article Gromec et le prix net.
 $wsPrixNet.Cells(3,1).Font.Color = 0x808080
 $wsPrixNet.Cells(3,1).Font.Italic = $true
 
-$hdrPN = @("Code Article","Description","Liste cible","Prix net")
+$hdrPN = @("Code Article","Prix net","Liste de prix")
 for ($i = 0; $i -lt $hdrPN.Count; $i++) {
     $c = $wsPrixNet.Cells(5, $i+1)
     $c.Value2 = $hdrPN[$i]
@@ -108,18 +108,16 @@ for ($i = 0; $i -lt $hdrPN.Count; $i++) {
     $c.Font.Color = 0xFFFFFF
 }
 $wsPrixNet.Columns("A:A").ColumnWidth = 20
-$wsPrixNet.Columns("B:B").ColumnWidth = 40
+$wsPrixNet.Columns("B:B").ColumnWidth = 14
 $wsPrixNet.Columns("C:C").ColumnWidth = 14
-$wsPrixNet.Columns("D:D").ColumnWidth = 14
 
 for ($r = 6; $r -le 205; $r++) {
     $wsPrixNet.Cells($r, 1).Interior.Color = 0xE0FFFF
-    $wsPrixNet.Cells($r, 2).Font.Color = 0x404040
+    $wsPrixNet.Cells($r, 2).Interior.Color = 0xE0FFFF
+    $wsPrixNet.Cells($r, 2).NumberFormat = "0.00"
     $wsPrixNet.Cells($r, 3).Interior.Color = 0xE0FFFF
-    $wsPrixNet.Cells($r, 4).Interior.Color = 0xE0FFFF
-    $wsPrixNet.Cells($r, 4).NumberFormat = "0.00"
     if (($r - 6) % 2 -eq 1) {
-        for ($c = 1; $c -le 4; $c++) {
+        for ($c = 1; $c -le 3; $c++) {
             $wsPrixNet.Cells($r, $c).Interior.Color = 0xFFF8F0
         }
     }
@@ -468,8 +466,8 @@ Public Sub AppliquerPrixNet()
 
     For r = 6 To 205
         Dim codeArt As Variant: codeArt = wsPN.Cells(r, 1).Value
+        Dim prixNet As Variant: prixNet = wsPN.Cells(r, 2).Value
         Dim listeCible As Variant: listeCible = wsPN.Cells(r, 3).Value
-        Dim prixNet As Variant: prixNet = wsPN.Cells(r, 4).Value
 
         If codeArt <> "" And listeCible <> "" And prixNet <> "" Then
             nbOps = nbOps + 1
@@ -485,7 +483,7 @@ Public Sub AppliquerPrixNet()
     If nbOps = 0 Then
         MsgBox "Aucune operation saisie." & vbCrLf & vbCrLf & _
                "Remplissez les colonnes:" & vbCrLf & _
-               "A = Code Article, C = Liste cible, D = Prix net", vbExclamation
+               "A = Code Article, B = Prix net, C = Liste de prix", vbExclamation
         Exit Sub
     End If
 
