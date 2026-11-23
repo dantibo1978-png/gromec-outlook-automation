@@ -513,6 +513,8 @@ function Update-ItemFullbox {
 
 $Script:LogBuffer = [System.Collections.ArrayList]::new()
 $Script:DernierFlushLogs = Get-Date
+$Script:DernierHeartbeat = [datetime]::MinValue
+$Script:VersionSync = "PR115"
 
 function Write-Log {
     param([string]$Message, [string]$Cle = "", [string]$BC = "")
@@ -1659,6 +1661,15 @@ while ($true) {
   try {
     # Flush les logs bufferises toutes les 60s
     if (((Get-Date) - $Script:DernierFlushLogs).TotalSeconds -ge 60) { Flush-Logs }
+
+    # Heartbeat toutes les 60s
+    if (((Get-Date) - $Script:DernierHeartbeat).TotalSeconds -ge 60) {
+        try {
+            $hb = @{ ts = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss"); v = $Script:VersionSync } | ConvertTo-Json -Compress
+            $null = Invoke-RestMethod -Uri "$FirebaseUrl/gromec_vba/parametres/heartbeat.json" -Method Put -Body $hb -ContentType "application/json" -TimeoutSec 5
+        } catch {}
+        $Script:DernierHeartbeat = Get-Date
+    }
 
     # Verifier le flag programme_actif toutes les 60s
     if (((Get-Date) - $Script:DernierCheckActif).TotalSeconds -ge 60) {
