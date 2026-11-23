@@ -100,53 +100,43 @@ Write-Host "Injection du code VBA..."
 $vbaCode = @'
 Option Explicit
 
+Private mSapUser As String
+Private mSapPass As String
+
 Private Function ConnectSAP() As Object
     Dim company As Object
     Set company = CreateObject("SAPbobsCOM.Company")
 
-    Dim fso As Object, f As Object, jsonText As String
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    Dim cfgPath As String
-    cfgPath = "U:\GromecOutlook\config.json"
-    If fso.FileExists(cfgPath) Then
-        Set f = fso.OpenTextFile(cfgPath, 1)
-        jsonText = f.ReadAll
-        f.Close
-    Else
-        MsgBox "config.json introuvable: " & cfgPath, vbCritical
-        Set ConnectSAP = Nothing: Exit Function
+    If mSapUser = "" Then
+        mSapUser = InputBox("Nom d'utilisateur SAP:", "Connexion SAP")
+        If mSapUser = "" Then
+            Set ConnectSAP = Nothing: Exit Function
+        End If
+    End If
+
+    If mSapPass = "" Then
+        mSapPass = InputBox("Mot de passe SAP:", "Connexion SAP")
+        If mSapPass = "" Then
+            mSapUser = ""
+            Set ConnectSAP = Nothing: Exit Function
+        End If
     End If
 
     company.Server = "NDB@hana:30013"
     company.DbServerType = 9
     company.CompanyDB = "SAP_GROMEC_PROD"
     company.UseTrusted = False
-    company.UserName = ExtractJsonValue(jsonText, "sap_user")
-    company.Password = ExtractJsonValue(jsonText, "sap_password")
-
-    If company.UserName = "" Then
-        MsgBox "sap_user manquant dans config.json", vbCritical
-        Set ConnectSAP = Nothing: Exit Function
-    End If
+    company.UserName = mSapUser
+    company.Password = mSapPass
 
     Dim ret As Long
     ret = company.Connect()
     If ret <> 0 Then
         MsgBox "Connexion SAP echouee (" & ret & "): " & company.GetLastErrorDescription(), vbCritical
+        mSapPass = ""
         Set ConnectSAP = Nothing: Exit Function
     End If
     Set ConnectSAP = company
-End Function
-
-Private Function ExtractJsonValue(jsonText As String, key As String) As String
-    Dim pos As Long, pos2 As Long, pos3 As Long
-    pos = InStr(1, jsonText, Chr(34) & key & Chr(34))
-    If pos = 0 Then ExtractJsonValue = "": Exit Function
-    pos2 = InStr(pos, jsonText, ":")
-    If pos2 = 0 Then ExtractJsonValue = "": Exit Function
-    pos2 = InStr(pos2, jsonText, Chr(34))
-    pos3 = InStr(pos2 + 1, jsonText, Chr(34))
-    ExtractJsonValue = Mid(jsonText, pos2 + 1, pos3 - pos2 - 1)
 End Function
 
 Private Function RunQuery(company As Object, sql As String) As Object
@@ -502,7 +492,7 @@ try {
     $btn3.Object.Caption = "Appliquer facteur"
     $btn3.Object.Font.Size = 10
 
-    $vbSheet = $wb.VBProject.VBComponents("Feuil1")
+    $vbSheet = $wb.VBProject.VBComponents($wsFact.CodeName)
     $vbSheet.CodeModule.AddFromString($btnCode)
     Write-Host "Boutons crees avec succes!"
 } catch {
