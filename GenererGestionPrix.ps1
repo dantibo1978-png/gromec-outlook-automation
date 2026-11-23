@@ -774,20 +774,15 @@ try {
 } catch {
     Write-Host "ERREUR injection VBA: $($_.Exception.Message)"
     Write-Host "Verifiez que 'Acces approuve au modele objet VBA' est active dans Excel."
-    $xl.Quit()
     exit 1
 }
 
 # Sauvegarder en xlsm
 $wb.SaveAs($xlsmPath, 52)
 Write-Host "Fichier sauvegarde: $xlsmPath"
-$wb.Close($false)
-$xl.Quit()
-
 Write-Host ""
 Write-Host "====================================="
-Write-Host "  GestionPrix.xlsm cree avec succes!"
-Write-Host "  Ouvrez: $xlsmPath"
+Write-Host "  GestionPrix.xlsm cree et ouvert!"
 Write-Host "  Macros (Alt+F8):"
 Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes de SAP"
 Write-Host "    - AppliquerFacteurs      : Applique les facteurs saisis"
