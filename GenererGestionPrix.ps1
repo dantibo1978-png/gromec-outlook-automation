@@ -139,8 +139,8 @@ $wsFini.Cells(4,1).Font.Bold = $true
 $wsFini.Cells(5,1).Value2 = "Base:"
 $wsFini.Cells(5,1).Font.Bold = $true
 
-$defaultListes = @(2, 10, 64, 4, 9, 17)
-$defaultBases  = @(0,  2,  2, 2, 2,  2)
+$defaultListes = @("2", "10", "64", "4", "9", "17")
+$defaultBases  = @("0",  "2",  "2", "2", "2",  "2")
 for ($i = 0; $i -lt $defaultListes.Count; $i++) {
     $col = $i + 2
     $wsFini.Cells(4, $col).Value2 = $defaultListes[$i]
