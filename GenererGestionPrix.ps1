@@ -18,9 +18,7 @@ while ($wb.Sheets.Count -gt 1) { $wb.Sheets($wb.Sheets.Count).Delete() }
 # -- Feuilles --
 $wsFact = $wb.Sheets(1)
 $wsFact.Name = "Facteurs"
-$wsListes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsFact)
-$wsListes.Name = "Listes de prix"
-$wsGroupes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsListes)
+$wsGroupes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsFact)
 $wsGroupes.Name = "Groupes"
 
 # ===== ONGLET FACTEURS =====
@@ -61,23 +59,19 @@ $wsFact.Columns("F:F").ColumnWidth = 18
 $wsFact.Cells(3,2).Interior.Color = 0xE0FFFF
 $wsFact.Cells(4,2).Interior.Color = 0xE0FFFF
 
-# ===== ONGLET LISTES DE PRIX =====
-$hdrL = @("#","Nom","Base #","Facteur","Brut","Devise","Valide","Debut","Fin")
+# ===== LISTES DE PRIX (colonnes J-M sur Facteurs) =====
+$hdrL = @("#","Nom","Base #","Facteur")
 for ($i = 0; $i -lt $hdrL.Count; $i++) {
-    $c = $wsListes.Cells(1, $i+1)
+    $c = $wsFact.Cells(1, 10 + $i)
     $c.Value2 = $hdrL[$i]
     $c.Font.Bold = $true
-    $c.Interior.Color = 0x8B4513
+    $c.Interior.Color = 0x003366
     $c.Font.Color = 0xFFFFFF
 }
-$wsListes.Columns("A:A").ColumnWidth = 6
-$wsListes.Columns("B:B").ColumnWidth = 35
-$wsListes.Columns("C:C").ColumnWidth = 8
-$wsListes.Columns("D:D").ColumnWidth = 10
-$wsListes.Columns("E:E").ColumnWidth = 6
-$wsListes.Columns("F:F").ColumnWidth = 8
-$wsListes.Columns("G:G").ColumnWidth = 8
-$wsListes.Columns("H:I").ColumnWidth = 12
+$wsFact.Columns("J:J").ColumnWidth = 6
+$wsFact.Columns("K:K").ColumnWidth = 35
+$wsFact.Columns("L:L").ColumnWidth = 8
+$wsFact.Columns("M:M").ColumnWidth = 10
 
 # ===== ONGLET GROUPES =====
 $hdrG = @("Code","Nom du groupe","Nb articles")
@@ -269,8 +263,8 @@ End Sub
 '  CHARGER LISTES DE PRIX
 ' ==========================================
 Public Sub ChargerListes()
-    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Listes de prix")
-    Application.StatusBar = "Connexion SAP..."
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Facteurs")
+    Application.StatusBar = "Chargement listes de prix..."
     Application.ScreenUpdating = False
     Dim co As Object: Set co = ConnectSAP()
     If co Is Nothing Then Application.StatusBar = False: Application.ScreenUpdating = True: Exit Sub
@@ -278,23 +272,18 @@ Public Sub ChargerListes()
     On Error GoTo ErrL
 
     Dim lr As Long
-    lr = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-    If lr > 1 Then ws.Range(ws.Cells(2, 1), ws.Cells(lr, 9)).ClearContents
+    lr = ws.Cells(ws.Rows.Count, 10).End(xlUp).Row
+    If lr > 1 Then ws.Range(ws.Cells(2, 10), ws.Cells(lr, 13)).ClearContents
 
     Dim rsL As Object
-    Set rsL = RunQuery(co, "SELECT ""ListNum"",""ListName"",""BASE_NUM"",""Factor"",""IsGrossPrc"",""PrimCurr"",""ValidFor"",""ValidFrom"",""ValidTo"" FROM ""OPLN"" ORDER BY ""ListNum""")
+    Set rsL = RunQuery(co, "SELECT ""ListNum"",""ListName"",""BASE_NUM"",""Factor"" FROM ""OPLN"" ORDER BY ""ListNum""")
     Dim cnt As Long: cnt = RC(rsL)
     Dim r As Long
     For r = 1 To cnt
-        ws.Cells(1 + r, 1).Value = GF(rsL, "ListNum")
-        ws.Cells(1 + r, 2).Value = GF(rsL, "ListName")
-        ws.Cells(1 + r, 3).Value = GF(rsL, "BASE_NUM")
-        ws.Cells(1 + r, 4).Value = GF(rsL, "Factor")
-        ws.Cells(1 + r, 5).Value = GF(rsL, "IsGrossPrc")
-        ws.Cells(1 + r, 6).Value = GF(rsL, "PrimCurr")
-        ws.Cells(1 + r, 7).Value = GF(rsL, "ValidFor")
-        ws.Cells(1 + r, 8).Value = GF(rsL, "ValidFrom")
-        ws.Cells(1 + r, 9).Value = GF(rsL, "ValidTo")
+        ws.Cells(1 + r, 10).Value = GF(rsL, "ListNum")
+        ws.Cells(1 + r, 11).Value = GF(rsL, "ListName")
+        ws.Cells(1 + r, 12).Value = GF(rsL, "BASE_NUM")
+        ws.Cells(1 + r, 13).Value = GF(rsL, "Factor")
         MN rsL
     Next r
 
