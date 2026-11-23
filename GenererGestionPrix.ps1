@@ -165,6 +165,14 @@ Private Sub MN(rs As Object)
 End Sub
 
 ' ==========================================
+'  CHARGER GROUPES ET LISTES
+' ==========================================
+Public Sub ChargerGroupesEtListes()
+    Call ChargerGroupes
+    Call ChargerListes
+End Sub
+
+' ==========================================
 '  CHARGER GROUPES DE PRODUITS
 ' ==========================================
 Public Sub ChargerGroupes()
@@ -461,47 +469,28 @@ try {
     exit 1
 }
 
-# Creer les boutons ActiveX sur l'onglet Facteurs
+# Creer les boutons Form Controls sur l'onglet Facteurs
 Write-Host "Creation des boutons..."
 
 try {
-    $m = [System.Reflection.Missing]::Value
-    $btn1 = $wsFact.OLEObjects().Add("Forms.CommandButton.1", $m, $false, $false, $m, $m, $m, 560, 10, 140, 30)
-    $btn1.Object.Caption = "Charger les donnees"
-    $btn1.Object.Font.Size = 10
+    $btn1 = $wsFact.Buttons.Add(560, 10, 160, 30)
+    $btn1.Caption = "Charger les donnees"
+    $btn1.OnAction = "ChargerGroupesEtListes"
+    $btn1.Font.Size = 10
     Write-Host "  Bouton 1 cree"
 
-    $btn2 = $wsFact.OLEObjects().Add("Forms.CommandButton.1", $m, $false, $false, $m, $m, $m, 560, 50, 140, 30)
-    $btn2.Object.Caption = "Apercus"
-    $btn2.Object.Font.Size = 10
+    $btn2 = $wsFact.Buttons.Add(560, 50, 160, 30)
+    $btn2.Caption = "Apercu"
+    $btn2.OnAction = "ApercuFacteurs"
+    $btn2.Font.Size = 10
     Write-Host "  Bouton 2 cree"
 
-    $btn3 = $wsFact.OLEObjects().Add("Forms.CommandButton.1", $m, $false, $false, $m, $m, $m, 560, 90, 140, 30)
-    $btn3.Object.Caption = "Appliquer facteur"
-    $btn3.Object.Font.Size = 10
+    $btn3 = $wsFact.Buttons.Add(560, 90, 160, 30)
+    $btn3.Caption = "Appliquer facteur"
+    $btn3.OnAction = "AppliquerFacteurs"
+    $btn3.Font.Size = 10
     Write-Host "  Bouton 3 cree"
 
-    $vbSheet = $wb.VBProject.VBComponents($wsFact.CodeName)
-    $codeMod = $vbSheet.CodeModule
-    $lines = $codeMod.CountOfLines
-    if ($lines -gt 0) { $codeMod.DeleteLines(1, $lines) }
-    $codeMod.AddFromString(
-@'
-Private Sub CommandButton1_Click()
-    Call ChargerGroupes
-    Call ChargerListes
-End Sub
-
-Private Sub CommandButton2_Click()
-    Call ApercuFacteurs
-End Sub
-
-Private Sub CommandButton3_Click()
-    Call AppliquerFacteurs
-End Sub
-'@
-    )
-    Write-Host "  Code VBA injecte"
     Write-Host "Boutons crees avec succes!"
 } catch {
     Write-Host "AVERT Boutons non crees: $($_.Exception.Message) -- utilisez Alt+F8"
