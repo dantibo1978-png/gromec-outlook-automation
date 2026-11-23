@@ -125,6 +125,21 @@ for ($r = 6; $r -le 25; $r++) {
     }
 }
 
+# Reference listes sur Prix Net (E-H, avec D comme spacer)
+$hdrRefPN = @("#","Nom de la liste","Base #","Facteur SAP")
+for ($i = 0; $i -lt $hdrRefPN.Count; $i++) {
+    $c = $wsPrixNet.Cells(5, 5 + $i)
+    $c.Value2 = $hdrRefPN[$i]
+    $c.Font.Bold = $true
+    $c.Interior.Color = 0x003366
+    $c.Font.Color = 0xFFFFFF
+}
+$wsPrixNet.Columns("D:D").ColumnWidth = 3
+$wsPrixNet.Columns("E:E").ColumnWidth = 6
+$wsPrixNet.Columns("F:F").ColumnWidth = 30
+$wsPrixNet.Columns("G:G").ColumnWidth = 8
+$wsPrixNet.Columns("H:H").ColumnWidth = 12
+
 # ===== ONGLET IMPORT FINITION =====
 $wsFini.Cells(1,1).Value2 = "IMPORT FINITION - Prix net + Facteurs par liste"
 $wsFini.Cells(1,1).Font.Bold = $true
@@ -372,6 +387,7 @@ Public Sub ChargerGroupesEtListes()
     Dim wsG As Worksheet: Set wsG = ThisWorkbook.Sheets("Groupes")
     Dim wsL As Worksheet: Set wsL = ThisWorkbook.Sheets("Listes")
     Dim wsFI As Worksheet: Set wsFI = ThisWorkbook.Sheets("Import Finition")
+    Dim wsPN As Worksheet: Set wsPN = ThisWorkbook.Sheets("Prix Net")
 
     ' --- Charger groupes ---
     Dim lr As Long
@@ -424,6 +440,10 @@ Public Sub ChargerGroupesEtListes()
         wsFI.Cells(7 + r, 15).Value = GF(rsL, "ListName")
         wsFI.Cells(7 + r, 16).Value = GF(rsL, "BASE_NUM")
         wsFI.Cells(7 + r, 17).Value = GF(rsL, "Factor")
+        wsPN.Cells(5 + r, 5).Value = GF(rsL, "ListNum")
+        wsPN.Cells(5 + r, 6).Value = GF(rsL, "ListName")
+        wsPN.Cells(5 + r, 7).Value = GF(rsL, "BASE_NUM")
+        wsPN.Cells(5 + r, 8).Value = GF(rsL, "Factor")
         MN rsL
     Next r
 
@@ -647,22 +667,33 @@ End Sub
 Public Sub AppliquerImportFinition()
     Dim wsFI As Worksheet: Set wsFI = ThisWorkbook.Sheets("Import Finition")
 
-    ' Detecter dynamiquement le nombre de colonnes (row 4, a partir de B)
+    ' Detecter dynamiquement les colonnes avec un # de liste (row 4, B a T)
     Dim nbCol As Long: nbCol = 0
+    Dim colIdx() As Long, lstNum() As Long, baseNum() As Long
     Dim c As Long
     For c = 2 To 20
-        If wsFI.Cells(4, c).Value <> "" Then nbCol = nbCol + 1 Else Exit For
+        If wsFI.Cells(4, c).Value <> "" Then
+            nbCol = nbCol + 1
+            ReDim Preserve colIdx(1 To nbCol)
+            ReDim Preserve lstNum(1 To nbCol)
+            ReDim Preserve baseNum(1 To nbCol)
+            colIdx(nbCol) = c
+            lstNum(nbCol) = CLng(wsFI.Cells(4, c).Value)
+            If nbCol = 1 Then
+                baseNum(nbCol) = 0
+            Else
+                If wsFI.Cells(5, c).Value <> "" Then
+                    baseNum(nbCol) = CLng(wsFI.Cells(5, c).Value)
+                Else
+                    baseNum(nbCol) = 0
+                End If
+            End If
+        End If
     Next c
     If nbCol = 0 Then
-        MsgBox "Aucune liste configuree en ligne 4.", vbExclamation
+        MsgBox "Aucune liste configuree en ligne 4." & vbCrLf & "Inscrivez les numeros de listes dans la rangee 4 (B, C, D...)", vbExclamation
         Exit Sub
     End If
-    Dim lstNum() As Long, baseNum() As Long
-    ReDim lstNum(1 To nbCol): ReDim baseNum(1 To nbCol)
-    For c = 1 To nbCol
-        lstNum(c) = CLng(wsFI.Cells(4, c + 1).Value)
-        If c = 1 Then baseNum(c) = 0 Else baseNum(c) = CLng(wsFI.Cells(5, c + 1).Value)
-    Next c
 
     Dim items() As String, nbItems As Long: nbItems = 0
     Dim r As Long
@@ -682,7 +713,7 @@ Public Sub AppliquerImportFinition()
     Dim totalOps As Long: totalOps = 0
     For r = 8 To 7 + nbItems
         For c = 1 To nbCol
-            If wsFI.Cells(r, c + 1).Value <> "" Then totalOps = totalOps + 1
+            If wsFI.Cells(r, colIdx(c)).Value <> "" Then totalOps = totalOps + 1
         Next c
     Next r
 
@@ -714,7 +745,7 @@ Public Sub AppliquerImportFinition()
     For r = 8 To 7 + nbItems
         Dim itemCode As String: itemCode = Replace(CStr(wsFI.Cells(r, 1).Value), "'", "''")
         For c = 1 To nbCol
-            Dim cellVal As Variant: cellVal = wsFI.Cells(r, c + 1).Value
+            Dim cellVal As Variant: cellVal = wsFI.Cells(r, colIdx(c)).Value
             If cellVal <> "" Then
                 Dim valStr As String: valStr = Replace(CStr(cellVal), ",", ".")
                 If c = 1 Then
