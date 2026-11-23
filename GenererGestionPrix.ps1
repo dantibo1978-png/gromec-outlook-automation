@@ -679,14 +679,11 @@ Public Sub AppliquerImportFinition()
             ReDim Preserve baseNum(1 To nbCol)
             colIdx(nbCol) = c
             lstNum(nbCol) = CLng(wsFI.Cells(4, c).Value)
-            If nbCol = 1 Then
+            Dim bv As Variant: bv = wsFI.Cells(5, c).Value
+            If bv = "" Or LCase(CStr(bv)) = "prix net" Then
                 baseNum(nbCol) = 0
             Else
-                If wsFI.Cells(5, c).Value <> "" Then
-                    baseNum(nbCol) = CLng(wsFI.Cells(5, c).Value)
-                Else
-                    baseNum(nbCol) = 0
-                End If
+                baseNum(nbCol) = CLng(bv)
             End If
         End If
     Next c
@@ -721,7 +718,7 @@ Public Sub AppliquerImportFinition()
     msg = "IMPORT FINITION - " & nbItems & " articles, " & totalOps & " operations:" & vbCrLf & vbCrLf & "Listes: "
     For c = 1 To nbCol
         msg = msg & lstNum(c)
-        If c = 1 Then msg = msg & " (prix net)"
+        If baseNum(c) = 0 Then msg = msg & " (prix net)" Else msg = msg & " (base " & baseNum(c) & ")"
         If c < nbCol Then msg = msg & ", "
     Next c
     msg = msg & vbCrLf & vbCrLf
@@ -748,7 +745,7 @@ Public Sub AppliquerImportFinition()
             Dim cellVal As Variant: cellVal = wsFI.Cells(r, colIdx(c)).Value
             If cellVal <> "" Then
                 Dim valStr As String: valStr = Replace(CStr(cellVal), ",", ".")
-                If c = 1 Then
+                If baseNum(c) = 0 Then
                     sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = 0, ""Factor"" = 0, ""Price"" = " & valStr & _
                           " WHERE ""PriceList"" = " & lstNum(c) & " AND ""ItemCode"" = '" & itemCode & "'"
                     WriteLog "FINITION PRIX: " & itemCode & " -> L" & lstNum(c) & " prix=" & valStr
