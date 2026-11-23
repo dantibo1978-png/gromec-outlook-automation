@@ -432,60 +432,26 @@ Public Sub AppliquerFacteurs()
         GoTo CleanApp
     End If
 
-    ' Appliquer via DI API - Update Items prices
-    Dim cntOK As Long, cntErr As Long
-    cntOK = 0: cntErr = 0
+    ' Appliquer via UPDATE SQL direct sur ITM1
+    Dim cntOK As Long
+    cntOK = 0
 
     For g = 1 To nbGrp
-        Application.StatusBar = "Groupe " & grpCodes(g) & " - Chargement articles..."
-        Dim rsItems As Object
-        Set rsItems = RunQuery(co, "SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & grpCodes(g) & " AND LEFT(""ItemCode"",2) NOT IN ('PT','PR','TA','TB','TC','TD')")
-        Dim nbItems As Long: nbItems = RC(rsItems)
-        Dim i As Long
-
-        For i = 1 To nbItems
-            Dim itemCode As String
-            itemCode = CStr(GF(rsItems, "ItemCode"))
-            Application.StatusBar = "Groupe " & grpCodes(g) & " - " & i & "/" & nbItems & " - " & itemCode
-
-            ' Charger l'item via DI API (oItems = 4)
-            Dim oItem As Object
-            Set oItem = co.GetBusinessObject(4)
-            Dim found As Boolean
-            found = CallByName(oItem, "GetByKey", VbMethod, itemCode)
-
-            If found Then
-                ' Acceder a Prices (collection de lignes de prix)
-                Dim oPrices As Object
-                Set oPrices = CallByName(oItem, "PriceList", VbGet)
-
-                ' Trouver la ligne de la liste cible via SetCurrentLine
-                CallByName oPrices, "SetCurrentLine", VbMethod, CLng(listeCible) - 1
-
-                ' Setter BasePriceList et Factor
-                CallByName oPrices, "BasePriceList", VbLet, CLng(listeBase)
-                CallByName oPrices, "Factor", VbLet, grpFactors(g)
-
-                Dim retU As Long
-                retU = CallByName(oItem, "Update", VbMethod)
-                If retU = 0 Then
-                    cntOK = cntOK + 1
-                Else
-                    cntErr = cntErr + 1
-                End If
-            Else
-                cntErr = cntErr + 1
-            End If
-
-            Set oItem = Nothing
-            MN rsItems
-            DoEvents
-        Next i
-        Set rsItems = Nothing
+        Application.StatusBar = "Groupe " & grpCodes(g) & " - UPDATE SQL..."
+        Dim sql As String
+        sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & listeBase & ", ""Factor"" = " & Replace(CStr(grpFactors(g)), ",", ".") & _
+              " WHERE ""PriceList"" = " & listeCible & _
+              " AND ""ItemCode"" IN (SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & grpCodes(g) & _
+              " AND LEFT(""ItemCode"",2) NOT IN ('PT','PR','TA','TB','TC','TD'))"
+        Dim rsUpd As Object
+        Set rsUpd = co.GetBusinessObject(300)
+        CallByName rsUpd, "DoQuery", VbMethod, sql
+        Set rsUpd = Nothing
+        cntOK = cntOK + 1
     Next g
 
-    MsgBox "Termine!" & vbCrLf & "Succes: " & cntOK & vbCrLf & "Erreurs: " & cntErr, vbInformation
-    Application.StatusBar = "Termine - " & cntOK & " articles mis a jour, " & cntErr & " erreurs"
+    MsgBox "Termine! " & cntOK & " groupes mis a jour.", vbInformation
+    Application.StatusBar = "Termine - " & cntOK & " groupes mis a jour"
     GoTo CleanApp
 
 ErrApp:
