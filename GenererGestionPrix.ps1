@@ -24,6 +24,8 @@ $wsGroupes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsFact)
 $wsGroupes.Name = "Groupes"
 $wsListes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsGroupes)
 $wsListes.Name = "Listes"
+$wsPrixNet = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsFact)
+$wsPrixNet.Name = "Prix Net"
 
 # ===== ONGLET FACTEURS =====
 $wsFact.Cells(1,1).Value2 = "GESTION DES PRIX - FACTEURS PAR GROUPE"
@@ -87,6 +89,41 @@ $wsFact.Columns("J:J").ColumnWidth = 12
 
 # Separator column F
 $wsFact.Columns("F:F").ColumnWidth = 3
+
+# ===== ONGLET PRIX NET =====
+$wsPrixNet.Cells(1,1).Value2 = "PRIX NET - LISTES CLIENTS DEDIEES"
+$wsPrixNet.Cells(1,1).Font.Bold = $true
+$wsPrixNet.Cells(1,1).Font.Size = 14
+
+$wsPrixNet.Cells(3,1).Value2 = "Inscrivez le code article Gromec et le prix net. Le prix sera mis en mode Manuel dans SAP."
+$wsPrixNet.Cells(3,1).Font.Color = 0x808080
+$wsPrixNet.Cells(3,1).Font.Italic = $true
+
+$hdrPN = @("Code Article","Description","Liste cible","Prix net")
+for ($i = 0; $i -lt $hdrPN.Count; $i++) {
+    $c = $wsPrixNet.Cells(5, $i+1)
+    $c.Value2 = $hdrPN[$i]
+    $c.Font.Bold = $true
+    $c.Interior.Color = 0x006400
+    $c.Font.Color = 0xFFFFFF
+}
+$wsPrixNet.Columns("A:A").ColumnWidth = 20
+$wsPrixNet.Columns("B:B").ColumnWidth = 40
+$wsPrixNet.Columns("C:C").ColumnWidth = 14
+$wsPrixNet.Columns("D:D").ColumnWidth = 14
+
+for ($r = 6; $r -le 205; $r++) {
+    $wsPrixNet.Cells($r, 1).Interior.Color = 0xE0FFFF
+    $wsPrixNet.Cells($r, 2).Font.Color = 0x404040
+    $wsPrixNet.Cells($r, 3).Interior.Color = 0xE0FFFF
+    $wsPrixNet.Cells($r, 4).Interior.Color = 0xE0FFFF
+    $wsPrixNet.Cells($r, 4).NumberFormat = "0.00"
+    if (($r - 6) % 2 -eq 1) {
+        for ($c = 1; $c -le 4; $c++) {
+            $wsPrixNet.Cells($r, $c).Interior.Color = 0xFFF8F0
+        }
+    }
+}
 
 # ===== ONGLET GROUPES =====
 $hdrG = @("Code Famille","Nom du groupe","Code SAP","Nb articles")
@@ -414,6 +451,90 @@ ErrApp:
     MsgBox "Erreur: " & Err.Description, vbCritical
     Application.StatusBar = False
 CleanApp:
+    On Error Resume Next
+    co.Disconnect: Set co = Nothing
+    Application.ScreenUpdating = True
+End Sub
+
+' ==========================================
+'  APPLIQUER PRIX NET - Listes clients
+' ==========================================
+Public Sub AppliquerPrixNet()
+    Dim wsPN As Worksheet: Set wsPN = ThisWorkbook.Sheets("Prix Net")
+
+    Dim codes() As String, listes() As String, prix() As String
+    Dim nbOps As Long: nbOps = 0
+    Dim r As Long
+
+    For r = 6 To 205
+        Dim codeArt As Variant: codeArt = wsPN.Cells(r, 1).Value
+        Dim listeCible As Variant: listeCible = wsPN.Cells(r, 3).Value
+        Dim prixNet As Variant: prixNet = wsPN.Cells(r, 4).Value
+
+        If codeArt <> "" And listeCible <> "" And prixNet <> "" Then
+            nbOps = nbOps + 1
+            ReDim Preserve codes(1 To nbOps)
+            ReDim Preserve listes(1 To nbOps)
+            ReDim Preserve prix(1 To nbOps)
+            codes(nbOps) = CStr(codeArt)
+            listes(nbOps) = CStr(listeCible)
+            prix(nbOps) = CStr(prixNet)
+        End If
+    Next r
+
+    If nbOps = 0 Then
+        MsgBox "Aucune operation saisie." & vbCrLf & vbCrLf & _
+               "Remplissez les colonnes:" & vbCrLf & _
+               "A = Code Article, C = Liste cible, D = Prix net", vbExclamation
+        Exit Sub
+    End If
+
+    Application.StatusBar = "Connexion SAP..."
+    Dim co As Object: Set co = ConnectSAP()
+    If co Is Nothing Then Exit Sub
+
+    On Error GoTo ErrPN
+
+    ' Charger descriptions pour le resume
+    Dim msg As String, g As Long
+    msg = "RESUME - " & nbOps & " prix net a appliquer (mode Manuel):" & vbCrLf & vbCrLf
+    For g = 1 To nbOps
+        msg = msg & codes(g) & " -> Liste " & listes(g) & " = " & prix(g) & "$" & vbCrLf
+        If g >= 25 And nbOps > 25 Then
+            msg = msg & "... et " & (nbOps - 25) & " autres" & vbCrLf
+            Exit For
+        End If
+    Next g
+    msg = msg & vbCrLf & "BasePLNum=0, Factor=0, Price=net" & vbCrLf & _
+          "CONFIRMER l'application?"
+
+    If MsgBox(msg, vbYesNo + vbQuestion, "Confirmer Prix Net") <> vbYes Then
+        GoTo CleanPN
+    End If
+
+    Dim cntOK As Long: cntOK = 0
+
+    For g = 1 To nbOps
+        Application.StatusBar = "Prix net " & g & "/" & nbOps & " - " & codes(g) & " Liste " & listes(g) & "..."
+        Dim sql As String
+        sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = 0, ""Factor"" = 0, ""Price"" = " & Replace(prix(g), ",", ".") & _
+              " WHERE ""PriceList"" = " & listes(g) & _
+              " AND ""ItemCode"" = '" & Replace(codes(g), "'", "''") & "'"
+        Dim rsUpd As Object
+        Set rsUpd = co.GetBusinessObject(300)
+        CallByName rsUpd, "DoQuery", VbMethod, sql
+        Set rsUpd = Nothing
+        cntOK = cntOK + 1
+    Next g
+
+    MsgBox "Termine! " & cntOK & " prix net appliques (mode Manuel).", vbInformation
+    Application.StatusBar = "Termine - " & cntOK & " prix net appliques"
+    GoTo CleanPN
+
+ErrPN:
+    MsgBox "Erreur: " & Err.Description, vbCritical
+    Application.StatusBar = False
+CleanPN:
     On Error Resume Next
     co.Disconnect: Set co = Nothing
     Application.ScreenUpdating = True
