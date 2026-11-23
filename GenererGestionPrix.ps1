@@ -154,15 +154,15 @@ $wsFini.Cells(4,1).Font.Bold = $true
 $wsFini.Cells(5,1).Value2 = "Base:"
 $wsFini.Cells(5,1).Font.Bold = $true
 
-$defaultListes = @("2", "10", "64", "4", "9", "17", "", "", "", "", "")
-$defaultBases  = @("0",  "2",  "2", "2", "2",  "2", "2", "2", "2", "2", "2")
+$defaultListes = @("1", "2", "10", "64", "4", "9", "17", "", "", "", "")
+$defaultBases  = @("0", "0",  "2",  "2", "2", "2",  "2", "2", "2", "2", "2")
 for ($i = 0; $i -lt $defaultListes.Count; $i++) {
     $col = $i + 2
     $wsFini.Cells(4, $col).Value2 = $defaultListes[$i]
     $wsFini.Cells(4, $col).Interior.Color = 0xE0FFFF
     $wsFini.Cells(4, $col).Font.Bold = $true
     $wsFini.Cells(4, $col).HorizontalAlignment = -4108
-    if ($i -eq 0) {
+    if ($i -le 1) {
         $wsFini.Cells(5, $col).Value2 = "Prix net"
         $wsFini.Cells(5, $col).Font.Italic = $true
     } else {
@@ -180,7 +180,7 @@ $wsFini.Cells(7, 1).Font.Color = 0xFFFFFF
 for ($i = 0; $i -lt $defaultListes.Count; $i++) {
     $col = $i + 2
     $c = $wsFini.Cells(7, $col)
-    if ($i -eq 0) { $c.Value2 = "Prix net" } else { $c.Value2 = "Facteur" }
+    if ($i -le 1) { $c.Value2 = "Prix net" } else { $c.Value2 = "Facteur" }
     $c.Font.Bold = $true
     $c.Interior.Color = 0x800080
     $c.Font.Color = 0xFFFFFF
@@ -750,7 +750,7 @@ Public Sub AppliquerImportFinition()
                           " WHERE ""PriceList"" = " & lstNum(c) & " AND ""ItemCode"" = '" & itemCode & "'"
                     WriteLog "FINITION PRIX: " & itemCode & " -> L" & lstNum(c) & " prix=" & valStr
                 Else
-                    sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & baseNum(c) & ", ""Factor"" = " & valStr & _
+                    sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & baseNum(c) & ", ""Factor"" = " & valStr & ", ""Price"" = 0" & _
                           " WHERE ""PriceList"" = " & lstNum(c) & " AND ""ItemCode"" = '" & itemCode & "'"
                     WriteLog "FINITION FACTEUR: " & itemCode & " -> L" & lstNum(c) & " base=" & baseNum(c) & " fact=" & valStr
                 End If
