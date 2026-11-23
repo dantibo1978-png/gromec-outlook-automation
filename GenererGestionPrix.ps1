@@ -750,7 +750,8 @@ Public Sub AppliquerImportFinition()
                           " WHERE ""PriceList"" = " & lstNum(c) & " AND ""ItemCode"" = '" & itemCode & "'"
                     WriteLog "FINITION PRIX: " & itemCode & " -> L" & lstNum(c) & " prix=" & valStr
                 Else
-                    sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & baseNum(c) & ", ""Factor"" = " & valStr & ", ""Price"" = 0" & _
+                    sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & baseNum(c) & ", ""Factor"" = " & valStr & _
+                          ", ""Price"" = (SELECT T1.""Price"" * " & valStr & " FROM ""ITM1"" T1 WHERE T1.""ItemCode"" = '" & itemCode & "' AND T1.""PriceList"" = " & baseNum(c) & ")" & _
                           " WHERE ""PriceList"" = " & lstNum(c) & " AND ""ItemCode"" = '" & itemCode & "'"
                     WriteLog "FINITION FACTEUR: " & itemCode & " -> L" & lstNum(c) & " base=" & baseNum(c) & " fact=" & valStr
                 End If
