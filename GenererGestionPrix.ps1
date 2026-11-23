@@ -1,6 +1,7 @@
 <#
   GenererGestionPrix.ps1 - Genere GestionPrix.xlsm
   Scenario 1: Appliquer facteurs par groupe de produits sur listes de prix clients
+  MODE MATRICE: lignes=groupes, colonnes=listes de prix, cellules=facteurs
 #>
 
 $xlsmPath = "U:\GromecOutlook\GestionPrix.xlsm"
@@ -22,28 +23,26 @@ $wsGroupes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsFact)
 $wsGroupes.Name = "Groupes"
 
 # ===== ONGLET FACTEURS =====
-# Zone selection
 $wsFact.Cells(1,1).Value2 = "APPLIQUER FACTEURS PAR GROUPE DE PRODUITS"
 $wsFact.Cells(1,1).Font.Bold = $true
 $wsFact.Cells(1,1).Font.Size = 14
 
-$wsFact.Cells(3,1).Value2 = "Liste de prix cible:"
+$wsFact.Cells(3,1).Value2 = "Liste de base:"
 $wsFact.Cells(3,1).Font.Bold = $true
-$wsFact.Cells(3,3).Value2 = "(Entrez le # de liste, ex: 4)"
+$wsFact.Cells(3,2).Interior.Color = 0xE0FFFF
+$wsFact.Cells(3,3).Value2 = "(# de la liste de base, ex: 1)"
 $wsFact.Cells(3,3).Font.Color = 0x808080
 
-$wsFact.Cells(4,1).Value2 = "Liste de base:"
-$wsFact.Cells(4,1).Font.Bold = $true
-$wsFact.Cells(4,3).Value2 = "(Entrez le # de la liste de base, ex: 1)"
-$wsFact.Cells(4,3).Font.Color = 0x808080
+$wsFact.Cells(5,1).Value2 = "MATRICE GROUPES x LISTES DE PRIX"
+$wsFact.Cells(5,1).Font.Bold = $true
+$wsFact.Cells(5,1).Font.Size = 11
+$wsFact.Cells(5,3).Value2 = "(Inscrivez le facteur aux intersections voulues, vide = ignorer)"
+$wsFact.Cells(5,3).Font.Color = 0x808080
 
-$wsFact.Cells(6,1).Value2 = "GROUPES DE PRODUITS ET FACTEURS"
-$wsFact.Cells(6,1).Font.Bold = $true
-$wsFact.Cells(6,1).Font.Size = 11
-
-$hdrF = @("Code Grp","Nom du groupe","Facteur","Nb articles","Apercu prix base","Apercu prix calcule")
+# Headers: A=Code Grp, B=Nom du groupe, C=Nb articles, D+ = listes de prix (dynamiques)
+$hdrF = @("Code Grp","Nom du groupe","Nb articles")
 for ($i = 0; $i -lt $hdrF.Count; $i++) {
-    $c = $wsFact.Cells(7, $i+1)
+    $c = $wsFact.Cells(6, $i+1)
     $c.Value2 = $hdrF[$i]
     $c.Font.Bold = $true
     $c.Interior.Color = 0x8B4513
@@ -52,14 +51,8 @@ for ($i = 0; $i -lt $hdrF.Count; $i++) {
 $wsFact.Columns("A:A").ColumnWidth = 10
 $wsFact.Columns("B:B").ColumnWidth = 35
 $wsFact.Columns("C:C").ColumnWidth = 12
-$wsFact.Columns("D:D").ColumnWidth = 12
-$wsFact.Columns("E:E").ColumnWidth = 16
-$wsFact.Columns("F:F").ColumnWidth = 18
 
-$wsFact.Cells(3,2).Interior.Color = 0xE0FFFF
-$wsFact.Cells(4,2).Interior.Color = 0xE0FFFF
-
-# ===== LISTES DE PRIX (colonnes J-M sur Facteurs) =====
+# ===== LISTES DE PRIX (reference, colonnes J-M sur Facteurs) =====
 $hdrL = @("#","Nom","Base #","Facteur")
 for ($i = 0; $i -lt $hdrL.Count; $i++) {
     $c = $wsFact.Cells(1, 10 + $i)
@@ -200,26 +193,20 @@ Private Sub MN(rs As Object)
 End Sub
 
 ' ==========================================
-'  CHARGER GROUPES ET LISTES
+'  CHARGER GROUPES ET LISTES (matrice)
 ' ==========================================
 Public Sub ChargerGroupesEtListes()
-    Call ChargerGroupes
-    Call ChargerListes
-End Sub
-
-' ==========================================
-'  CHARGER GROUPES DE PRODUITS
-' ==========================================
-Public Sub ChargerGroupes()
     Application.StatusBar = "Connexion SAP..."
     Application.ScreenUpdating = False
     Dim co As Object: Set co = ConnectSAP()
     If co Is Nothing Then Application.StatusBar = False: Application.ScreenUpdating = True: Exit Sub
 
-    On Error GoTo ErrG
+    On Error GoTo ErrCGL
 
-    ' Charger dans onglet Groupes
+    Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
     Dim wsG As Worksheet: Set wsG = ThisWorkbook.Sheets("Groupes")
+
+    ' --- Charger groupes dans onglet Groupes ---
     Dim lr As Long
     lr = wsG.Cells(wsG.Rows.Count, 1).End(xlUp).Row
     If lr > 1 Then wsG.Range(wsG.Cells(2, 1), wsG.Cells(lr, 3)).ClearContents
@@ -227,71 +214,83 @@ Public Sub ChargerGroupes()
     Application.StatusBar = "Chargement groupes de produits..."
     Dim rsG As Object
     Set rsG = RunQuery(co, "SELECT g.""ItmsGrpCod"", g.""ItmsGrpNam"", COUNT(i.""ItemCode"") AS ""NbItems"" FROM ""OITB"" g LEFT JOIN ""OITM"" i ON g.""ItmsGrpCod"" = i.""ItmsGrpCod"" GROUP BY g.""ItmsGrpCod"", g.""ItmsGrpNam"" ORDER BY g.""ItmsGrpCod""")
-    Dim cnt As Long: cnt = RC(rsG)
+    Dim cntG As Long: cntG = RC(rsG)
     Dim r As Long
-    For r = 1 To cnt
+    For r = 1 To cntG
         wsG.Cells(1 + r, 1).Value = GF(rsG, "ItmsGrpCod")
         wsG.Cells(1 + r, 2).Value = GF(rsG, "ItmsGrpNam")
         wsG.Cells(1 + r, 3).Value = GF(rsG, "NbItems")
         MN rsG
     Next r
 
-    ' Aussi charger dans onglet Facteurs (lignes 8+)
-    Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
+    ' --- Charger groupes dans Facteurs (lignes 7+) ---
     lr = wsF.Cells(wsF.Rows.Count, 1).End(xlUp).Row
-    If lr > 7 Then wsF.Range(wsF.Cells(8, 1), wsF.Cells(lr, 6)).ClearContents
+    If lr > 6 Then wsF.Range(wsF.Cells(7, 1), wsF.Cells(lr, 3)).ClearContents
 
-    For r = 1 To cnt
-        wsF.Cells(7 + r, 1).Value = wsG.Cells(1 + r, 1).Value
-        wsF.Cells(7 + r, 2).Value = wsG.Cells(1 + r, 2).Value
-        wsF.Cells(7 + r, 3).Value = ""
-        wsF.Cells(7 + r, 3).Interior.Color = 15792383
-        wsF.Cells(7 + r, 4).Value = wsG.Cells(1 + r, 3).Value
+    For r = 1 To cntG
+        wsF.Cells(6 + r, 1).Value = wsG.Cells(1 + r, 1).Value
+        wsF.Cells(6 + r, 2).Value = wsG.Cells(1 + r, 2).Value
+        wsF.Cells(6 + r, 3).Value = wsG.Cells(1 + r, 3).Value
     Next r
 
-    Application.StatusBar = cnt & " groupes charges - Entrez les facteurs en colonne C"
-    GoTo CleanG
-ErrG:
-    MsgBox "Erreur: " & Err.Description, vbCritical
-CleanG:
-    On Error Resume Next
-    co.Disconnect: Set co = Nothing
-    Application.ScreenUpdating = True
-End Sub
-
-' ==========================================
-'  CHARGER LISTES DE PRIX
-' ==========================================
-Public Sub ChargerListes()
-    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Facteurs")
+    ' --- Charger listes de prix (colonnes D+ en matrice ET J-M en reference) ---
     Application.StatusBar = "Chargement listes de prix..."
-    Application.ScreenUpdating = False
-    Dim co As Object: Set co = ConnectSAP()
-    If co Is Nothing Then Application.StatusBar = False: Application.ScreenUpdating = True: Exit Sub
 
-    On Error GoTo ErrL
-
-    Dim lr As Long
-    lr = ws.Cells(ws.Rows.Count, 10).End(xlUp).Row
-    If lr > 1 Then ws.Range(ws.Cells(2, 10), ws.Cells(lr, 13)).ClearContents
+    ' Reference J-M
+    lr = wsF.Cells(wsF.Rows.Count, 10).End(xlUp).Row
+    If lr > 1 Then wsF.Range(wsF.Cells(2, 10), wsF.Cells(lr, 13)).ClearContents
 
     Dim rsL As Object
     Set rsL = RunQuery(co, "SELECT ""ListNum"",""ListName"",""BASE_NUM"",""Factor"" FROM ""OPLN"" ORDER BY ""ListNum""")
-    Dim cnt As Long: cnt = RC(rsL)
-    Dim r As Long
-    For r = 1 To cnt
-        ws.Cells(1 + r, 10).Value = GF(rsL, "ListNum")
-        ws.Cells(1 + r, 11).Value = GF(rsL, "ListName")
-        ws.Cells(1 + r, 12).Value = GF(rsL, "BASE_NUM")
-        ws.Cells(1 + r, 13).Value = GF(rsL, "Factor")
+    Dim cntL As Long: cntL = RC(rsL)
+
+    ' Nettoyer anciennes colonnes matrice (D jusqu'a I max ou plus)
+    Dim lastCol As Long
+    lastCol = wsF.Cells(6, wsF.Columns.Count).End(-4159).Column
+    If lastCol > 3 And lastCol < 10 Then
+        wsF.Range(wsF.Cells(5, 4), wsF.Cells(wsF.Rows.Count, lastCol)).ClearContents
+        wsF.Range(wsF.Cells(5, 4), wsF.Cells(wsF.Rows.Count, lastCol)).Interior.ColorIndex = 0
+    End If
+
+    Dim col As Long
+    For r = 1 To cntL
+        Dim listNum As Variant: listNum = GF(rsL, "ListNum")
+        Dim listName As Variant: listName = GF(rsL, "ListName")
+
+        ' Reference J-M
+        wsF.Cells(1 + r, 10).Value = listNum
+        wsF.Cells(1 + r, 11).Value = listName
+        wsF.Cells(1 + r, 12).Value = GF(rsL, "BASE_NUM")
+        wsF.Cells(1 + r, 13).Value = GF(rsL, "Factor")
+
+        ' Matrice: colonne D + (r-1) = header avec # et nom de liste
+        col = 3 + r
+        wsF.Cells(5, col).Value = "Liste " & listNum
+        wsF.Cells(5, col).Font.Bold = True
+        wsF.Cells(5, col).Font.Size = 8
+        wsF.Cells(6, col).Value = listName
+        wsF.Cells(6, col).Font.Bold = True
+        wsF.Cells(6, col).Font.Size = 8
+        wsF.Cells(6, col).Interior.Color = 6697728
+        wsF.Cells(6, col).Font.Color = 16777215
+        wsF.Cells(5, col).Interior.Color = 6697728
+        wsF.Cells(5, col).Font.Color = 16777215
+        wsF.Columns(col).ColumnWidth = 12
+
+        ' Colorer les cellules de saisie
+        Dim rr As Long
+        For rr = 1 To cntG
+            wsF.Cells(6 + rr, col).Interior.Color = 15792383
+        Next rr
+
         MN rsL
     Next r
 
-    Application.StatusBar = cnt & " listes chargees"
-    GoTo CleanL
-ErrL:
+    Application.StatusBar = cntG & " groupes, " & cntL & " listes chargees - Remplissez les facteurs dans la matrice"
+    GoTo CleanCGL
+ErrCGL:
     MsgBox "Erreur: " & Err.Description, vbCritical
-CleanL:
+CleanCGL:
     On Error Resume Next
     co.Disconnect: Set co = Nothing
     Application.ScreenUpdating = True
@@ -299,121 +298,86 @@ CleanL:
 End Sub
 
 ' ==========================================
-'  APERCU - Calculer prix avant application
+'  CHARGER GROUPES (seul)
 ' ==========================================
-Public Sub ApercuFacteurs()
-    Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
-    Dim listeCible As Variant: listeCible = wsF.Cells(3, 2).Value
-    Dim listeBase As Variant: listeBase = wsF.Cells(4, 2).Value
-
-    If listeCible = "" Or listeBase = "" Then
-        MsgBox "Entrez le # de liste cible (B3) et liste de base (B4)", vbExclamation
-        Exit Sub
-    End If
-
-    Application.StatusBar = "Connexion SAP pour apercu..."
-    Application.ScreenUpdating = False
-    Dim co As Object: Set co = ConnectSAP()
-    If co Is Nothing Then Application.StatusBar = False: Application.ScreenUpdating = True: Exit Sub
-
-    On Error GoTo ErrAp
-
-    Dim r As Long, grpCode As Variant, facteur As Double
-    r = 8
-    Do While wsF.Cells(r, 1).Value <> ""
-        facteur = 0
-        If wsF.Cells(r, 3).Value <> "" Then
-            facteur = CDbl(wsF.Cells(r, 3).Value)
-        End If
-
-        If facteur <> 0 Then
-            grpCode = wsF.Cells(r, 1).Value
-            Dim rsAp As Object
-            Set rsAp = RunQuery(co, "SELECT AVG(p.""Price"") AS ""AvgBase"" FROM ""ITM1"" p INNER JOIN ""OITM"" i ON p.""ItemCode"" = i.""ItemCode"" WHERE i.""ItmsGrpCod"" = " & grpCode & " AND p.""PriceList"" = " & listeBase & " AND p.""Price"" > 0")
-            If RC(rsAp) > 0 Then
-                Dim avgBase As Double
-                avgBase = CDbl("0" & GF(rsAp, "AvgBase"))
-                wsF.Cells(r, 5).Value = Format(avgBase, "#,##0.00")
-                wsF.Cells(r, 6).Value = Format(avgBase * facteur, "#,##0.00")
-            End If
-            Set rsAp = Nothing
-        Else
-            wsF.Cells(r, 5).Value = ""
-            wsF.Cells(r, 6).Value = ""
-        End If
-        r = r + 1
-    Loop
-
-    Application.StatusBar = "Apercu calcule"
-    GoTo CleanAp
-ErrAp:
-    MsgBox "Erreur: " & Err.Description, vbCritical
-CleanAp:
-    On Error Resume Next
-    co.Disconnect: Set co = Nothing
-    Application.ScreenUpdating = True
-    Application.StatusBar = False
+Public Sub ChargerGroupes()
+    Call ChargerGroupesEtListes
 End Sub
 
 ' ==========================================
-'  APPLIQUER FACTEURS - Via DI API oItems
+'  CHARGER LISTES (seul)
+' ==========================================
+Public Sub ChargerListes()
+    Call ChargerGroupesEtListes
+End Sub
+
+' ==========================================
+'  APPLIQUER FACTEURS - Matrice
 ' ==========================================
 Public Sub AppliquerFacteurs()
     Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
-    Dim listeCible As Variant: listeCible = wsF.Cells(3, 2).Value
-    Dim listeBase As Variant: listeBase = wsF.Cells(4, 2).Value
+    Dim listeBase As Variant: listeBase = wsF.Cells(3, 2).Value
 
-    If listeCible = "" Or listeBase = "" Then
-        MsgBox "Entrez le # de liste cible (B3) et liste de base (B4)", vbExclamation
+    If listeBase = "" Then
+        MsgBox "Entrez le # de liste de base en B3", vbExclamation
         Exit Sub
     End If
 
-    ' Collecter groupes avec facteurs
-    Dim grpCodes() As String, grpFactors() As Double
-    Dim nbGrp As Long: nbGrp = 0
-    Dim r As Long: r = 8
+    ' Detecter colonnes de listes (D+, row 5 contient "Liste X")
+    Dim col As Long, maxCol As Long
+    maxCol = wsF.Cells(5, wsF.Columns.Count).End(-4159).Column
+    If maxCol < 4 Then
+        MsgBox "Aucune liste de prix chargee. Executez ChargerGroupesEtListes d'abord.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Collecter toutes les operations (groupe, liste cible, facteur)
+    Dim ops() As String
+    Dim nbOps As Long: nbOps = 0
+    Dim r As Long, grpCode As Variant, facteur As Variant, listeCible As Variant
+
+    r = 7
     Do While wsF.Cells(r, 1).Value <> ""
-        If wsF.Cells(r, 3).Value <> "" And CDbl("0" & wsF.Cells(r, 3).Value) <> 0 Then
-            nbGrp = nbGrp + 1
-            ReDim Preserve grpCodes(1 To nbGrp)
-            ReDim Preserve grpFactors(1 To nbGrp)
-            grpCodes(nbGrp) = CStr(wsF.Cells(r, 1).Value)
-            grpFactors(nbGrp) = CDbl(wsF.Cells(r, 3).Value)
-        End If
+        grpCode = CStr(wsF.Cells(r, 1).Value)
+        For col = 4 To maxCol
+            facteur = wsF.Cells(r, col).Value
+            If facteur <> "" And CDbl("0" & facteur) <> 0 Then
+                ' Extraire le # de liste du header "Liste X"
+                Dim hdr As String: hdr = CStr(wsF.Cells(5, col).Value)
+                listeCible = Mid(hdr, 7)
+                nbOps = nbOps + 1
+                ReDim Preserve ops(1 To 3, 1 To nbOps)
+                ops(1, nbOps) = grpCode
+                ops(2, nbOps) = listeCible
+                ops(3, nbOps) = CStr(facteur)
+            End If
+        Next col
         r = r + 1
     Loop
 
-    If nbGrp = 0 Then
-        MsgBox "Aucun facteur saisi. Entrez des facteurs en colonne C.", vbExclamation
+    If nbOps = 0 Then
+        MsgBox "Aucun facteur saisi dans la matrice.", vbExclamation
         Exit Sub
     End If
 
-    ' Compter articles concernes
-    Application.StatusBar = "Comptage des articles..."
+    ' Connexion SAP
+    Application.StatusBar = "Connexion SAP..."
     Dim co As Object: Set co = ConnectSAP()
     If co Is Nothing Then Exit Sub
 
     On Error GoTo ErrApp
 
-    Dim inList As String, g As Long
-    inList = ""
-    For g = 1 To nbGrp
-        If inList <> "" Then inList = inList & ","
-        inList = inList & grpCodes(g)
-    Next g
-
-    Dim rsCount As Object
-    Set rsCount = RunQuery(co, "SELECT COUNT(*) AS ""Total"" FROM ""OITM"" WHERE ""ItmsGrpCod"" IN (" & inList & ")")
-    Dim totalItems As Long: totalItems = CLng(GF(rsCount, "Total"))
-
     ' Resume et confirmation
-    Dim msg As String
+    Dim msg As String, g As Long
     msg = "RESUME DE L'OPERATION" & vbCrLf & vbCrLf
-    msg = msg & "Liste cible: " & listeCible & vbCrLf
     msg = msg & "Liste de base: " & listeBase & vbCrLf
-    msg = msg & "Articles concernes: " & totalItems & vbCrLf & vbCrLf
-    For g = 1 To nbGrp
-        msg = msg & "Groupe " & grpCodes(g) & " -> facteur " & grpFactors(g) & vbCrLf
+    msg = msg & nbOps & " operations a effectuer:" & vbCrLf & vbCrLf
+    For g = 1 To nbOps
+        msg = msg & "Grp " & ops(1, g) & " -> Liste " & ops(2, g) & " x" & ops(3, g) & vbCrLf
+        If g >= 15 And nbOps > 15 Then
+            msg = msg & "... et " & (nbOps - 15) & " autres" & vbCrLf
+            Exit For
+        End If
     Next g
     msg = msg & vbCrLf & "CONFIRMER l'application?"
 
@@ -421,16 +385,15 @@ Public Sub AppliquerFacteurs()
         GoTo CleanApp
     End If
 
-    ' Appliquer via UPDATE SQL direct sur ITM1
-    Dim cntOK As Long
-    cntOK = 0
+    ' Executer les UPDATE SQL
+    Dim cntOK As Long: cntOK = 0
 
-    For g = 1 To nbGrp
-        Application.StatusBar = "Groupe " & grpCodes(g) & " - UPDATE SQL..."
+    For g = 1 To nbOps
+        Application.StatusBar = "Operation " & g & "/" & nbOps & " - Grp " & ops(1, g) & " Liste " & ops(2, g) & "..."
         Dim sql As String
-        sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & listeBase & ", ""Factor"" = " & Replace(CStr(grpFactors(g)), ",", ".") & _
-              " WHERE ""PriceList"" = " & listeCible & _
-              " AND ""ItemCode"" IN (SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & grpCodes(g) & _
+        sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & listeBase & ", ""Factor"" = " & Replace(ops(3, g), ",", ".") & _
+              " WHERE ""PriceList"" = " & ops(2, g) & _
+              " AND ""ItemCode"" IN (SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & ops(1, g) & _
               " AND LEFT(""ItemCode"",2) NOT IN ('PT','PR','TA','TB','TC','TD'))"
         Dim rsUpd As Object
         Set rsUpd = co.GetBusinessObject(300)
@@ -439,8 +402,8 @@ Public Sub AppliquerFacteurs()
         cntOK = cntOK + 1
     Next g
 
-    MsgBox "Termine! " & cntOK & " groupes mis a jour.", vbInformation
-    Application.StatusBar = "Termine - " & cntOK & " groupes mis a jour"
+    MsgBox "Termine! " & cntOK & " operations executees.", vbInformation
+    Application.StatusBar = "Termine - " & cntOK & " operations executees"
     GoTo CleanApp
 
 ErrApp:
@@ -450,6 +413,22 @@ CleanApp:
     On Error Resume Next
     co.Disconnect: Set co = Nothing
     Application.ScreenUpdating = True
+End Sub
+
+' ==========================================
+'  APERCU FACTEURS - Matrice
+' ==========================================
+Public Sub ApercuFacteurs()
+    Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
+    Dim listeBase As Variant: listeBase = wsF.Cells(3, 2).Value
+
+    If listeBase = "" Then
+        MsgBox "Entrez le # de liste de base en B3", vbExclamation
+        Exit Sub
+    End If
+
+    MsgBox "L'apercu n'est pas disponible en mode matrice." & vbCrLf & _
+           "Utilisez AppliquerFacteurs - un resume s'affiche avant confirmation.", vbInformation
 End Sub
 
 Public Sub TestUpdateSQL()
@@ -492,8 +471,7 @@ Write-Host "====================================="
 Write-Host "  GestionPrix.xlsm cree avec succes!"
 Write-Host "  Ouvrez: $xlsmPath"
 Write-Host "  Macros (Alt+F8):"
-Write-Host "    - ChargerGroupes : Charge les groupes de produits"
-Write-Host "    - ChargerListes  : Charge les listes de prix"
-Write-Host "    - ApercuFacteurs : Calcule un apercu avant application"
-Write-Host "    - AppliquerFacteurs : Applique les facteurs via DI API"
+Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes en matrice"
+Write-Host "    - AppliquerFacteurs      : Applique les facteurs de la matrice"
+Write-Host "    - TestUpdateSQL          : Teste si HANA accepte les UPDATE"
 Write-Host "====================================="
