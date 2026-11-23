@@ -479,7 +479,7 @@ End Sub
 '@
 
 try {
-    $oleObjs = $wsFact.OLEObjects
+    $oleObjs = $wsFact.OLEObjects()
     $btn1 = $oleObjs.Add("Forms.CommandButton.1", [System.Reflection.Missing]::Value, $false, $false, [System.Reflection.Missing]::Value, [System.Reflection.Missing]::Value, [System.Reflection.Missing]::Value, 560, 10, 140, 30)
     $btn1.Object.Caption = "Charger les donnees"
     $btn1.Object.Font.Size = 10
