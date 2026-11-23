@@ -400,7 +400,7 @@ Public Sub AppliquerFacteurs()
     For g = 1 To nbGrp
         Application.StatusBar = "Groupe " & grpCodes(g) & " - Chargement articles..."
         Dim rsItems As Object
-        Set rsItems = RunQuery(co, "SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & grpCodes(g))
+        Set rsItems = RunQuery(co, "SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & grpCodes(g) & " AND LEFT(""ItemCode"",2) NOT IN ('PT','PR','TA','TB','TC','TD')")
         Dim nbItems As Long: nbItems = RC(rsItems)
         Dim i As Long
 
@@ -421,7 +421,7 @@ Public Sub AppliquerFacteurs()
                 Set oPrices = CallByName(oItem, "PriceList", VbGet)
 
                 ' Trouver la ligne de la liste cible via SetCurrentLine
-                CallByName oPrices, "SetCurrentLine", VbMethod, CLng(listeCible)
+                CallByName oPrices, "SetCurrentLine", VbMethod, CLng(listeCible) - 1
 
                 ' Setter BasePriceList et Factor
                 CallByName oPrices, "BasePriceList", VbLet, CLng(listeBase)
