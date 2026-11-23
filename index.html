@@ -1095,6 +1095,7 @@
     <p class="eyebrow">Gromec Inc.</p>
     <h2>Achats</h2>
     <span class="derniere-maj" id="derniereMaj"></span>
+    <span id="syncStatus" style="display:inline-block;margin-top:4px;font-size:0.75rem;cursor:pointer" title="Statut SyncDTW"></span>
   </div>
 
   <div class="sidebar-section">
@@ -1381,13 +1382,36 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-11-23 07:39";
-const DERNIERE_MAJ_PR = "PR #113";
+const DERNIERE_MAJ_CODE = "2026-11-23 08:48";
+const DERNIERE_MAJ_PR = "PR #115";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
   const majEl = document.getElementById('derniereMaj');
   if (majEl) majEl.textContent = 'MAJ ' + DERNIERE_MAJ_CODE + ' (' + DERNIERE_MAJ_PR + ')';
+  checkSyncHeartbeat();
+  setInterval(checkSyncHeartbeat, 30000);
 });
+
+async function checkSyncHeartbeat() {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  try {
+    const r = await fetch(FIREBASE_URL + 'gromec_vba/parametres/heartbeat.json');
+    const hb = await r.json();
+    if (!hb || !hb.ts) { el.innerHTML = '<span style="color:#e74c3c">&#9679;</span> Sync arrete'; return; }
+    const diff = (Date.now() - new Date(hb.ts).getTime()) / 1000;
+    if (diff < 120) {
+      el.innerHTML = '<span style="color:#2ecc71">&#9679;</span> Sync actif';
+    } else if (diff < 300) {
+      el.innerHTML = '<span style="color:#f39c12">&#9679;</span> Sync lent (' + Math.round(diff/60) + 'min)';
+    } else {
+      el.innerHTML = '<span style="color:#e74c3c">&#9679;</span> Sync arrete (' + Math.round(diff/60) + 'min)';
+    }
+    el.title = 'Dernier heartbeat: ' + hb.ts + (hb.v ? ' | ' + hb.v : '');
+  } catch(e) {
+    el.innerHTML = '<span style="color:#999">&#9679;</span> Sync ?';
+  }
+}
 
 let donnees = [];
 const casesEtatManuel = new Map(); // ficheId-ligne -> true/false (etat manuel utilisateur)
