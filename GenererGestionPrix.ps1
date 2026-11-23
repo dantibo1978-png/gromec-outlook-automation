@@ -496,6 +496,22 @@ CleanApp:
     co.Disconnect: Set co = Nothing
     Application.ScreenUpdating = True
 End Sub
+
+Public Sub TestUpdateSQL()
+    Dim co As Object: Set co = ConnectSAP()
+    If co Is Nothing Then Exit Sub
+
+    Dim rs As Object: Set rs = co.GetBusinessObject(300)
+    On Error Resume Next
+    CallByName rs, "DoQuery", VbMethod, "UPDATE ""ITM1"" SET ""Factor"" = 1 WHERE ""ItemCode"" = 'ZZZZTEST' AND 1=0"
+    If Err.Number <> 0 Then
+        MsgBox "UPDATE refuse: " & Err.Description, vbExclamation
+    Else
+        MsgBox "UPDATE SQL permis! On peut optimiser.", vbInformation
+    End If
+    On Error GoTo 0
+    co.Disconnect: Set co = Nothing
+End Sub
 '@
 
 try {
