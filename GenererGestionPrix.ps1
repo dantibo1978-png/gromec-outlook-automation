@@ -139,8 +139,8 @@ $wsFini.Cells(4,1).Font.Bold = $true
 $wsFini.Cells(5,1).Value2 = "Base:"
 $wsFini.Cells(5,1).Font.Bold = $true
 
-$defaultListes = @("2", "10", "64", "4", "9", "17")
-$defaultBases  = @("0",  "2",  "2", "2", "2",  "2")
+$defaultListes = @("2", "10", "64", "4", "9", "17", "", "", "", "", "")
+$defaultBases  = @("0",  "2",  "2", "2", "2",  "2", "2", "2", "2", "2", "2")
 for ($i = 0; $i -lt $defaultListes.Count; $i++) {
     $col = $i + 2
     $wsFini.Cells(4, $col).Value2 = $defaultListes[$i]
@@ -178,32 +178,32 @@ for ($i = 0; $i -lt $defaultListes.Count; $i++) {
     $wsFini.Columns("${colLetter}:${colLetter}").ColumnWidth = 12
 }
 
-# 60 input rows (8-67) with alternating colors
+# 60 input rows (8-67) with alternating colors — 12 columns (A-L)
 for ($r = 8; $r -le 67; $r++) {
-    for ($col = 1; $col -le 7; $col++) {
+    for ($col = 1; $col -le 12; $col++) {
         $wsFini.Cells($r, $col).Interior.Color = 0xE0FFFF
     }
     if (($r - 8) % 2 -eq 1) {
-        for ($cc = 1; $cc -le 7; $cc++) {
+        for ($cc = 1; $cc -le 12; $cc++) {
             $wsFini.Cells($r, $cc).Interior.Color = 0xFFF8F0
         }
     }
 }
 
-# Reference listes (I-L)
+# Reference listes (N-Q, avec M comme spacer)
 $hdrRefFini = @("#","Nom de la liste","Base #","Facteur SAP")
 for ($i = 0; $i -lt $hdrRefFini.Count; $i++) {
-    $c = $wsFini.Cells(7, 9 + $i)
+    $c = $wsFini.Cells(7, 14 + $i)
     $c.Value2 = $hdrRefFini[$i]
     $c.Font.Bold = $true
     $c.Interior.Color = 0x003366
     $c.Font.Color = 0xFFFFFF
 }
-$wsFini.Columns("H:H").ColumnWidth = 3
-$wsFini.Columns("I:I").ColumnWidth = 6
-$wsFini.Columns("J:J").ColumnWidth = 30
-$wsFini.Columns("K:K").ColumnWidth = 8
-$wsFini.Columns("L:L").ColumnWidth = 12
+$wsFini.Columns("M:M").ColumnWidth = 3
+$wsFini.Columns("N:N").ColumnWidth = 6
+$wsFini.Columns("O:O").ColumnWidth = 30
+$wsFini.Columns("P:P").ColumnWidth = 8
+$wsFini.Columns("Q:Q").ColumnWidth = 12
 
 # ===== ONGLET GROUPES =====
 $hdrG = @("Code Famille","Nom du groupe","Code SAP","Nb articles")
@@ -420,10 +420,10 @@ Public Sub ChargerGroupesEtListes()
         wsF.Cells(5 + r, 8).Value = GF(rsL, "ListName")
         wsF.Cells(5 + r, 9).Value = GF(rsL, "BASE_NUM")
         wsF.Cells(5 + r, 10).Value = GF(rsL, "Factor")
-        wsFI.Cells(7 + r, 9).Value = GF(rsL, "ListNum")
-        wsFI.Cells(7 + r, 10).Value = GF(rsL, "ListName")
-        wsFI.Cells(7 + r, 11).Value = GF(rsL, "BASE_NUM")
-        wsFI.Cells(7 + r, 12).Value = GF(rsL, "Factor")
+        wsFI.Cells(7 + r, 14).Value = GF(rsL, "ListNum")
+        wsFI.Cells(7 + r, 15).Value = GF(rsL, "ListName")
+        wsFI.Cells(7 + r, 16).Value = GF(rsL, "BASE_NUM")
+        wsFI.Cells(7 + r, 17).Value = GF(rsL, "Factor")
         MN rsL
     Next r
 
@@ -647,10 +647,18 @@ End Sub
 Public Sub AppliquerImportFinition()
     Dim wsFI As Worksheet: Set wsFI = ThisWorkbook.Sheets("Import Finition")
 
-    Dim nbCol As Long: nbCol = 6
+    ' Detecter dynamiquement le nombre de colonnes (row 4, a partir de B)
+    Dim nbCol As Long: nbCol = 0
+    Dim c As Long
+    For c = 2 To 20
+        If wsFI.Cells(4, c).Value <> "" Then nbCol = nbCol + 1 Else Exit For
+    Next c
+    If nbCol = 0 Then
+        MsgBox "Aucune liste configuree en ligne 4.", vbExclamation
+        Exit Sub
+    End If
     Dim lstNum() As Long, baseNum() As Long
     ReDim lstNum(1 To nbCol): ReDim baseNum(1 To nbCol)
-    Dim c As Long
     For c = 1 To nbCol
         lstNum(c) = CLng(wsFI.Cells(4, c + 1).Value)
         If c = 1 Then baseNum(c) = 0 Else baseNum(c) = CLng(wsFI.Cells(5, c + 1).Value)
