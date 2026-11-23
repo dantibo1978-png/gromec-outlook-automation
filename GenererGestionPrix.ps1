@@ -471,6 +471,44 @@ try {
     exit 1
 }
 
+# Creer les boutons ActiveX sur l'onglet Facteurs
+Write-Host "Creation des boutons..."
+$btnCode = @'
+Private Sub CommandButton1_Click()
+    Call ChargerGroupes
+    Call ChargerListes
+End Sub
+
+Private Sub CommandButton2_Click()
+    Call ApercuFacteurs
+End Sub
+
+Private Sub CommandButton3_Click()
+    Call AppliquerFacteurs
+End Sub
+'@
+
+try {
+    $oleObjs = $wsFact.OLEObjects
+    $btn1 = $oleObjs.Add("Forms.CommandButton.1", [System.Reflection.Missing]::Value, $false, $false, [System.Reflection.Missing]::Value, [System.Reflection.Missing]::Value, [System.Reflection.Missing]::Value, 560, 10, 140, 30)
+    $btn1.Object.Caption = "Charger les donnees"
+    $btn1.Object.Font.Size = 10
+
+    $btn2 = $oleObjs.Add("Forms.CommandButton.1", [System.Reflection.Missing]::Value, $false, $false, [System.Reflection.Missing]::Value, [System.Reflection.Missing]::Value, [System.Reflection.Missing]::Value, 560, 50, 140, 30)
+    $btn2.Object.Caption = "Apercus"
+    $btn2.Object.Font.Size = 10
+
+    $btn3 = $oleObjs.Add("Forms.CommandButton.1", [System.Reflection.Missing]::Value, $false, $false, [System.Reflection.Missing]::Value, [System.Reflection.Missing]::Value, [System.Reflection.Missing]::Value, 560, 90, 140, 30)
+    $btn3.Object.Caption = "Appliquer facteur"
+    $btn3.Object.Font.Size = 10
+
+    $vbSheet = $wb.VBProject.VBComponents("Feuil1")
+    $vbSheet.CodeModule.AddFromString($btnCode)
+    Write-Host "Boutons crees avec succes!"
+} catch {
+    Write-Host "AVERT Boutons non crees: $($_.Exception.Message) -- utilisez Alt+F8"
+}
+
 # Sauvegarder en xlsm
 $wb.SaveAs($xlsmPath, 52)
 Write-Host "Fichier sauvegarde: $xlsmPath"
