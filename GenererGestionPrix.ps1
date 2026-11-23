@@ -275,7 +275,7 @@ Private Function GetSAPLogin() As Boolean
         "  f.Close : window.close" & vbCrLf & _
         "End Sub" & vbCrLf & _
         "Sub DoCancel() : window.close : End Sub" & vbCrLf & _
-        "Sub DoKeyPress(k)" & vbCrLf & "  If k = 13 Then Call DoOK()" & vbCrLf & "  End If" & vbCrLf & "End Sub" & vbCrLf & _
+        "Sub DoKeyPress(k)" & vbCrLf & "  If k = 13 Then" & vbCrLf & "    Call DoOK()" & vbCrLf & "  End If" & vbCrLf & "End Sub" & vbCrLf & _
         "Sub Window_OnLoad() : window.resizeTo 350, 220 : document.getElementById(""usr"").focus : End Sub" & vbCrLf & _
         "</script></head><body>" & _
         "<table><tr><td><b>Usager</b></td><td><input id=""usr"" value=""" & mSapUser & """></td></tr>" & _
