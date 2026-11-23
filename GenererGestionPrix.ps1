@@ -26,6 +26,8 @@ $wsListes = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsGroupes)
 $wsListes.Name = "Listes"
 $wsPrixNet = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsFact)
 $wsPrixNet.Name = "Prix Net"
+$wsFini = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsPrixNet)
+$wsFini.Name = "Import Finition"
 
 # ===== ONGLET FACTEURS =====
 $wsFact.Cells(1,1).Value2 = "GESTION DES PRIX - FACTEURS PAR GROUPE"
@@ -122,6 +124,86 @@ for ($r = 6; $r -le 25; $r++) {
         }
     }
 }
+
+# ===== ONGLET IMPORT FINITION =====
+$wsFini.Cells(1,1).Value2 = "IMPORT FINITION - Prix net + Facteurs par liste"
+$wsFini.Cells(1,1).Font.Bold = $true
+$wsFini.Cells(1,1).Font.Size = 14
+
+$wsFini.Cells(3,1).Value2 = "Config"
+$wsFini.Cells(3,1).Font.Bold = $true
+$wsFini.Cells(3,1).Font.Color = 0x808080
+
+$wsFini.Cells(4,1).Value2 = "Liste:"
+$wsFini.Cells(4,1).Font.Bold = $true
+$wsFini.Cells(5,1).Value2 = "Base:"
+$wsFini.Cells(5,1).Font.Bold = $true
+
+$defaultListes = @(2, 10, 64, 4, 9, 17)
+$defaultBases  = @(0,  2,  2, 2, 2,  2)
+for ($i = 0; $i -lt $defaultListes.Count; $i++) {
+    $col = $i + 2
+    $wsFini.Cells(4, $col).Value2 = $defaultListes[$i]
+    $wsFini.Cells(4, $col).Interior.Color = 0xE0FFFF
+    $wsFini.Cells(4, $col).Font.Bold = $true
+    $wsFini.Cells(4, $col).HorizontalAlignment = -4108
+    if ($i -eq 0) {
+        $wsFini.Cells(5, $col).Value2 = "Prix net"
+        $wsFini.Cells(5, $col).Font.Italic = $true
+    } else {
+        $wsFini.Cells(5, $col).Value2 = $defaultBases[$i]
+        $wsFini.Cells(5, $col).Interior.Color = 0xE0FFFF
+    }
+    $wsFini.Cells(5, $col).HorizontalAlignment = -4108
+}
+
+# Headers row 7
+$wsFini.Cells(7, 1).Value2 = "Code Article"
+$wsFini.Cells(7, 1).Font.Bold = $true
+$wsFini.Cells(7, 1).Interior.Color = 0x800080
+$wsFini.Cells(7, 1).Font.Color = 0xFFFFFF
+for ($i = 0; $i -lt $defaultListes.Count; $i++) {
+    $col = $i + 2
+    $c = $wsFini.Cells(7, $col)
+    if ($i -eq 0) { $c.Value2 = "Prix net" } else { $c.Value2 = "Facteur" }
+    $c.Font.Bold = $true
+    $c.Interior.Color = 0x800080
+    $c.Font.Color = 0xFFFFFF
+    $c.HorizontalAlignment = -4108
+}
+
+$wsFini.Columns("A:A").ColumnWidth = 18
+for ($i = 0; $i -lt $defaultListes.Count; $i++) {
+    $colLetter = [char](66 + $i)
+    $wsFini.Columns("${colLetter}:${colLetter}").ColumnWidth = 12
+}
+
+# 60 input rows (8-67) with alternating colors
+for ($r = 8; $r -le 67; $r++) {
+    for ($col = 1; $col -le 7; $col++) {
+        $wsFini.Cells($r, $col).Interior.Color = 0xE0FFFF
+    }
+    if (($r - 8) % 2 -eq 1) {
+        for ($cc = 1; $cc -le 7; $cc++) {
+            $wsFini.Cells($r, $cc).Interior.Color = 0xFFF8F0
+        }
+    }
+}
+
+# Reference listes (I-L)
+$hdrRefFini = @("#","Nom de la liste","Base #","Facteur SAP")
+for ($i = 0; $i -lt $hdrRefFini.Count; $i++) {
+    $c = $wsFini.Cells(7, 9 + $i)
+    $c.Value2 = $hdrRefFini[$i]
+    $c.Font.Bold = $true
+    $c.Interior.Color = 0x003366
+    $c.Font.Color = 0xFFFFFF
+}
+$wsFini.Columns("H:H").ColumnWidth = 3
+$wsFini.Columns("I:I").ColumnWidth = 6
+$wsFini.Columns("J:J").ColumnWidth = 30
+$wsFini.Columns("K:K").ColumnWidth = 8
+$wsFini.Columns("L:L").ColumnWidth = 12
 
 # ===== ONGLET GROUPES =====
 $hdrG = @("Code Famille","Nom du groupe","Code SAP","Nb articles")
@@ -289,6 +371,7 @@ Public Sub ChargerGroupesEtListes()
     Dim wsF As Worksheet: Set wsF = ThisWorkbook.Sheets("Facteurs")
     Dim wsG As Worksheet: Set wsG = ThisWorkbook.Sheets("Groupes")
     Dim wsL As Worksheet: Set wsL = ThisWorkbook.Sheets("Listes")
+    Dim wsFI As Worksheet: Set wsFI = ThisWorkbook.Sheets("Import Finition")
 
     ' --- Charger groupes ---
     Dim lr As Long
@@ -337,6 +420,10 @@ Public Sub ChargerGroupesEtListes()
         wsF.Cells(5 + r, 8).Value = GF(rsL, "ListName")
         wsF.Cells(5 + r, 9).Value = GF(rsL, "BASE_NUM")
         wsF.Cells(5 + r, 10).Value = GF(rsL, "Factor")
+        wsFI.Cells(7 + r, 9).Value = GF(rsL, "ListNum")
+        wsFI.Cells(7 + r, 10).Value = GF(rsL, "ListName")
+        wsFI.Cells(7 + r, 11).Value = GF(rsL, "BASE_NUM")
+        wsFI.Cells(7 + r, 12).Value = GF(rsL, "Factor")
         MN rsL
     Next r
 
@@ -554,6 +641,106 @@ CleanPN:
     Application.ScreenUpdating = True
 End Sub
 
+' ==========================================
+'  APPLIQUER IMPORT FINITION
+' ==========================================
+Public Sub AppliquerImportFinition()
+    Dim wsFI As Worksheet: Set wsFI = ThisWorkbook.Sheets("Import Finition")
+
+    Dim nbCol As Long: nbCol = 6
+    Dim lstNum() As Long, baseNum() As Long
+    ReDim lstNum(1 To nbCol): ReDim baseNum(1 To nbCol)
+    Dim c As Long
+    For c = 1 To nbCol
+        lstNum(c) = CLng(wsFI.Cells(4, c + 1).Value)
+        If c = 1 Then baseNum(c) = 0 Else baseNum(c) = CLng(wsFI.Cells(5, c + 1).Value)
+    Next c
+
+    Dim items() As String, nbItems As Long: nbItems = 0
+    Dim r As Long
+    For r = 8 To 67
+        If wsFI.Cells(r, 1).Value <> "" Then
+            nbItems = nbItems + 1
+            ReDim Preserve items(1 To nbItems)
+            items(nbItems) = CStr(wsFI.Cells(r, 1).Value)
+        End If
+    Next r
+
+    If nbItems = 0 Then
+        MsgBox "Aucun code article saisi.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim totalOps As Long: totalOps = 0
+    For r = 8 To 7 + nbItems
+        For c = 1 To nbCol
+            If wsFI.Cells(r, c + 1).Value <> "" Then totalOps = totalOps + 1
+        Next c
+    Next r
+
+    Dim msg As String
+    msg = "IMPORT FINITION - " & nbItems & " articles, " & totalOps & " operations:" & vbCrLf & vbCrLf & "Listes: "
+    For c = 1 To nbCol
+        msg = msg & lstNum(c)
+        If c = 1 Then msg = msg & " (prix net)"
+        If c < nbCol Then msg = msg & ", "
+    Next c
+    msg = msg & vbCrLf & vbCrLf
+    Dim mx As Long: mx = nbItems: If mx > 15 Then mx = 15
+    For r = 1 To mx
+        msg = msg & items(r) & vbCrLf
+    Next r
+    If nbItems > 15 Then msg = msg & "... et " & (nbItems - 15) & " autres" & vbCrLf
+    msg = msg & vbCrLf & "CONFIRMER?"
+
+    If MsgBox(msg, vbYesNo + vbQuestion, "Confirmer Import Finition") <> vbYes Then Exit Sub
+
+    Application.StatusBar = "Connexion SAP..."
+    Dim co As Object: Set co = ConnectSAP()
+    If co Is Nothing Then Exit Sub
+
+    On Error GoTo ErrFI
+    Dim cntOK As Long: cntOK = 0
+    Dim sql As String
+
+    For r = 8 To 7 + nbItems
+        Dim itemCode As String: itemCode = Replace(CStr(wsFI.Cells(r, 1).Value), "'", "''")
+        For c = 1 To nbCol
+            Dim cellVal As Variant: cellVal = wsFI.Cells(r, c + 1).Value
+            If cellVal <> "" Then
+                Dim valStr As String: valStr = Replace(CStr(cellVal), ",", ".")
+                If c = 1 Then
+                    sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = 0, ""Factor"" = 0, ""Price"" = " & valStr & _
+                          " WHERE ""PriceList"" = " & lstNum(c) & " AND ""ItemCode"" = '" & itemCode & "'"
+                    WriteLog "FINITION PRIX: " & itemCode & " -> L" & lstNum(c) & " prix=" & valStr
+                Else
+                    sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & baseNum(c) & ", ""Factor"" = " & valStr & _
+                          " WHERE ""PriceList"" = " & lstNum(c) & " AND ""ItemCode"" = '" & itemCode & "'"
+                    WriteLog "FINITION FACTEUR: " & itemCode & " -> L" & lstNum(c) & " base=" & baseNum(c) & " fact=" & valStr
+                End If
+                Dim rsU As Object: Set rsU = co.GetBusinessObject(300)
+                CallByName rsU, "DoQuery", VbMethod, sql
+                Set rsU = Nothing
+                cntOK = cntOK + 1
+                Application.StatusBar = "Import Finition " & cntOK & "/" & totalOps & "..."
+            End If
+        Next c
+    Next r
+
+    WriteLog "IMPORT FINITION TERMINE: " & cntOK & " operations (" & nbItems & " articles)"
+    MsgBox "Termine! " & cntOK & " operations sur " & nbItems & " articles.", vbInformation
+    Application.StatusBar = "Termine - " & cntOK & " operations"
+    GoTo CleanFI
+ErrFI:
+    WriteLog "IMPORT FINITION ERREUR: " & Err.Description
+    MsgBox "Erreur: " & Err.Description, vbCritical
+    Application.StatusBar = False
+CleanFI:
+    On Error Resume Next
+    co.Disconnect: Set co = Nothing
+    Application.ScreenUpdating = True
+End Sub
+
 Public Sub TestUpdateSQL()
     Dim co As Object: Set co = ConnectSAP()
     If co Is Nothing Then Exit Sub
@@ -596,4 +783,6 @@ Write-Host "  Ouvrez: $xlsmPath"
 Write-Host "  Macros (Alt+F8):"
 Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes de SAP"
 Write-Host "    - AppliquerFacteurs      : Applique les facteurs saisis"
+Write-Host "    - AppliquerPrixNet       : Applique les prix net clients"
+Write-Host "    - AppliquerImportFinition: Import finition (prix net + facteurs)"
 Write-Host "====================================="
