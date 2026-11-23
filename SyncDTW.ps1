@@ -1596,7 +1596,11 @@ function Invoke-ScanCourrielsManques {
         $items.Sort("[ReceivedTime]", $true)
 
         $heuresDepuisDemarrage = ((Get-Date) - $Script:HeureDemarrageSyncDTW).TotalHours
-        $heuresScan = [Math]::Max(2, [Math]::Min($heuresDepuisDemarrage + 1, 16))
+        if ($heuresDepuisDemarrage -lt 0.1) {
+            $heuresScan = 72
+        } else {
+            $heuresScan = [Math]::Max(2, [Math]::Min($heuresDepuisDemarrage + 1, 16))
+        }
         $limite = (Get-Date).AddHours(-$heuresScan)
         $scriptPath = Join-Path (Split-Path $PSCommandPath) "VerifierConfirmation.ps1"
 
