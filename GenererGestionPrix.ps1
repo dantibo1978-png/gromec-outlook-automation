@@ -51,8 +51,8 @@ $wsFact.Columns("C:C").ColumnWidth = 14
 $wsFact.Columns("D:D").ColumnWidth = 14
 $wsFact.Columns("E:E").ColumnWidth = 12
 
-# Pre-fill 50 input rows with alternating colors and VLOOKUP formula
-for ($r = 6; $r -le 55; $r++) {
+# Pre-fill 20 input rows with alternating colors and VLOOKUP formula
+for ($r = 6; $r -le 25; $r++) {
     # Col A: Code Grp (saisie) - jaune clair
     $wsFact.Cells($r, 1).Interior.Color = 0xE0FFFF
     # Col B: Nom du groupe (VLOOKUP auto)
@@ -111,7 +111,7 @@ $wsPrixNet.Columns("A:A").ColumnWidth = 20
 $wsPrixNet.Columns("B:B").ColumnWidth = 14
 $wsPrixNet.Columns("C:C").ColumnWidth = 14
 
-for ($r = 6; $r -le 205; $r++) {
+for ($r = 6; $r -le 25; $r++) {
     $wsPrixNet.Cells($r, 1).Interior.Color = 0xE0FFFF
     $wsPrixNet.Cells($r, 2).Interior.Color = 0xE0FFFF
     $wsPrixNet.Cells($r, 2).NumberFormat = "0.00"
@@ -162,6 +162,15 @@ Option Explicit
 
 Private mSapUser As String
 Private mSapPass As String
+Private Const LOG_PATH As String = "U:\GromecOutlook\GestionPrix.log"
+
+Private Sub WriteLog(msg As String)
+    Dim fso As Object, f As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set f = fso.OpenTextFile(LOG_PATH, 8, True)
+    f.WriteLine Format(Now, "yyyy-mm-dd hh:nn:ss") & " [" & mSapUser & "] " & msg
+    f.Close
+End Sub
 
 Private Function GetSAPLogin() As Boolean
     Dim fso As Object, tempHta As String, resultFile As String
@@ -184,10 +193,11 @@ Private Function GetSAPLogin() As Boolean
         "  f.Close : window.close" & vbCrLf & _
         "End Sub" & vbCrLf & _
         "Sub DoCancel() : window.close : End Sub" & vbCrLf & _
+        "Sub DoKeyPress(k) : If k = 13 Then DoOK : End Sub" & vbCrLf & _
         "Sub Window_OnLoad() : window.resizeTo 350, 220 : document.getElementById(""usr"").focus : End Sub" & vbCrLf & _
         "</script></head><body>" & _
         "<table><tr><td><b>Usager</b></td><td><input id=""usr"" value=""" & mSapUser & """></td></tr>" & _
-        "<tr><td><b>Mot de passe</b></td><td><input id=""pwd"" type=""password""></td></tr></table><br>" & _
+        "<tr><td><b>Mot de passe</b></td><td><input id=""pwd"" type=""password"" onkeypress=""DoKeyPress(window.event.keyCode)""></td></tr></table><br>" & _
         "<center><button onclick=""DoOK()"">OK</button>&nbsp;&nbsp;" & _
         "<button onclick=""DoCancel()"">ANNULER</button></center></body></html>"
 
@@ -361,7 +371,7 @@ Public Sub AppliquerFacteurs()
     Dim r As Long
 
     r = 6
-    Do While r <= 55
+    Do While r <= 25
         Dim codeFamille As Variant: codeFamille = wsF.Cells(r, 1).Value
         Dim listeCible As Variant: listeCible = wsF.Cells(r, 3).Value
         Dim listeBase As Variant: listeBase = wsF.Cells(r, 4).Value
@@ -438,14 +448,17 @@ Public Sub AppliquerFacteurs()
         Set rsUpd = co.GetBusinessObject(300)
         CallByName rsUpd, "DoQuery", VbMethod, sql
         Set rsUpd = Nothing
+        WriteLog "FACTEUR: Fam " & ops(1, g) & " (SAP " & ops(5, g) & ") -> Liste " & ops(2, g) & " base=" & ops(4, g) & " facteur=" & ops(3, g)
         cntOK = cntOK + 1
     Next g
 
+    WriteLog "FACTEUR TERMINE: " & cntOK & " operations executees"
     MsgBox "Termine! " & cntOK & " operations executees.", vbInformation
     Application.StatusBar = "Termine - " & cntOK & " operations executees"
     GoTo CleanApp
 
 ErrApp:
+    WriteLog "FACTEUR ERREUR: " & Err.Description
     MsgBox "Erreur: " & Err.Description, vbCritical
     Application.StatusBar = False
 CleanApp:
@@ -464,7 +477,7 @@ Public Sub AppliquerPrixNet()
     Dim nbOps As Long: nbOps = 0
     Dim r As Long
 
-    For r = 6 To 205
+    For r = 6 To 25
         Dim codeArt As Variant: codeArt = wsPN.Cells(r, 1).Value
         Dim prixNet As Variant: prixNet = wsPN.Cells(r, 2).Value
         Dim listeCible As Variant: listeCible = wsPN.Cells(r, 3).Value
@@ -522,14 +535,17 @@ Public Sub AppliquerPrixNet()
         Set rsUpd = co.GetBusinessObject(300)
         CallByName rsUpd, "DoQuery", VbMethod, sql
         Set rsUpd = Nothing
+        WriteLog "PRIX NET: " & codes(g) & " -> Liste " & listes(g) & " prix=" & prix(g)
         cntOK = cntOK + 1
     Next g
 
+    WriteLog "PRIX NET TERMINE: " & cntOK & " prix net appliques"
     MsgBox "Termine! " & cntOK & " prix net appliques (mode Manuel).", vbInformation
     Application.StatusBar = "Termine - " & cntOK & " prix net appliques"
     GoTo CleanPN
 
 ErrPN:
+    WriteLog "PRIX NET ERREUR: " & Err.Description
     MsgBox "Erreur: " & Err.Description, vbCritical
     Application.StatusBar = False
 CleanPN:
