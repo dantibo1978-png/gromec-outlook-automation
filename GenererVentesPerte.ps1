@@ -434,7 +434,7 @@ Public Sub AnalyserVentesPerte()
     sql = "SELECT" & selItem & ", x.""CardCode"", c.""CardName"", d.""ListNum"", l.""ListName"", d.""FromDate"", d.""ToDate""," & _
           " x.""Amount"" AS ""Qte"", x.""Currency"" AS ""Devise"", x.""Price"" AS ""Prix""" & _
           " FROM ""SPP2"" x" & _
-          " JOIN ""SPP1"" d ON d.""ItemCode"" = x.""ItemCode"" AND d.""CardCode"" = x.""CardCode"" AND d.""LineNum"" = x.""SPP1LNum""" & _
+          " JOIN ""SPP1"" d ON d.""ItemCode"" = x.""ItemCode"" AND d.""CardCode"" = x.""CardCode"" AND d.""LINENUM"" = x.""SPP1LNum""" & _
           joinItem & _
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = d.""ListNum""" & _
