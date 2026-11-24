@@ -86,6 +86,11 @@ Set-ResultSheet $wsRes "VENTES A PERTE - Prix de vente < Cout moyen magasin 10" 
     "<- code groupe, 3 premiers chiffres (ex: 716 ou 716,101). Vide = tous. Liste des codes: onglet Groupes."
 Set-ResultSheet $wsArt "RECHERCHE PAR ARTICLE - Prix de vente < Cout moyen magasin 10" "No article:" `
     "<- numero d'article (ex: 701096 ou 701096,701097). Memes regles que Ventes a perte, mais liste 1 incluse."
+# Colonnes modifiables (F Lie a, G Facteur, H Prix Net) en vert
+$wsArt.Range("F5:H5").Interior.Color = 0x008000
+$wsArt.Cells(4,6).Value2 = "Modifiable -> bouton Appliquer"
+$wsArt.Cells(4,6).Font.Italic = $true
+$wsArt.Cells(4,6).Font.Color = 0x008000
 
 # Boutons
 try {
@@ -98,6 +103,9 @@ try {
     $b3 = $wsArt.Buttons().Add($wsArt.Range("J1").Left, 2, 160, 26)
     $b3.Text = "Rechercher article"
     $b3.OnAction = "RechercherArticle"
+    $b4 = $wsArt.Buttons().Add($wsArt.Range("J1").Left + 170, 2, 200, 26)
+    $b4.Text = "Appliquer modifs F-G-H dans SAP"
+    $b4.OnAction = "AppliquerModifsArticle"
 } catch {
     Write-Host "Boutons non crees (utiliser Alt+F8): $($_.Exception.Message)"
 }
@@ -133,6 +141,7 @@ Private mErreurs As String
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
 Private Const NB_COLS As Long = 23
+Private Const COL_ORIG As Long = 25   ' colonnes cachees 25-27 = valeurs originales F-G-H
 Private Const ROW_HDR As Long = 5
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
 Private Const LISTES_EXCLUES As String = "1,2,3,11"       ' listes ignorees - Ventes a perte (11 = Coutant moyen)
@@ -446,7 +455,7 @@ Private Function ArticlesSaisis(v As Variant) As String
     ArticlesSaisis = res
 End Function
 
-Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean)
+Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silencieux As Boolean = False)
     Dim gro As String, arts As String, filtreTxt As String
     If parArticle Then
         arts = ArticlesSaisis(ws.Range("B2").Value)
@@ -466,7 +475,9 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean)
     msg = filtreTxt & vbCrLf & _
           "Profit min: " & pct & " % sur cout" & vbCrLf & _
           "Listes de prix: " & IIf(lst = "", "TOUTES", lst) & vbCrLf & vbCrLf & "Lancer l'analyse?"
-    If MsgBox(msg, vbQuestion + vbYesNo, "Ventes a perte") <> vbYes Then Exit Sub
+    If Not silencieux Then
+        If MsgBox(msg, vbQuestion + vbYesNo, "Ventes a perte") <> vbYes Then Exit Sub
+    End If
 
     Application.StatusBar = "Connexion SAP..."
     Dim co As Object: Set co = ConnectSAP()
@@ -482,7 +493,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean)
     If ws.AutoFilterMode Then ws.AutoFilterMode = False
     Dim lr As Long: lr = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
     If lr > ROW_HDR Then
-        ws.Range(ws.Cells(ROW_HDR + 1, 1), ws.Cells(lr, NB_COLS)).ClearContents
+        ws.Range(ws.Cells(ROW_HDR + 1, 1), ws.Cells(lr, COL_ORIG + 2)).ClearContents
         ws.Range(ws.Cells(ROW_HDR + 1, 1), ws.Cells(lr, NB_COLS)).Interior.ColorIndex = xlNone
     End If
 
@@ -560,6 +571,10 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean)
         ' Format date applique en VBA (NumberFormat via PowerShell = interprete en francais)
         ws.Range(ws.Cells(ROW_HDR + 1, 12), ws.Cells(lastRow, 13)).NumberFormat = "yyyy-mm-dd"
         ws.Range(ws.Cells(ROW_HDR + 1, 22), ws.Cells(lastRow, 22)).NumberFormat = "yyyy-mm-dd"
+        ' Copie cachee des valeurs originales F-G-H (detection des modifs)
+        ws.Range(ws.Cells(ROW_HDR + 1, COL_ORIG), ws.Cells(lastRow, COL_ORIG + 2)).Value = _
+            ws.Range(ws.Cells(ROW_HDR + 1, 6), ws.Cells(lastRow, 8)).Value
+        ws.Range(ws.Cells(1, COL_ORIG), ws.Cells(1, COL_ORIG + 2)).EntireColumn.Hidden = True
         rng.AutoFilter
     End If
 
@@ -574,7 +589,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean)
     fin = total & " prix sous cout +" & pct & "% trouves en " & Format(Timer - t0, "0") & " s." & vbCrLf & _
           nSous & " sous le dernier prix d'achat (lignes rouges)."
     If mErreurs <> "" Then fin = fin & vbCrLf & vbCrLf & "Requetes en erreur (voir VentesPerte.log):" & mErreurs
-    MsgBox fin, IIf(mErreurs = "", vbInformation, vbExclamation), "Ventes a perte"
+    If Not silencieux Or mErreurs <> "" Then MsgBox fin, IIf(mErreurs = "", vbInformation, vbExclamation), "Ventes a perte"
     GoTo CleanAVP
 ErrAVP:
     MsgBox "Erreur: " & Err.Description, vbCritical
@@ -585,6 +600,112 @@ CleanAVP:
     Application.ScreenUpdating = True
     Application.StatusBar = False
     ws.Activate
+End Sub
+
+' ==========================================
+'  APPLIQUER MODIFS F (Lie a) / G (Facteur) / H (Prix Net) DANS SAP (ITM1)
+' ==========================================
+Public Sub AppliquerModifsArticle()
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Recherche article")
+    Dim lastRow As Long: lastRow = ws.Cells(ws.Rows.Count, 3).End(xlUp).Row
+    If lastRow <= ROW_HDR Then MsgBox "Aucun resultat. Faire une recherche d'abord.", vbExclamation: Exit Sub
+
+    Dim ops() As Variant, nb As Long, r As Long, k As Long
+    Dim art As String, liste As Long, lie As Variant, fac As Variant, pn As String
+    Dim erreurs As String, ignores As Long, resumeTxt As String
+    ReDim ops(1 To 5, 1 To lastRow)
+
+    For r = ROW_HDR + 1 To lastRow
+        If CStr(ws.Cells(r, 6).Value) <> CStr(ws.Cells(r, COL_ORIG).Value) Or _
+           CStr(ws.Cells(r, 7).Value) <> CStr(ws.Cells(r, COL_ORIG + 1).Value) Or _
+           UCase(Trim(CStr(ws.Cells(r, 8).Value))) <> UCase(Trim(CStr(ws.Cells(r, COL_ORIG + 2).Value))) Then
+
+            If CStr(ws.Cells(r, 1).Value) <> "Liste de prix" Then
+                ignores = ignores + 1
+            Else
+                art = CStr(ws.Cells(r, 3).Value)
+                liste = CLng(ws.Cells(r, 5).Value)
+                lie = ws.Cells(r, 6).Value
+                fac = ws.Cells(r, 7).Value
+                pn = UCase(Trim(CStr(ws.Cells(r, 8).Value)))
+                If Not IsNumeric(lie) Or Trim(CStr(lie)) = "" Then
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": 'Lie a' invalide"
+                ElseIf CLng(lie) = liste Then
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": 'Lie a' = la liste elle-meme"
+                ElseIf Not IsNumeric(fac) Or Trim(CStr(fac)) = "" Then
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": Facteur invalide"
+                ElseIf CDbl(fac) <= 0 Then
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": Facteur doit etre > 0"
+                ElseIf pn <> "Y" And pn <> "N" Then
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": Prix Net doit etre Y ou N"
+                Else
+                    nb = nb + 1
+                    ops(1, nb) = art: ops(2, nb) = liste: ops(3, nb) = CLng(lie)
+                    ops(4, nb) = CDbl(fac): ops(5, nb) = pn
+                    If nb <= 25 Then resumeTxt = resumeTxt & vbCrLf & art & "  liste " & liste & " -> lie a " & CLng(lie) & _
+                        "  x" & CDbl(fac) & "  Prix Net " & pn
+                End If
+            End If
+        End If
+    Next r
+
+    If erreurs <> "" Then MsgBox "Corriger avant d'appliquer:" & erreurs, vbExclamation: Exit Sub
+    If nb = 0 Then
+        MsgBox "Aucune modification detectee dans F-G-H (lignes 'Liste de prix')." & _
+            IIf(ignores > 0, vbCrLf & ignores & " modif(s) sur prix speciaux ignoree(s).", ""), vbInformation
+        Exit Sub
+    End If
+    If nb > 25 Then resumeTxt = resumeTxt & vbCrLf & "... et " & (nb - 25) & " autres"
+    If MsgBox(nb & " prix a modifier dans SAP:" & resumeTxt & vbCrLf & vbCrLf & _
+              "Prix Net N = prix recalcule (prix liste de base x facteur)." & vbCrLf & _
+              "Prix Net Y = prix actuel conserve." & _
+              IIf(ignores > 0, vbCrLf & ignores & " modif(s) sur prix speciaux ignoree(s).", "") & vbCrLf & vbCrLf & _
+              "CONFIRMER?", vbYesNo + vbQuestion, "Modifier SAP") <> vbYes Then Exit Sub
+
+    Application.StatusBar = "Connexion SAP..."
+    Dim co As Object: Set co = ConnectSAP()
+    If co Is Nothing Then Application.StatusBar = False: Exit Sub
+
+    Dim sql As String, sFac As String, ok As Long, ko As String, rsU As Object
+    For k = 1 To nb
+        Application.StatusBar = "Mise a jour " & k & "/" & nb & " - " & ops(1, k) & " liste " & ops(2, k)
+        sFac = Trim(Str(ops(4, k)))
+        If ops(5, k) = "N" Then
+            sql = "UPDATE ""ITM1"" AS T0 SET ""BasePLNum"" = " & ops(3, k) & ", ""Factor"" = " & sFac & _
+                  ", ""Ovrwritten"" = 'N'" & _
+                  ", ""Price"" = IFNULL((SELECT T1.""Price"" FROM ""ITM1"" T1 WHERE T1.""ItemCode"" = T0.""ItemCode""" & _
+                  " AND T1.""PriceList"" = " & ops(3, k) & "), 0) * " & sFac & _
+                  " WHERE T0.""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND T0.""PriceList"" = " & ops(2, k)
+        Else
+            sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & ops(3, k) & ", ""Factor"" = " & sFac & _
+                  ", ""Ovrwritten"" = 'Y'" & _
+                  " WHERE ""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND ""PriceList"" = " & ops(2, k)
+        End If
+        On Error Resume Next
+        Set rsU = co.GetBusinessObject(300)
+        CallByName rsU, "DoQuery", VbMethod, sql
+        If Err.Number <> 0 Then
+            ko = ko & vbCrLf & ops(1, k) & " liste " & ops(2, k) & ": " & Err.Description
+            WriteLog "MODIF ERREUR " & ops(1, k) & " liste " & ops(2, k) & ": " & Err.Description & " | " & sql
+            Err.Clear
+        Else
+            ok = ok + 1
+            WriteLog "MODIF " & ops(1, k) & " liste " & ops(2, k) & " lie=" & ops(3, k) & " fac=" & sFac & " net=" & ops(5, k)
+        End If
+        On Error GoTo 0
+        Set rsU = Nothing
+    Next k
+
+    On Error Resume Next
+    co.Disconnect: Set co = Nothing
+    On Error GoTo 0
+    Application.StatusBar = False
+
+    MsgBox ok & " prix modifies dans SAP." & IIf(ko <> "", vbCrLf & vbCrLf & "Erreurs:" & ko, ""), _
+        IIf(ko = "", vbInformation, vbExclamation), "Modifier SAP"
+
+    ' Recharger pour afficher les nouveaux prix
+    LancerAnalyse ws, True, True
 End Sub
 '@
 
@@ -608,4 +729,5 @@ Write-Host "  Boutons (ou Alt+F8):"
 Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes de SAP"
 Write-Host "    - AnalyserVentesPerte    : Trouve prix vente < cout moyen"
 Write-Host "    - RechercherArticle      : Meme analyse pour un/des articles"
+Write-Host "    - AppliquerModifsArticle : Ecrit F-G-H (Lie a/Facteur/Prix Net) dans SAP"
 Write-Host "====================================="
