@@ -69,11 +69,9 @@ $widths = @(14,28,16,40,7,24,12,30,11,11,8,7,12,12,12,11,10,12,11,9)
 for ($i = 0; $i -lt $widths.Count; $i++) { $wsRes.Columns($i + 1).ColumnWidth = $widths[$i] }
 $wsRes.Columns("C:C").NumberFormat = "@"
 $wsRes.Columns("G:G").NumberFormat = "@"
-$wsRes.Columns("I:J").NumberFormat = "yyyy-mm-dd"
 $wsRes.Columns("M:P").NumberFormat = "#,##0.00"
 $wsRes.Columns("Q:Q").NumberFormat = "0.0%"
 $wsRes.Columns("R:R").NumberFormat = "#,##0.00"
-$wsRes.Columns("S:S").NumberFormat = "yyyy-mm-dd"
 $wsRes.Rows(5).Font.Bold = $true
 
 # Boutons
@@ -508,6 +506,9 @@ Public Sub AnalyserVentesPerte()
                 nSous = nSous + 1
             End If
         Next r
+        ' Format date applique en VBA (NumberFormat via PowerShell = interprete en francais)
+        ws.Range(ws.Cells(ROW_HDR + 1, 9), ws.Cells(lastRow, 10)).NumberFormat = "yyyy-mm-dd"
+        ws.Range(ws.Cells(ROW_HDR + 1, 19), ws.Cells(lastRow, 19)).NumberFormat = "yyyy-mm-dd"
         rng.AutoFilter
     End If
 
