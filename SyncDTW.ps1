@@ -514,7 +514,7 @@ function Update-ItemFullbox {
 $Script:LogBuffer = [System.Collections.ArrayList]::new()
 $Script:DernierFlushLogs = Get-Date
 $Script:DernierHeartbeat = [datetime]::MinValue
-$Script:VersionSync = "PR115"
+$Script:VersionSync = "PR145"
 
 function Write-Log {
     param([string]$Message, [string]$Cle = "", [string]$BC = "")
@@ -1497,12 +1497,12 @@ function Invoke-VerifierBrouillonsDelivro {
     if (-not $Outlook) { return }
     if ($Script:ListeNoDelivro.Count -eq 0) { return }
 
+    $ns = $null; $drafts = $null
     try {
         $ns = $Outlook.GetNamespace("MAPI")
         $drafts = $ns.GetDefaultFolder(16)  # olFolderDrafts
         $nomCategorie = "NO DELIVRO"
 
-        # Creer la categorie si elle n'existe pas
         try {
             $categories = $ns.Categories
             $existe = $false
@@ -1512,43 +1512,57 @@ function Invoke-VerifierBrouillonsDelivro {
             }
         } catch {}
 
-        foreach ($item in $drafts.Items) {
-            if ($item.Class -ne 43) { continue }
+        # Collecter les items AVANT de modifier pour ne pas corrompre l'iterateur COM
+        $itemsAModifier = @()
+        $allItems = $drafts.Items
+        for ($idx = $allItems.Count; $idx -ge 1; $idx--) {
+            $item = $null
+            try {
+                $item = $allItems.Item($idx)
+                if ($item.Class -ne 43) { continue }
 
-            $destinataires = @()
-            foreach ($recip in $item.Recipients) {
-                try { $addr = $recip.Address.ToLower() } catch { try { $addr = $recip.AddressEntry.GetExchangeUser().PrimarySmtpAddress.ToLower() } catch { $addr = "" } }
-                if ($addr) { $destinataires += $addr }
-            }
-
-            $doitAjouter = $false
-            foreach ($fourn in $Script:ListeNoDelivro) {
-                $fournLower = $fourn.ToLower()
-                foreach ($dest in $destinataires) {
-                    if ($dest -like "*$fournLower*") { $doitAjouter = $true; break }
+                $destinataires = @()
+                foreach ($recip in $item.Recipients) {
+                    try { $addr = $recip.Address.ToLower() } catch { try { $addr = $recip.AddressEntry.GetExchangeUser().PrimarySmtpAddress.ToLower() } catch { $addr = "" } }
+                    if ($addr) { $destinataires += $addr }
                 }
-                if ($doitAjouter) { break }
-            }
 
-            $dejaCategorie = ($item.Categories -split ',\s*') -contains $nomCategorie
-
-            if ($doitAjouter -and -not $dejaCategorie) {
-                if ($item.Categories -and $item.Categories.Trim() -ne "") {
-                    $item.Categories = $item.Categories + ", $nomCategorie"
-                } else {
-                    $item.Categories = $nomCategorie
+                $doitAjouter = $false
+                foreach ($fourn in $Script:ListeNoDelivro) {
+                    $fournLower = $fourn.ToLower()
+                    foreach ($dest in $destinataires) {
+                        if ($dest -like "*$fournLower*") { $doitAjouter = $true; break }
+                    }
+                    if ($doitAjouter) { break }
                 }
-                $item.Save()
-                Write-Log "INFO  Brouillon categorise '$nomCategorie' pour: $($item.Subject)"
-            } elseif (-not $doitAjouter -and $dejaCategorie) {
-                $cats = ($item.Categories -split ',\s*') | Where-Object { $_ -ne $nomCategorie }
-                $item.Categories = ($cats -join ', ')
-                $item.Save()
-                Write-Log "INFO  Brouillon categorie '$nomCategorie' retiree pour: $($item.Subject)"
+
+                $dejaCategorie = ($item.Categories -split ',\s*') -contains $nomCategorie
+
+                if ($doitAjouter -and -not $dejaCategorie) {
+                    if ($item.Categories -and $item.Categories.Trim() -ne "") {
+                        $item.Categories = $item.Categories + ", $nomCategorie"
+                    } else {
+                        $item.Categories = $nomCategorie
+                    }
+                    $item.Save()
+                    Write-Log "INFO  Brouillon categorise '$nomCategorie' pour: $($item.Subject)"
+                } elseif (-not $doitAjouter -and $dejaCategorie) {
+                    $cats = ($item.Categories -split ',\s*') | Where-Object { $_ -ne $nomCategorie }
+                    $item.Categories = ($cats -join ', ')
+                    $item.Save()
+                    Write-Log "INFO  Brouillon categorie '$nomCategorie' retiree pour: $($item.Subject)"
+                }
+            } catch {
+                # skip item
+            } finally {
+                if ($item) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($item) | Out-Null } catch {} }
             }
         }
     } catch {
         Write-Log "WARN  Erreur verification brouillons Delivro : $($_.Exception.Message)"
+    } finally {
+        if ($drafts) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($drafts) | Out-Null } catch {} }
+        if ($ns)     { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ns) | Out-Null } catch {} }
     }
 }
 
@@ -1572,7 +1586,20 @@ $Script:ConversationsTraitees = [System.Collections.Generic.HashSet[string]]::ne
 $Script:DernierChargementConvTraitees = [datetime]::MinValue
 $Script:ProcessVC = $null
 $Script:HeureDemarrageSyncDTW = Get-Date
+$Script:OutlookGeneral = $null
 $FichierConvTraitees = Join-Path (Split-Path $PSCommandPath) "conversations_traitees.csv"
+
+function Get-OutlookInstance {
+    if ($Script:OutlookRelance) { return $Script:OutlookRelance }
+    if ($null -ne $Script:OutlookGeneral) {
+        try { $null = $Script:OutlookGeneral.Name; return $Script:OutlookGeneral } catch {}
+        $Script:OutlookGeneral = $null
+    }
+    try {
+        $Script:OutlookGeneral = New-Object -ComObject Outlook.Application
+        return $Script:OutlookGeneral
+    } catch { return $null }
+}
 
 function Sync-ConversationsTraitees {
     if (((Get-Date) - $Script:DernierChargementConvTraitees).TotalSeconds -lt 60) { return }
@@ -1587,6 +1614,7 @@ function Sync-ConversationsTraitees {
 
 function Invoke-ScanCourrielsManques {
     param($Outlook)
+    $ns = $null; $inbox = $null; $items = $null
     try {
         if ($null -ne $Script:ProcessVC -and -not $Script:ProcessVC.HasExited) { return }
 
@@ -1606,51 +1634,61 @@ function Invoke-ScanCourrielsManques {
         $limite = (Get-Date).AddHours(-$heuresScan)
         $scriptPath = Join-Path (Split-Path $PSCommandPath) "VerifierConfirmation.ps1"
 
-        foreach ($item in $items) {
-            if ($item.Class -ne 43) { continue }
-            if ($item.ReceivedTime -lt $limite) { break }
-
-            $eid = $item.EntryID
-            if ($Script:CourrielsDejaVus.Contains($eid)) { continue }
-
-            $cats = $item.Categories
-            if ($cats -like "*Confirmation OK*" -or $cats -like "*Confirmation - Ecart*" -or
-                $cats -like "*Non-confirmation*" -or $cats -like "*Exclu*") {
-                $null = $Script:CourrielsDejaVus.Add($eid)
-                continue
-            }
-
-            if (-not $item.UnRead) {
-                $null = $Script:CourrielsDejaVus.Add($eid)
-                continue
-            }
-
-            $convID = $item.ConversationID
-            if ($Script:ConversationsTraitees.Contains($convID)) {
-                $null = $Script:CourrielsDejaVus.Add($eid)
-                continue
-            }
-
-            if ($item.Attachments.Count -eq 0 -and
-                $item.Subject -notmatch '(?i)(confirmation|order.?ack|sales.?order|accus.+r.+ception)') {
-                $null = $Script:CourrielsDejaVus.Add($eid)
-                continue
-            }
-
-            $null = $Script:CourrielsDejaVus.Add($eid)
-            $sid = $item.Parent.StoreID
-            Write-Log "INFO  Scan inbox : courriel non traite detecte -- $($item.Subject)"
+        for ($idx = $items.Count; $idx -ge 1; $idx--) {
+            $item = $null
             try {
-                $Script:ProcessVC = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`" -EntryID `"$eid`" -StoreID `"$sid`"" -WindowStyle Hidden -PassThru
-                return
-            } catch {
-                Write-Log "WARN  Scan inbox : impossible de lancer VerifierConfirmation pour $($item.Subject) : $($_.Exception.Message)"
+                $item = $items.Item($idx)
+                if ($item.Class -ne 43) { continue }
+                if ($item.ReceivedTime -lt $limite) { break }
+
+                $eid = $item.EntryID
+                if ($Script:CourrielsDejaVus.Contains($eid)) { continue }
+
+                $cats = $item.Categories
+                if ($cats -like "*Confirmation OK*" -or $cats -like "*Confirmation - Ecart*" -or
+                    $cats -like "*Non-confirmation*" -or $cats -like "*Exclu*") {
+                    $null = $Script:CourrielsDejaVus.Add($eid)
+                    continue
+                }
+
+                if (-not $item.UnRead) {
+                    $null = $Script:CourrielsDejaVus.Add($eid)
+                    continue
+                }
+
+                $convID = $item.ConversationID
+                if ($Script:ConversationsTraitees.Contains($convID)) {
+                    $null = $Script:CourrielsDejaVus.Add($eid)
+                    continue
+                }
+
+                if ($item.Attachments.Count -eq 0 -and
+                    $item.Subject -notmatch '(?i)(confirmation|order.?ack|sales.?order|accus.+r.+ception)') {
+                    $null = $Script:CourrielsDejaVus.Add($eid)
+                    continue
+                }
+
+                $null = $Script:CourrielsDejaVus.Add($eid)
+                $sid = $item.Parent.StoreID
+                Write-Log "INFO  Scan inbox : courriel non traite detecte -- $($item.Subject)"
+                try {
+                    $Script:ProcessVC = Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`" -EntryID `"$eid`" -StoreID `"$sid`"" -WindowStyle Hidden -PassThru
+                    return
+                } catch {
+                    Write-Log "WARN  Scan inbox : impossible de lancer VerifierConfirmation pour $($item.Subject) : $($_.Exception.Message)"
+                }
+            } finally {
+                if ($item) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($item) | Out-Null } catch {} }
             }
         }
 
         if ($Script:CourrielsDejaVus.Count -gt 1000) { $Script:CourrielsDejaVus.Clear() }
     } catch {
         Write-Log "WARN  Erreur scan inbox : $($_.Exception.Message)"
+    } finally {
+        if ($items) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($items) | Out-Null } catch {} }
+        if ($inbox) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($inbox) | Out-Null } catch {} }
+        if ($ns)    { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ns) | Out-Null } catch {} }
     }
 }
 
@@ -1702,7 +1740,7 @@ while ($true) {
     # Verifier les brouillons Outlook pour ajouter "NE PAS UTILISER DELIVRO" (toutes les 60s)
     if (((Get-Date) - $Script:DernierCheckBrouillons).TotalSeconds -ge 60) {
         Sync-ListeNoDelivro
-        $outlookBrouillon = if ($Script:OutlookRelance) { $Script:OutlookRelance } else { try { New-Object -ComObject Outlook.Application } catch { $null } }
+        $outlookBrouillon = Get-OutlookInstance
         if ($outlookBrouillon) {
             Invoke-VerifierBrouillonsDelivro -Outlook $outlookBrouillon
         }
@@ -1711,7 +1749,7 @@ while ($true) {
 
     # Scanner les courriels non traites dans la boite de reception (toutes les 120s)
     if (((Get-Date) - $Script:DernierScanInbox).TotalSeconds -ge 120) {
-        $outlookScan = if ($Script:OutlookRelance) { $Script:OutlookRelance } else { try { New-Object -ComObject Outlook.Application } catch { $null } }
+        $outlookScan = Get-OutlookInstance
         if ($outlookScan) { Invoke-ScanCourrielsManques -Outlook $outlookScan }
         $Script:DernierScanInbox = Get-Date
     }
