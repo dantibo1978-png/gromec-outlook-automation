@@ -58,20 +58,22 @@ $wsRes.Cells(3,1).Font.Bold = $true
 $wsRes.Cells(3,2).Interior.Color = 0xCCFFFF
 $wsRes.Cells(3,2).Borders.LineStyle = 1
 $wsRes.Cells(3,2).Font.Bold = $true
-$wsRes.Cells(3,3).Value2 = "<- % de profit minimum sur cout (ex: 15 = prix < cout x 1.15). Vide = 0 (vente a perte). Lignes orange = devise autre que `$"
+$wsRes.Cells(3,3).Value2 = "<- % de profit minimum sur cout (ex: 15 = prix < cout x 1.15). Vide = 0 (vente a perte). Orange = devise autre que `$. ROUGE = prix vente < dernier prix d'achat"
 $wsRes.Cells(3,3).Font.Italic = $true
 $wsRes.Cells(3,3).Font.Color = 0x808080
 
 $hdrR = @("Source","Groupe","Article","Description","Liste #","Nom liste","Client","Nom client",
-          "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout")
+          "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout","Dern. prix achat","Date dern. achat","Sous achat")
 Set-Header $wsRes 5 $hdrR 0x00008B
-$widths = @(14,28,16,40,7,24,12,30,11,11,8,7,12,12,12,11,10)
+$widths = @(14,28,16,40,7,24,12,30,11,11,8,7,12,12,12,11,10,12,11,9)
 for ($i = 0; $i -lt $widths.Count; $i++) { $wsRes.Columns($i + 1).ColumnWidth = $widths[$i] }
 $wsRes.Columns("C:C").NumberFormat = "@"
 $wsRes.Columns("G:G").NumberFormat = "@"
 $wsRes.Columns("I:J").NumberFormat = "yyyy-mm-dd"
 $wsRes.Columns("M:P").NumberFormat = "#,##0.00"
 $wsRes.Columns("Q:Q").NumberFormat = "0.0%"
+$wsRes.Columns("R:R").NumberFormat = "#,##0.00"
+$wsRes.Columns("S:S").NumberFormat = "yyyy-mm-dd"
 $wsRes.Rows(5).Font.Bold = $true
 
 # Boutons
@@ -117,7 +119,7 @@ Private mSapPass As String
 Private mErreurs As String
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
-Private Const NB_COLS As Long = 17
+Private Const NB_COLS As Long = 20
 Private Const ROW_HDR As Long = 5
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
 Private Const LISTES_EXCLUES As String = "1,2,3,11"   ' listes de prix ignorees (11 = Coutant moyen)
@@ -363,7 +365,7 @@ Private Function AjouterResultats(co As Object, sql As String, src As String, ws
     If n = 0 Then Exit Function
 
     Dim arr() As Variant: ReDim arr(1 To n, 1 To NB_COLS)
-    Dim r As Long, prix As Double, cout As Double, q As Variant
+    Dim r As Long, prix As Double, cout As Double, dern As Double, q As Variant
     For r = 1 To n
         prix = Num(GF(rs, "Prix"))
         cout = Num(GF(rs, "Cout"))
@@ -385,6 +387,10 @@ Private Function AjouterResultats(co As Object, sql As String, src As String, ws
         arr(r, 15) = Round(cout * mFacteur, 4)
         arr(r, 16) = Round(cout * mFacteur - prix, 4)
         arr(r, 17) = (prix - cout) / cout
+        dern = Num(GF(rs, "DernAchat"))
+        If dern > 0 Then arr(r, 18) = dern Else arr(r, 18) = ""
+        arr(r, 19) = DateVal(GF(rs, "DernAchatDate"))
+        If dern > 0 And prix < dern Then arr(r, 20) = "OUI" Else arr(r, 20) = ""
         MN rs
         If r Mod 500 = 0 Then
             Application.StatusBar = src & ": " & r & " / " & n
@@ -434,7 +440,7 @@ Public Sub AnalyserVentesPerte()
 
     ' --- Morceaux SQL communs ---
     Dim selItem As String, joinItem As String, wBase As String, wLst As String
-    selItem = " b.""ItmsGrpNam"" AS ""GrpNam"", i.""ItemCode"", i.""ItemName"", w.""AvgPrice"" AS ""Cout"""
+    selItem = " b.""ItmsGrpNam"" AS ""GrpNam"", i.""ItemCode"", i.""ItemName"", w.""AvgPrice"" AS ""Cout"", i.""LastPurPrc"" AS ""DernAchat"", i.""LastPurDat"" AS ""DernAchatDate"""
     joinItem = " JOIN ""OITM"" i ON i.""ItemCode"" = x.""ItemCode""" & _
                " JOIN ""OITB"" b ON b.""ItmsGrpCod"" = i.""ItmsGrpCod""" & _
                " JOIN ""OITW"" w ON w.""ItemCode"" = i.""ItemCode"" AND w.""WhsCode"" = '" & WHS_COUT & "'"
@@ -492,24 +498,29 @@ Public Sub AnalyserVentesPerte()
         Dim rng As Range
         Set rng = ws.Range(ws.Cells(ROW_HDR, 1), ws.Cells(lastRow, NB_COLS))
         rng.Sort Key1:=ws.Cells(ROW_HDR, 16), Order1:=xlDescending, Header:=xlYes
-        ' Devise etrangere en orange
-        Dim r As Long, dv As String
+        ' Devise etrangere en orange, prix < dernier achat en rouge
+        Dim r As Long, dv As String, nSous As Long
         For r = ROW_HDR + 1 To lastRow
             dv = Trim(CStr(ws.Cells(r, 12).Value))
             If dv <> "" And dv <> "$" Then ws.Range(ws.Cells(r, 1), ws.Cells(r, NB_COLS)).Interior.Color = RGB(255, 204, 153)
+            If ws.Cells(r, 20).Value = "OUI" Then
+                ws.Range(ws.Cells(r, 1), ws.Cells(r, NB_COLS)).Interior.Color = RGB(255, 150, 150)
+                nSous = nSous + 1
+            End If
         Next r
         rng.AutoFilter
     End If
 
     ws.Cells(4, 1).Value = total & " prix sous cout +" & pct & "%  |  Listes: " & n1 & "  Speciaux: " & n2 & _
-        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Groupe: " & IIf(gro = "", "tous", Replace(gro, "'", "")) & _
+        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Sous dern. achat: " & nSous & "  |  Groupe: " & IIf(gro = "", "tous", Replace(gro, "'", "")) & _
         "  |  " & Format(Now, "yyyy-mm-dd hh:nn")
     ws.Cells(4, 1).Font.Bold = True
 
     WriteLog "Analyse: " & total & " lignes (grp=" & gro & " lst=" & lst & ") en " & Format(Timer - t0, "0") & "s"
 
     Dim fin As String
-    fin = total & " prix sous cout +" & pct & "% trouves en " & Format(Timer - t0, "0") & " s."
+    fin = total & " prix sous cout +" & pct & "% trouves en " & Format(Timer - t0, "0") & " s." & vbCrLf & _
+          nSous & " sous le dernier prix d'achat (lignes rouges)."
     If mErreurs <> "" Then fin = fin & vbCrLf & vbCrLf & "Requetes en erreur (voir VentesPerte.log):" & mErreurs
     MsgBox fin, IIf(mErreurs = "", vbInformation, vbExclamation), "Ventes a perte"
     GoTo CleanAVP
