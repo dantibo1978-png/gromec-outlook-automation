@@ -741,8 +741,6 @@ Public Sub AppliquerImportFinition()
     On Error GoTo ErrFI
     Dim cntOK As Long: cntOK = 0
     Dim sql As String
-    Dim errList As String: errList = ""
-
     For r = 8 To 7 + nbItems
         Dim itemCode As String: itemCode = Replace(CStr(wsFI.Cells(r, 1).Value), "'", "''")
         For c = 1 To nbCol
@@ -757,40 +755,14 @@ Public Sub AppliquerImportFinition()
                     CallByName rsU, "DoQuery", VbMethod, sql
                     Set rsU = Nothing
                 Else
-                    Dim oItem As Object: Set oItem = co.GetBusinessObject(4)
-                    Dim rawCode As String: rawCode = CStr(wsFI.Cells(r, 1).Value)
-                    If oItem.GetByKey(rawCode) Then
-                        Dim pl As Long
-                        Dim plFound As Boolean: plFound = False
-                        For pl = 0 To 99
-                            CallByName oItem, "PriceList", VbGet
-                            Dim oPL As Object: Set oPL = CallByName(oItem, "PriceList", VbGet)
-                            CallByName oPL, "SetCurrentLine", VbMethod, pl
-                            If CLng(CallByName(oPL, "PriceList", VbGet)) = lstNum(c) Then
-                                CallByName oPL, "BasePriceList", VbLet, CLng(baseNum(c))
-                                CallByName oPL, "Factor", VbLet, CDbl(valStr)
-                                plFound = True
-                                Exit For
-                            End If
-                        Next pl
-                        If plFound Then
-                            Dim retUpd As Long: retUpd = oItem.Update()
-                            If retUpd = 0 Then
-                                WriteLog "FINITION FACTEUR DI: " & rawCode & " -> L" & lstNum(c) & " base=" & baseNum(c) & " fact=" & valStr
-                            Else
-                                Dim derr As String: derr = co.GetLastErrorDescription()
-                                WriteLog "FINITION FACTEUR ERR: " & rawCode & " L" & lstNum(c) & " : " & derr
-                                errList = errList & rawCode & " L" & lstNum(c) & ": " & derr & vbCrLf
-                            End If
-                        Else
-                            WriteLog "FINITION FACTEUR ERR: Liste " & lstNum(c) & " introuvable pour " & rawCode
-                            errList = errList & rawCode & ": liste " & lstNum(c) & " introuvable" & vbCrLf
-                        End If
-                    Else
-                        WriteLog "FINITION FACTEUR ERR: Article " & rawCode & " introuvable"
-                        errList = errList & rawCode & " introuvable" & vbCrLf
-                    End If
-                    Set oItem = Nothing
+                    sql = "UPDATE ""ITM1"" AS T0 SET ""BasePLNum"" = " & baseNum(c) & _
+                          ", ""Factor"" = " & valStr & _
+                          ", ""Price"" = (SELECT T1.""Price"" FROM ""ITM1"" T1 WHERE T1.""ItemCode"" = T0.""ItemCode"" AND T1.""PriceList"" = " & baseNum(c) & ") * " & valStr & _
+                          " WHERE ""PriceList"" = " & lstNum(c) & " AND ""ItemCode"" = '" & itemCode & "'"
+                    WriteLog "FINITION FACTEUR: " & itemCode & " -> L" & lstNum(c) & " base=" & baseNum(c) & " fact=" & valStr
+                    Dim rsF As Object: Set rsF = co.GetBusinessObject(300)
+                    CallByName rsF, "DoQuery", VbMethod, sql
+                    Set rsF = Nothing
                 End If
                 cntOK = cntOK + 1
                 Application.StatusBar = "Import Finition " & cntOK & "/" & totalOps & "..."
@@ -799,11 +771,7 @@ Public Sub AppliquerImportFinition()
     Next r
 
     WriteLog "IMPORT FINITION TERMINE: " & cntOK & " operations (" & nbItems & " articles)"
-    If errList <> "" Then
-        MsgBox "Termine avec erreurs! " & cntOK & " operations sur " & nbItems & " articles." & vbCrLf & vbCrLf & "Erreurs:" & vbCrLf & errList, vbExclamation
-    Else
-        MsgBox "Termine! " & cntOK & " operations sur " & nbItems & " articles.", vbInformation
-    End If
+    MsgBox "Termine! " & cntOK & " operations sur " & nbItems & " articles.", vbInformation
     Application.StatusBar = "Termine - " & cntOK & " operations"
     GoTo CleanFI
 ErrFI:
