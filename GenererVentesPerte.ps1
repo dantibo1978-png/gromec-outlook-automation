@@ -7,6 +7,7 @@
     - Prix speciaux par dates  (SPP1, non expires)
     - Prix speciaux par qte    (SPP2, periode non expiree)
   Exclus : codes commencant par PT, TA, TB, TC, TD, PR, listes de prix 1, 2, 3, 11 (Coutant moyen), articles inactifs
+  Filtre groupe Gromec (3 premiers car. du nom de groupe SAP) en B2 de l'onglet Ventes a perte
   Filtre optionnel par groupe d'articles (onglet Groupes) et par liste (onglet Listes)
 #>
 
@@ -43,9 +44,15 @@ function Set-Header($ws, $row, $headers, $color) {
 $wsRes.Cells(1,1).Value2 = "VENTES A PERTE - Prix de vente < Cout moyen magasin 10"
 $wsRes.Cells(1,1).Font.Bold = $true
 $wsRes.Cells(1,1).Font.Size = 14
-$wsRes.Cells(2,1).Value2 = "1) Charger groupes/listes  2) Mettre X dans onglets Groupes/Listes (aucun X = tout)  3) Analyser"
-$wsRes.Cells(2,1).Font.Italic = $true
-$wsRes.Cells(2,1).Font.Color = 0x808080
+$wsRes.Cells(2,1).Value2 = "Groupe Gromec:"
+$wsRes.Cells(2,1).Font.Bold = $true
+$wsRes.Cells(2,2).NumberFormat = "@"
+$wsRes.Cells(2,2).Interior.Color = 0xCCFFFF
+$wsRes.Cells(2,2).Borders.LineStyle = 1
+$wsRes.Cells(2,2).Font.Bold = $true
+$wsRes.Cells(2,3).Value2 = "<- 3 premiers chiffres du groupe (ex: 101 ou 101,205). Vide = tous. Filtres X dans onglets Groupes/Listes aussi appliques."
+$wsRes.Cells(2,3).Font.Italic = $true
+$wsRes.Cells(2,3).Font.Color = 0x808080
 $wsRes.Cells(3,1).Value2 = "Lignes orange = devise differente de `$ (cout en devise locale, comparer avec prudence)"
 $wsRes.Cells(3,1).Font.Italic = $true
 $wsRes.Cells(3,1).Font.Color = 0x808080
@@ -253,6 +260,26 @@ Private Function Filtre(wsName As String, colVal As Long) As String
     Filtre = s
 End Function
 
+' Groupes Gromec saisis (ex: "101, 205") -> "'101','205'" (alphanumerique seulement)
+Private Function GroupesGromec(v As Variant) As String
+    Dim s As String: s = Txt(v)
+    s = Replace(Replace(s, ";", ","), " ", ",")
+    Dim parts() As String: parts = Split(s, ",")
+    Dim k As Long, j As Long, t As String, ok As Boolean, res As String
+    For k = LBound(parts) To UBound(parts)
+        t = Trim(parts(k))
+        ok = (t <> "")
+        For j = 1 To Len(t)
+            If Not (Mid(t, j, 1) Like "[0-9A-Za-z]") Then ok = False
+        Next j
+        If ok Then
+            If res <> "" Then res = res & ","
+            res = res & "'" & UCase(Left(t, 3)) & "'"
+        End If
+    Next k
+    GroupesGromec = res
+End Function
+
 ' ==========================================
 '  CHARGER GROUPES + LISTES
 ' ==========================================
@@ -366,10 +393,12 @@ End Function
 Public Sub AnalyserVentesPerte()
     Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Ventes a perte")
     Dim grp As String: grp = Filtre("Groupes", 2)
+    Dim gro As String: gro = GroupesGromec(ws.Range("B2").Value)
     Dim lst As String: lst = Filtre("Listes", 2)
 
     Dim msg As String
-    msg = "Groupes: " & IIf(grp = "", "TOUS", grp) & vbCrLf & _
+    msg = "Groupe Gromec: " & IIf(gro = "", "TOUS", Replace(gro, "'", "")) & vbCrLf & _
+          "Groupes SAP (X): " & IIf(grp = "", "TOUS", grp) & vbCrLf & _
           "Listes de prix: " & IIf(lst = "", "TOUTES", lst) & vbCrLf & vbCrLf & "Lancer l'analyse?"
     If MsgBox(msg, vbQuestion + vbYesNo, "Ventes a perte") <> vbYes Then Exit Sub
 
@@ -400,6 +429,7 @@ Public Sub AnalyserVentesPerte()
     wBase = " AND w.""AvgPrice"" > 0 AND i.""SellItem"" = 'Y' AND IFNULL(i.""frozenFor"", 'N') <> 'Y'" & _
             " AND UPPER(LEFT(i.""ItemCode"", 2)) NOT IN (" & PREFIXES_EXCLUS & ")"
     If grp <> "" Then wBase = wBase & " AND i.""ItmsGrpCod"" IN (" & grp & ")"
+    If gro <> "" Then wBase = wBase & " AND LEFT(b.""ItmsGrpNam"", 3) IN (" & gro & ")"
     If lst <> "" Then wLst = " AND x.""PriceList"" IN (" & lst & ")"
 
     Dim sql As String, nextRow As Long
@@ -461,7 +491,7 @@ Public Sub AnalyserVentesPerte()
     End If
 
     ws.Cells(4, 1).Value = total & " ventes a perte  |  Listes: " & n1 & "  Speciaux: " & n2 & _
-        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Groupes: " & IIf(grp = "", "tous", grp) & _
+        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Gromec: " & IIf(gro = "", "tous", Replace(gro, "'", "")) & _
         "  |  " & Format(Now, "yyyy-mm-dd hh:nn")
     ws.Cells(4, 1).Font.Bold = True
 
