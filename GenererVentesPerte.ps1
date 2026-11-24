@@ -88,7 +88,8 @@ Set-ResultSheet $wsArt "RECHERCHE PAR ARTICLE - Prix de vente < Cout moyen magas
     "<- numero d'article (ex: 701096 ou 701096,701097). Memes regles que Ventes a perte, mais liste 1 incluse."
 # Colonnes modifiables (F Lie a, G Facteur, H Prix Net) en vert
 $wsArt.Range("F5:H5").Interior.Color = 0x008000
-$wsArt.Cells(4,6).Value2 = "Modifiable -> bouton Appliquer"
+$wsArt.Range("P5").Interior.Color = 0x008000
+$wsArt.Cells(4,6).Value2 = "Modifiable (vert) -> bouton Appliquer. N = Lie a x Facteur. Y = prix net saisi en P."
 $wsArt.Cells(4,6).Font.Italic = $true
 $wsArt.Cells(4,6).Font.Color = 0x008000
 
@@ -104,7 +105,7 @@ try {
     $b3.Text = "Rechercher article"
     $b3.OnAction = "RechercherArticle"
     $b4 = $wsArt.Buttons().Add($wsArt.Range("J1").Left + 170, 2, 200, 26)
-    $b4.Text = "Appliquer modifs F-G-H dans SAP"
+    $b4.Text = "Appliquer modifs dans SAP"
     $b4.OnAction = "AppliquerModifsArticle"
 } catch {
     Write-Host "Boutons non crees (utiliser Alt+F8): $($_.Exception.Message)"
@@ -141,7 +142,7 @@ Private mErreurs As String
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
 Private Const NB_COLS As Long = 23
-Private Const COL_ORIG As Long = 25   ' colonnes cachees 25-27 = valeurs originales F-G-H
+Private Const COL_ORIG As Long = 25   ' colonnes cachees 25-27 = originaux F-G-H, 28 = original P (prix vente)
 Private Const ROW_HDR As Long = 5
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
 Private Const LISTES_EXCLUES As String = "1,2,3,11"       ' listes ignorees - Ventes a perte (11 = Coutant moyen)
@@ -493,7 +494,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
     If ws.AutoFilterMode Then ws.AutoFilterMode = False
     Dim lr As Long: lr = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
     If lr > ROW_HDR Then
-        ws.Range(ws.Cells(ROW_HDR + 1, 1), ws.Cells(lr, COL_ORIG + 2)).ClearContents
+        ws.Range(ws.Cells(ROW_HDR + 1, 1), ws.Cells(lr, COL_ORIG + 3)).ClearContents
         ws.Range(ws.Cells(ROW_HDR + 1, 1), ws.Cells(lr, NB_COLS)).Interior.ColorIndex = xlNone
     End If
 
@@ -574,7 +575,9 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
         ' Copie cachee des valeurs originales F-G-H (detection des modifs)
         ws.Range(ws.Cells(ROW_HDR + 1, COL_ORIG), ws.Cells(lastRow, COL_ORIG + 2)).Value = _
             ws.Range(ws.Cells(ROW_HDR + 1, 6), ws.Cells(lastRow, 8)).Value
-        ws.Range(ws.Cells(1, COL_ORIG), ws.Cells(1, COL_ORIG + 2)).EntireColumn.Hidden = True
+        ws.Range(ws.Cells(ROW_HDR + 1, COL_ORIG + 3), ws.Cells(lastRow, COL_ORIG + 3)).Value = _
+            ws.Range(ws.Cells(ROW_HDR + 1, 16), ws.Cells(lastRow, 16)).Value
+        ws.Range(ws.Cells(1, COL_ORIG), ws.Cells(1, COL_ORIG + 3)).EntireColumn.Hidden = True
         rng.AutoFilter
     End If
 
@@ -611,14 +614,15 @@ Public Sub AppliquerModifsArticle()
     If lastRow <= ROW_HDR Then MsgBox "Aucun resultat. Faire une recherche d'abord.", vbExclamation: Exit Sub
 
     Dim ops() As Variant, nb As Long, r As Long, k As Long
-    Dim art As String, liste As Long, lie As Variant, fac As Variant, pn As String
+    Dim art As String, liste As Long, lie As Variant, fac As Variant, pn As String, pv As Variant
     Dim erreurs As String, ignores As Long, resumeTxt As String
-    ReDim ops(1 To 5, 1 To lastRow)
+    ReDim ops(1 To 6, 1 To lastRow)
 
     For r = ROW_HDR + 1 To lastRow
         If CStr(ws.Cells(r, 6).Value) <> CStr(ws.Cells(r, COL_ORIG).Value) Or _
            CStr(ws.Cells(r, 7).Value) <> CStr(ws.Cells(r, COL_ORIG + 1).Value) Or _
-           UCase(Trim(CStr(ws.Cells(r, 8).Value))) <> UCase(Trim(CStr(ws.Cells(r, COL_ORIG + 2).Value))) Then
+           UCase(Trim(CStr(ws.Cells(r, 8).Value))) <> UCase(Trim(CStr(ws.Cells(r, COL_ORIG + 2).Value))) Or _
+           CStr(ws.Cells(r, 16).Value) <> CStr(ws.Cells(r, COL_ORIG + 3).Value) Then
 
             If CStr(ws.Cells(r, 1).Value) <> "Liste de prix" Then
                 ignores = ignores + 1
@@ -628,7 +632,24 @@ Public Sub AppliquerModifsArticle()
                 lie = ws.Cells(r, 6).Value
                 fac = ws.Cells(r, 7).Value
                 pn = UCase(Trim(CStr(ws.Cells(r, 8).Value)))
-                If Not IsNumeric(lie) Or Trim(CStr(lie)) = "" Then
+                pv = ws.Cells(r, 16).Value
+                If pn <> "Y" And pn <> "N" Then
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": Prix Net doit etre Y ou N"
+                ElseIf pn = "Y" Then
+                    If Not IsNumeric(pv) Or Trim(CStr(pv)) = "" Then
+                        erreurs = erreurs & vbCrLf & "Ligne " & r & ": Prix vente (P) invalide"
+                    ElseIf CDbl(pv) <= 0 Then
+                        erreurs = erreurs & vbCrLf & "Ligne " & r & ": Prix vente (P) doit etre > 0"
+                    Else
+                        nb = nb + 1
+                        ops(1, nb) = art: ops(2, nb) = liste: ops(3, nb) = 0
+                        ops(4, nb) = 0: ops(5, nb) = "Y": ops(6, nb) = CDbl(pv)
+                        If nb <= 25 Then resumeTxt = resumeTxt & vbCrLf & art & "  liste " & liste & _
+                            " -> PRIX NET " & Format(CDbl(pv), "0.00")
+                    End If
+                ElseIf CStr(pv) <> CStr(ws.Cells(r, COL_ORIG + 3).Value) Then
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": prix modifie en P -> mettre Y en H (prix net)"
+                ElseIf Not IsNumeric(lie) Or Trim(CStr(lie)) = "" Then
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": 'Lie a' invalide"
                 ElseIf CLng(lie) = liste Then
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": 'Lie a' = la liste elle-meme"
@@ -636,14 +657,12 @@ Public Sub AppliquerModifsArticle()
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": Facteur invalide"
                 ElseIf CDbl(fac) <= 0 Then
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": Facteur doit etre > 0"
-                ElseIf pn <> "Y" And pn <> "N" Then
-                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": Prix Net doit etre Y ou N"
                 Else
                     nb = nb + 1
                     ops(1, nb) = art: ops(2, nb) = liste: ops(3, nb) = CLng(lie)
-                    ops(4, nb) = CDbl(fac): ops(5, nb) = pn
+                    ops(4, nb) = CDbl(fac): ops(5, nb) = "N": ops(6, nb) = 0
                     If nb <= 25 Then resumeTxt = resumeTxt & vbCrLf & art & "  liste " & liste & " -> lie a " & CLng(lie) & _
-                        "  x" & CDbl(fac) & "  Prix Net " & pn
+                        "  x" & CDbl(fac)
                 End If
             End If
         End If
@@ -651,14 +670,14 @@ Public Sub AppliquerModifsArticle()
 
     If erreurs <> "" Then MsgBox "Corriger avant d'appliquer:" & erreurs, vbExclamation: Exit Sub
     If nb = 0 Then
-        MsgBox "Aucune modification detectee dans F-G-H (lignes 'Liste de prix')." & _
+        MsgBox "Aucune modification detectee dans F-G-H-P (lignes 'Liste de prix')." & _
             IIf(ignores > 0, vbCrLf & ignores & " modif(s) sur prix speciaux ignoree(s).", ""), vbInformation
         Exit Sub
     End If
     If nb > 25 Then resumeTxt = resumeTxt & vbCrLf & "... et " & (nb - 25) & " autres"
     If MsgBox(nb & " prix a modifier dans SAP:" & resumeTxt & vbCrLf & vbCrLf & _
               "Prix Net N = prix recalcule (prix liste de base x facteur)." & vbCrLf & _
-              "Prix Net Y = prix actuel conserve." & _
+              "Prix Net Y = Lie a 0, Facteur 0, prix = colonne P." & _
               IIf(ignores > 0, vbCrLf & ignores & " modif(s) sur prix speciaux ignoree(s).", "") & vbCrLf & vbCrLf & _
               "CONFIRMER?", vbYesNo + vbQuestion, "Modifier SAP") <> vbYes Then Exit Sub
 
@@ -677,8 +696,8 @@ Public Sub AppliquerModifsArticle()
                   " AND T1.""PriceList"" = " & ops(3, k) & "), 0) * " & sFac & _
                   " WHERE T0.""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND T0.""PriceList"" = " & ops(2, k)
         Else
-            sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = " & ops(3, k) & ", ""Factor"" = " & sFac & _
-                  ", ""Ovrwritten"" = 'Y'" & _
+            sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = 0, ""Factor"" = 0, ""Ovrwritten"" = 'Y'" & _
+                  ", ""Price"" = " & Trim(Str(ops(6, k))) & _
                   " WHERE ""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND ""PriceList"" = " & ops(2, k)
         End If
         On Error Resume Next
@@ -690,7 +709,7 @@ Public Sub AppliquerModifsArticle()
             Err.Clear
         Else
             ok = ok + 1
-            WriteLog "MODIF " & ops(1, k) & " liste " & ops(2, k) & " lie=" & ops(3, k) & " fac=" & sFac & " net=" & ops(5, k)
+            WriteLog "MODIF " & ops(1, k) & " liste " & ops(2, k) & " lie=" & ops(3, k) & " fac=" & sFac & " net=" & ops(5, k) & " prix=" & ops(6, k)
         End If
         On Error GoTo 0
         Set rsU = Nothing
