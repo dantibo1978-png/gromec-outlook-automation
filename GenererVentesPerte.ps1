@@ -66,16 +66,17 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
     $ws.Cells(3,3).Font.Italic = $true
     $ws.Cells(3,3).Font.Color = 0x808080
 
-    $hdrR = @("Source","Groupe","Article","Description","Liste #","Nom liste","Client","Nom client",
+    $hdrR = @("Source","Groupe","Article","Description","Liste #","Lie a","Facteur","Nom liste","Client","Nom client",
               "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout","Dern. prix achat","Date dern. achat","Sous achat")
     Set-Header $ws 5 $hdrR 0x00008B
-    $widths = @(14,28,16,40,7,24,12,30,11,11,8,7,12,12,12,11,10,12,11,9)
+    $widths = @(14,28,16,40,7,7,8,24,12,30,11,11,8,7,12,12,12,11,10,12,11,9)
     for ($i = 0; $i -lt $widths.Count; $i++) { $ws.Columns($i + 1).ColumnWidth = $widths[$i] }
     $ws.Columns("C:C").NumberFormat = "@"
-    $ws.Columns("G:G").NumberFormat = "@"
-    $ws.Columns("M:P").NumberFormat = "#,##0.00"
-    $ws.Columns("Q:Q").NumberFormat = "0.0%"
-    $ws.Columns("R:R").NumberFormat = "#,##0.00"
+    $ws.Columns("I:I").NumberFormat = "@"
+    $ws.Columns("G:G").NumberFormat = "0.0000"
+    $ws.Columns("O:R").NumberFormat = "#,##0.00"
+    $ws.Columns("S:S").NumberFormat = "0.0%"
+    $ws.Columns("T:T").NumberFormat = "#,##0.00"
     $ws.Rows(5).Font.Bold = $true
     $ws.Rows(1).RowHeight = 30
 }
@@ -83,7 +84,7 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
 Set-ResultSheet $wsRes "VENTES A PERTE - Prix de vente < Cout moyen magasin 10" "Groupe Gromec:" `
     "<- code groupe, 3 premiers chiffres (ex: 716 ou 716,101). Vide = tous. Liste des codes: onglet Groupes."
 Set-ResultSheet $wsArt "RECHERCHE PAR ARTICLE - Prix de vente < Cout moyen magasin 10" "No article:" `
-    "<- numero d'article (ex: 701096 ou 701096,701097). Memes regles que Ventes a perte."
+    "<- numero d'article (ex: 701096 ou 701096,701097). Memes regles que Ventes a perte, mais liste 1 incluse."
 
 # Boutons
 try {
@@ -130,10 +131,11 @@ Private mSapPass As String
 Private mErreurs As String
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
-Private Const NB_COLS As Long = 20
+Private Const NB_COLS As Long = 22
 Private Const ROW_HDR As Long = 5
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
-Private Const LISTES_EXCLUES As String = "1,2,3,11"   ' listes de prix ignorees (11 = Coutant moyen)
+Private Const LISTES_EXCLUES As String = "1,2,3,11"       ' listes ignorees - Ventes a perte (11 = Coutant moyen)
+Private Const LISTES_EXCLUES_ART As String = "2,3,11"    ' listes ignorees - Recherche article (liste 1 incluse)
 Private Const PREFIXES_EXCLUS As String = "'PT','TA','TB','TC','TD','PR'"   ' codes articles exclus (2 premiers caracteres)
 
 Private Sub WriteLog(msg As String)
@@ -385,23 +387,25 @@ Private Function AjouterResultats(co As Object, sql As String, src As String, ws
         arr(r, 3) = Txt(GF(rs, "ItemCode"))
         arr(r, 4) = Txt(GF(rs, "ItemName"))
         arr(r, 5) = GF(rs, "ListNum")
-        arr(r, 6) = Txt(GF(rs, "ListName"))
-        arr(r, 7) = Txt(GF(rs, "CardCode"))
-        arr(r, 8) = Txt(GF(rs, "CardName"))
-        arr(r, 9) = DateVal(GF(rs, "FromDate"))
-        arr(r, 10) = DateVal(GF(rs, "ToDate"))
+        arr(r, 6) = GF(rs, "LieA")
+        arr(r, 7) = GF(rs, "Facteur")
+        arr(r, 8) = Txt(GF(rs, "ListName"))
+        arr(r, 9) = Txt(GF(rs, "CardCode"))
+        arr(r, 10) = Txt(GF(rs, "CardName"))
+        arr(r, 11) = DateVal(GF(rs, "FromDate"))
+        arr(r, 12) = DateVal(GF(rs, "ToDate"))
         q = GF(rs, "Qte")
-        If IsNumeric(q) And Txt(q) <> "" Then arr(r, 11) = CDbl(q) Else arr(r, 11) = ""
-        arr(r, 12) = Txt(GF(rs, "Devise"))
-        arr(r, 13) = prix
-        arr(r, 14) = cout
-        arr(r, 15) = Round(cout * mFacteur, 4)
-        arr(r, 16) = Round(cout * mFacteur - prix, 4)
-        arr(r, 17) = (prix - cout) / cout
+        If IsNumeric(q) And Txt(q) <> "" Then arr(r, 13) = CDbl(q) Else arr(r, 13) = ""
+        arr(r, 14) = Txt(GF(rs, "Devise"))
+        arr(r, 15) = prix
+        arr(r, 16) = cout
+        arr(r, 17) = Round(cout * mFacteur, 4)
+        arr(r, 18) = Round(cout * mFacteur - prix, 4)
+        arr(r, 19) = (prix - cout) / cout
         dern = Num(GF(rs, "DernAchat"))
-        If dern > 0 Then arr(r, 18) = dern Else arr(r, 18) = ""
-        arr(r, 19) = DateVal(GF(rs, "DernAchatDate"))
-        If dern > 0 And prix < dern Then arr(r, 20) = "OUI" Else arr(r, 20) = ""
+        If dern > 0 Then arr(r, 20) = dern Else arr(r, 20) = ""
+        arr(r, 21) = DateVal(GF(rs, "DernAchatDate"))
+        If dern > 0 And prix < dern Then arr(r, 22) = "OUI" Else arr(r, 22) = ""
         MN rs
         If r Mod 500 = 0 Then
             Application.StatusBar = src & ": " & r & " / " & n
@@ -497,11 +501,11 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean)
     nextRow = ROW_HDR + 1
 
     ' 1) Listes de prix (ITM1)
-    sql = "SELECT" & selItem & ", x.""PriceList"" AS ""ListNum"", l.""ListName"", x.""Currency"" AS ""Devise"", x.""Price"" AS ""Prix""" & _
+    sql = "SELECT" & selItem & ", x.""PriceList"" AS ""ListNum"", x.""BasePLNum"" AS ""LieA"", x.""Factor"" AS ""Facteur"", l.""ListName"", x.""Currency"" AS ""Devise"", x.""Price"" AS ""Prix""" & _
           " FROM ""ITM1"" x" & joinItem & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""PriceList""" & _
           " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & _
-          " AND x.""PriceList"" NOT IN (" & LISTES_EXCLUES & ")" & wBase & wLst
+          " AND x.""PriceList"" NOT IN (" & IIf(parArticle, LISTES_EXCLUES_ART, LISTES_EXCLUES) & ")" & wBase & wLst
     n1 = AjouterResultats(co, sql, "Liste de prix", ws, nextRow)
 
     ' 2) Prix speciaux client (OSPP)
@@ -540,20 +544,20 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean)
     If total > 0 Then
         Dim rng As Range
         Set rng = ws.Range(ws.Cells(ROW_HDR, 1), ws.Cells(lastRow, NB_COLS))
-        rng.Sort Key1:=ws.Cells(ROW_HDR, 16), Order1:=xlDescending, Header:=xlYes
+        rng.Sort Key1:=ws.Cells(ROW_HDR, 18), Order1:=xlDescending, Header:=xlYes
         ' Devise etrangere en orange, prix < dernier achat en rouge
         Dim r As Long, dv As String, nSous As Long
         For r = ROW_HDR + 1 To lastRow
-            dv = Trim(CStr(ws.Cells(r, 12).Value))
+            dv = Trim(CStr(ws.Cells(r, 14).Value))
             If dv <> "" And dv <> "$" Then ws.Range(ws.Cells(r, 1), ws.Cells(r, NB_COLS)).Interior.Color = RGB(255, 204, 153)
-            If ws.Cells(r, 20).Value = "OUI" Then
+            If ws.Cells(r, 22).Value = "OUI" Then
                 ws.Range(ws.Cells(r, 1), ws.Cells(r, NB_COLS)).Interior.Color = RGB(255, 150, 150)
                 nSous = nSous + 1
             End If
         Next r
         ' Format date applique en VBA (NumberFormat via PowerShell = interprete en francais)
-        ws.Range(ws.Cells(ROW_HDR + 1, 9), ws.Cells(lastRow, 10)).NumberFormat = "yyyy-mm-dd"
-        ws.Range(ws.Cells(ROW_HDR + 1, 19), ws.Cells(lastRow, 19)).NumberFormat = "yyyy-mm-dd"
+        ws.Range(ws.Cells(ROW_HDR + 1, 11), ws.Cells(lastRow, 12)).NumberFormat = "yyyy-mm-dd"
+        ws.Range(ws.Cells(ROW_HDR + 1, 21), ws.Cells(lastRow, 21)).NumberFormat = "yyyy-mm-dd"
         rng.AutoFilter
     End If
 
