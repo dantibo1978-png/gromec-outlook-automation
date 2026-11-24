@@ -6,6 +6,7 @@
     - Prix speciaux client     (OSPP)
     - Prix speciaux par dates  (SPP1, non expires)
     - Prix speciaux par qte    (SPP2, periode non expiree)
+  Exclus : codes commencant par PT, TA, TB, TC, TD, PR
   Filtre optionnel par groupe d'articles (onglet Groupes) et par liste (onglet Listes)
 #>
 
@@ -106,6 +107,7 @@ Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
 Private Const NB_COLS As Long = 16
 Private Const ROW_HDR As Long = 5
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
+Private Const PREFIXES_EXCLUS As String = "'PT','TA','TB','TC','TD','PR'"   ' codes articles exclus (2 premiers caracteres)
 
 Private Sub WriteLog(msg As String)
     On Error Resume Next
@@ -394,7 +396,8 @@ Public Sub AnalyserVentesPerte()
     joinItem = " JOIN ""OITM"" i ON i.""ItemCode"" = x.""ItemCode""" & _
                " JOIN ""OITB"" b ON b.""ItmsGrpCod"" = i.""ItmsGrpCod""" & _
                " JOIN ""OITW"" w ON w.""ItemCode"" = i.""ItemCode"" AND w.""WhsCode"" = '" & WHS_COUT & "'"
-    wBase = " AND w.""AvgPrice"" > 0 AND i.""SellItem"" = 'Y' AND IFNULL(i.""frozenFor"", 'N') <> 'Y'"
+    wBase = " AND w.""AvgPrice"" > 0 AND i.""SellItem"" = 'Y' AND IFNULL(i.""frozenFor"", 'N') <> 'Y'" & _
+            " AND UPPER(LEFT(i.""ItemCode"", 2)) NOT IN (" & PREFIXES_EXCLUS & ")"
     If grp <> "" Then wBase = wBase & " AND i.""ItmsGrpCod"" IN (" & grp & ")"
     If lst <> "" Then wLst = " AND x.""PriceList"" IN (" & lst & ")"
 
