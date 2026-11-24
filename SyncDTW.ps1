@@ -307,7 +307,8 @@ function New-PORevisionDraft {
     }
 
     try {
-        $outlook = New-Object -ComObject Outlook.Application
+        $outlook = Get-OutlookInstance
+        if (-not $outlook) { Write-Log "WARN  Outlook non disponible pour brouillon PO $DocNum"; return }
         $mail = $outlook.CreateItem(0)  # olMailItem
         $mail.Subject = "Revision - PO $DocNum"
         $mail.Body = "Bon de commande $DocNum revise suite a correction de prix."
@@ -319,8 +320,7 @@ function New-PORevisionDraft {
     } catch {
         Write-Log "WARN  Impossible de creer le brouillon Outlook pour PO $DocNum : $($_.Exception.Message)"
     } finally {
-        if ($mail)    { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail) | Out-Null }
-        if ($outlook) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook) | Out-Null }
+        if ($mail) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail) | Out-Null } catch {} }
         if ($pdfPath -and (Test-Path $pdfPath)) { Remove-Item $pdfPath -Force -ErrorAction SilentlyContinue }
     }
 }
@@ -514,7 +514,7 @@ function Update-ItemFullbox {
 $Script:LogBuffer = [System.Collections.ArrayList]::new()
 $Script:DernierFlushLogs = Get-Date
 $Script:DernierHeartbeat = [datetime]::MinValue
-$Script:VersionSync = "PR145"
+$Script:VersionSync = "PR146"
 
 function Write-Log {
     param([string]$Message, [string]$Cle = "", [string]$BC = "")
@@ -777,6 +777,7 @@ function Invoke-EnvoiRelancesAutomatiques {
             continue
         }
 
+        $mail = $null
         try {
             $mail = $Outlook.CreateItem(0)  # olMailItem
             $mail.To = $dest
@@ -802,6 +803,7 @@ function Invoke-EnvoiRelancesAutomatiques {
                 -Body (@{ statut = 'erreur'; erreur = $_.Exception.Message } | ConvertTo-Json -Compress) `
                 -ContentType "application/json" -TimeoutSec 5
         } finally {
+            if ($mail) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail) | Out-Null } catch {} }
             if ($cheminPdf -and (Test-Path $cheminPdf)) { Remove-Item $cheminPdf -Force -ErrorAction SilentlyContinue }
         }
     }
@@ -982,7 +984,8 @@ function Set-CategorieOutlook {
     $namespace = $null
     $mail = $null
     try {
-        $outlook   = New-Object -ComObject Outlook.Application
+        $outlook = Get-OutlookInstance
+        if (-not $outlook) { Write-Log "WARN  Outlook non disponible pour categorie"; return }
         $namespace = $outlook.GetNamespace("MAPI")
         $mail      = $namespace.GetItemFromID($EntryID, $StoreID)
         if ($null -eq $mail) { return }
@@ -1001,12 +1004,8 @@ function Set-CategorieOutlook {
     } catch {
         Write-Log "WARN  Impossible de mettre a jour la categorie Outlook : $($_.Exception.Message)"
     } finally {
-        # Relacher tous les RCW obtenus (pas seulement $outlook) -- cette fonction
-        # tourne en continu dans la boucle 24/7 et une fuite ici accumule sur
-        # plusieurs semaines (processus OUTLOOK.EXE zombies, memoire).
-        if ($mail) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail) | Out-Null }
-        if ($namespace) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($namespace) | Out-Null }
-        if ($outlook) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook) | Out-Null }
+        if ($mail) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail) | Out-Null } catch {} }
+        if ($namespace) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($namespace) | Out-Null } catch {} }
     }
 }
 
@@ -1219,7 +1218,8 @@ function New-BrouillonOutlook {
 
     $outlook = $null; $namespace = $null; $mailOrig = $null; $brouillon = $null
     try {
-        $outlook   = New-Object -ComObject Outlook.Application
+        $outlook = Get-OutlookInstance
+        if (-not $outlook) { throw "Outlook non disponible" }
         $namespace = $outlook.GetNamespace("MAPI")
         $mailOrig  = $namespace.GetItemFromID($entryID, $storeID)
 
@@ -1238,8 +1238,6 @@ function New-BrouillonOutlook {
         if ($brouillon)  { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($brouillon)  | Out-Null } catch {} }
         if ($mailOrig)   { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mailOrig)   | Out-Null } catch {} }
         if ($namespace)  { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($namespace)  | Out-Null } catch {} }
-        if ($outlook)    { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($outlook)    | Out-Null } catch {} }
-        [System.GC]::Collect()
     }
 }
 
@@ -1634,7 +1632,7 @@ function Invoke-ScanCourrielsManques {
         $limite = (Get-Date).AddHours(-$heuresScan)
         $scriptPath = Join-Path (Split-Path $PSCommandPath) "VerifierConfirmation.ps1"
 
-        for ($idx = $items.Count; $idx -ge 1; $idx--) {
+        for ($idx = 1; $idx -le $items.Count; $idx++) {
             $item = $null
             try {
                 $item = $items.Item($idx)
