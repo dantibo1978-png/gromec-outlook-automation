@@ -6,6 +6,7 @@
     - Prix speciaux client     (OSPP)
     - Prix speciaux par dates  (SPP1, non expires)
     - Prix speciaux par qte    (SPP2, periode non expiree)
+  Onglet Recherche article : meme analyse filtree par numero d'article
   Exclus : codes commencant par PT, TA, TB, TC, TD, PR, listes de prix 1, 2, 3, 11 (Coutant moyen), articles inactifs
   Filtre groupe Gromec (3 premiers car. du nom de groupe SAP) en B2 de l'onglet Ventes a perte
   Onglet Groupes = liste de reference (code a taper en B2). Filtre optionnel par liste (onglet Listes)
@@ -29,6 +30,8 @@ $wsGrp = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsRes)
 $wsGrp.Name = "Groupes"
 $wsLst = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsGrp)
 $wsLst.Name = "Listes"
+$wsArt = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsRes)
+$wsArt.Name = "Recherche article"
 
 function Set-Header($ws, $row, $headers, $color) {
     for ($i = 0; $i -lt $headers.Count; $i++) {
@@ -40,39 +43,47 @@ function Set-Header($ws, $row, $headers, $color) {
     }
 }
 
-# ===== ONGLET VENTES A PERTE =====
-$wsRes.Cells(1,1).Value2 = "VENTES A PERTE - Prix de vente < Cout moyen magasin 10"
-$wsRes.Cells(1,1).Font.Bold = $true
-$wsRes.Cells(1,1).Font.Size = 14
-$wsRes.Cells(2,1).Value2 = "Groupe Gromec:"
-$wsRes.Cells(2,1).Font.Bold = $true
-$wsRes.Cells(2,2).NumberFormat = "@"
-$wsRes.Cells(2,2).Interior.Color = 0xCCFFFF
-$wsRes.Cells(2,2).Borders.LineStyle = 1
-$wsRes.Cells(2,2).Font.Bold = $true
-$wsRes.Cells(2,3).Value2 = "<- code groupe, 3 premiers chiffres (ex: 716 ou 716,101). Vide = tous. Liste des codes: onglet Groupes."
-$wsRes.Cells(2,3).Font.Italic = $true
-$wsRes.Cells(2,3).Font.Color = 0x808080
-$wsRes.Cells(3,1).Value2 = "Profit min %:"
-$wsRes.Cells(3,1).Font.Bold = $true
-$wsRes.Cells(3,2).Interior.Color = 0xCCFFFF
-$wsRes.Cells(3,2).Borders.LineStyle = 1
-$wsRes.Cells(3,2).Font.Bold = $true
-$wsRes.Cells(3,3).Value2 = "<- % de profit minimum sur cout (ex: 15 = prix < cout x 1.15). Vide = 0 (vente a perte). Orange = devise autre que `$. ROUGE = prix vente < dernier prix d'achat"
-$wsRes.Cells(3,3).Font.Italic = $true
-$wsRes.Cells(3,3).Font.Color = 0x808080
+# ===== MISE EN PAGE ONGLET RESULTATS (Ventes a perte / Recherche article) =====
+function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
+    $ws.Cells(1,1).Value2 = $titre
+    $ws.Cells(1,1).Font.Bold = $true
+    $ws.Cells(1,1).Font.Size = 14
+    $ws.Cells(2,1).Value2 = $labelB2
+    $ws.Cells(2,1).Font.Bold = $true
+    $ws.Cells(2,2).NumberFormat = "@"
+    $ws.Cells(2,2).Interior.Color = 0xCCFFFF
+    $ws.Cells(2,2).Borders.LineStyle = 1
+    $ws.Cells(2,2).Font.Bold = $true
+    $ws.Cells(2,3).Value2 = $aideB2
+    $ws.Cells(2,3).Font.Italic = $true
+    $ws.Cells(2,3).Font.Color = 0x808080
+    $ws.Cells(3,1).Value2 = "Profit min %:"
+    $ws.Cells(3,1).Font.Bold = $true
+    $ws.Cells(3,2).Interior.Color = 0xCCFFFF
+    $ws.Cells(3,2).Borders.LineStyle = 1
+    $ws.Cells(3,2).Font.Bold = $true
+    $ws.Cells(3,3).Value2 = "<- % de profit minimum sur cout (ex: 15 = prix < cout x 1.15). Vide = 0 (vente a perte). Orange = devise autre que `$. ROUGE = prix vente < dernier prix d'achat"
+    $ws.Cells(3,3).Font.Italic = $true
+    $ws.Cells(3,3).Font.Color = 0x808080
 
-$hdrR = @("Source","Groupe","Article","Description","Liste #","Nom liste","Client","Nom client",
-          "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout","Dern. prix achat","Date dern. achat","Sous achat")
-Set-Header $wsRes 5 $hdrR 0x00008B
-$widths = @(14,28,16,40,7,24,12,30,11,11,8,7,12,12,12,11,10,12,11,9)
-for ($i = 0; $i -lt $widths.Count; $i++) { $wsRes.Columns($i + 1).ColumnWidth = $widths[$i] }
-$wsRes.Columns("C:C").NumberFormat = "@"
-$wsRes.Columns("G:G").NumberFormat = "@"
-$wsRes.Columns("M:P").NumberFormat = "#,##0.00"
-$wsRes.Columns("Q:Q").NumberFormat = "0.0%"
-$wsRes.Columns("R:R").NumberFormat = "#,##0.00"
-$wsRes.Rows(5).Font.Bold = $true
+    $hdrR = @("Source","Groupe","Article","Description","Liste #","Nom liste","Client","Nom client",
+              "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout","Dern. prix achat","Date dern. achat","Sous achat")
+    Set-Header $ws 5 $hdrR 0x00008B
+    $widths = @(14,28,16,40,7,24,12,30,11,11,8,7,12,12,12,11,10,12,11,9)
+    for ($i = 0; $i -lt $widths.Count; $i++) { $ws.Columns($i + 1).ColumnWidth = $widths[$i] }
+    $ws.Columns("C:C").NumberFormat = "@"
+    $ws.Columns("G:G").NumberFormat = "@"
+    $ws.Columns("M:P").NumberFormat = "#,##0.00"
+    $ws.Columns("Q:Q").NumberFormat = "0.0%"
+    $ws.Columns("R:R").NumberFormat = "#,##0.00"
+    $ws.Rows(5).Font.Bold = $true
+    $ws.Rows(1).RowHeight = 30
+}
+
+Set-ResultSheet $wsRes "VENTES A PERTE - Prix de vente < Cout moyen magasin 10" "Groupe Gromec:" `
+    "<- code groupe, 3 premiers chiffres (ex: 716 ou 716,101). Vide = tous. Liste des codes: onglet Groupes."
+Set-ResultSheet $wsArt "RECHERCHE PAR ARTICLE - Prix de vente < Cout moyen magasin 10" "No article:" `
+    "<- numero d'article (ex: 701096 ou 701096,701097). Memes regles que Ventes a perte."
 
 # Boutons
 try {
@@ -82,7 +93,9 @@ try {
     $b2 = $wsRes.Buttons().Add($wsRes.Range("J1").Left + 170, 2, 160, 26)
     $b2.Text = "2. Analyser ventes a perte"
     $b2.OnAction = "AnalyserVentesPerte"
-    $wsRes.Rows(1).RowHeight = 30
+    $b3 = $wsArt.Buttons().Add($wsArt.Range("J1").Left, 2, 160, 26)
+    $b3.Text = "Rechercher article"
+    $b3.OnAction = "RechercherArticle"
 } catch {
     Write-Host "Boutons non crees (utiliser Alt+F8): $($_.Exception.Message)"
 }
@@ -404,8 +417,39 @@ End Function
 '  ANALYSER VENTES A PERTE
 ' ==========================================
 Public Sub AnalyserVentesPerte()
-    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Ventes a perte")
-    Dim gro As String: gro = GroupesGromec(ws.Range("B2").Value)
+    LancerAnalyse ThisWorkbook.Sheets("Ventes a perte"), False
+End Sub
+
+Public Sub RechercherArticle()
+    LancerAnalyse ThisWorkbook.Sheets("Recherche article"), True
+End Sub
+
+' Articles saisis (ex: "701096, 701097") -> "'701096','701097'"
+Private Function ArticlesSaisis(v As Variant) As String
+    Dim s As String: s = Txt(v)
+    s = Replace(Replace(s, ";", ","), " ", ",")
+    Dim parts() As String: parts = Split(s, ",")
+    Dim k As Long, t As String, res As String
+    For k = LBound(parts) To UBound(parts)
+        t = Trim(parts(k))
+        If t <> "" Then
+            If res <> "" Then res = res & ","
+            res = res & "'" & Replace(t, "'", "''") & "'"
+        End If
+    Next k
+    ArticlesSaisis = res
+End Function
+
+Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean)
+    Dim gro As String, arts As String, filtreTxt As String
+    If parArticle Then
+        arts = ArticlesSaisis(ws.Range("B2").Value)
+        If arts = "" Then MsgBox "Entrer un numero d'article en B2.", vbExclamation: Exit Sub
+        filtreTxt = "Article(s): " & Replace(arts, "'", "")
+    Else
+        gro = GroupesGromec(ws.Range("B2").Value)
+        filtreTxt = "Groupe: " & IIf(gro = "", "tous", Replace(gro, "'", ""))
+    End If
     Dim pct As Double: pct = Val(Replace(Txt(ws.Range("B3").Value), ",", "."))
     If pct < 0 Then pct = 0
     mFacteur = 1 + pct / 100
@@ -413,7 +457,7 @@ Public Sub AnalyserVentesPerte()
     Dim lst As String: lst = Filtre("Listes", 2)
 
     Dim msg As String
-    msg = "Groupe: " & IIf(gro = "", "TOUS", Replace(gro, "'", "")) & vbCrLf & _
+    msg = filtreTxt & vbCrLf & _
           "Profit min: " & pct & " % sur cout" & vbCrLf & _
           "Listes de prix: " & IIf(lst = "", "TOUTES", lst) & vbCrLf & vbCrLf & "Lancer l'analyse?"
     If MsgBox(msg, vbQuestion + vbYesNo, "Ventes a perte") <> vbYes Then Exit Sub
@@ -445,6 +489,7 @@ Public Sub AnalyserVentesPerte()
     wBase = " AND w.""AvgPrice"" > 0 AND i.""SellItem"" = 'Y' AND IFNULL(i.""frozenFor"", 'N') <> 'Y'" & _
             " AND UPPER(LEFT(i.""ItemCode"", 2)) NOT IN (" & PREFIXES_EXCLUS & ")"
     If gro <> "" Then wBase = wBase & " AND LEFT(b.""ItmsGrpNam"", 3) IN (" & gro & ")"
+    If arts <> "" Then wBase = wBase & " AND i.""ItemCode"" IN (" & arts & ")"
     If lst <> "" Then wLst = " AND x.""PriceList"" IN (" & lst & ")"
 
     Dim sql As String, nextRow As Long
@@ -513,11 +558,11 @@ Public Sub AnalyserVentesPerte()
     End If
 
     ws.Cells(4, 1).Value = total & " prix sous cout +" & pct & "%  |  Listes: " & n1 & "  Speciaux: " & n2 & _
-        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Sous dern. achat: " & nSous & "  |  Groupe: " & IIf(gro = "", "tous", Replace(gro, "'", "")) & _
+        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Sous dern. achat: " & nSous & "  |  " & filtreTxt & _
         "  |  " & Format(Now, "yyyy-mm-dd hh:nn")
     ws.Cells(4, 1).Font.Bold = True
 
-    WriteLog "Analyse: " & total & " lignes (grp=" & gro & " lst=" & lst & ") en " & Format(Timer - t0, "0") & "s"
+    WriteLog "Analyse: " & total & " lignes (" & filtreTxt & " lst=" & lst & ") en " & Format(Timer - t0, "0") & "s"
 
     Dim fin As String
     fin = total & " prix sous cout +" & pct & "% trouves en " & Format(Timer - t0, "0") & " s." & vbCrLf & _
@@ -556,4 +601,5 @@ Write-Host "  VentesPerte.xlsm cree et ouvert!"
 Write-Host "  Boutons (ou Alt+F8):"
 Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes de SAP"
 Write-Host "    - AnalyserVentesPerte    : Trouve prix vente < cout moyen"
+Write-Host "    - RechercherArticle      : Meme analyse pour un/des articles"
 Write-Host "====================================="
