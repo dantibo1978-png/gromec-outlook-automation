@@ -53,20 +53,25 @@ $wsRes.Cells(2,2).Font.Bold = $true
 $wsRes.Cells(2,3).Value2 = "<- code groupe, 3 premiers chiffres (ex: 716 ou 716,101). Vide = tous. Liste des codes: onglet Groupes."
 $wsRes.Cells(2,3).Font.Italic = $true
 $wsRes.Cells(2,3).Font.Color = 0x808080
-$wsRes.Cells(3,1).Value2 = "Lignes orange = devise differente de `$ (cout en devise locale, comparer avec prudence)"
-$wsRes.Cells(3,1).Font.Italic = $true
-$wsRes.Cells(3,1).Font.Color = 0x808080
+$wsRes.Cells(3,1).Value2 = "Profit min %:"
+$wsRes.Cells(3,1).Font.Bold = $true
+$wsRes.Cells(3,2).Interior.Color = 0xCCFFFF
+$wsRes.Cells(3,2).Borders.LineStyle = 1
+$wsRes.Cells(3,2).Font.Bold = $true
+$wsRes.Cells(3,3).Value2 = "<- % de profit minimum sur cout (ex: 15 = prix < cout x 1.15). Vide = 0 (vente a perte). Lignes orange = devise autre que `$"
+$wsRes.Cells(3,3).Font.Italic = $true
+$wsRes.Cells(3,3).Font.Color = 0x808080
 
 $hdrR = @("Source","Groupe","Article","Description","Liste #","Nom liste","Client","Nom client",
-          "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Perte `$","Marge %")
+          "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout")
 Set-Header $wsRes 5 $hdrR 0x00008B
-$widths = @(14,28,16,40,7,24,12,30,11,11,8,7,12,12,11,9)
+$widths = @(14,28,16,40,7,24,12,30,11,11,8,7,12,12,12,11,10)
 for ($i = 0; $i -lt $widths.Count; $i++) { $wsRes.Columns($i + 1).ColumnWidth = $widths[$i] }
 $wsRes.Columns("C:C").NumberFormat = "@"
 $wsRes.Columns("G:G").NumberFormat = "@"
 $wsRes.Columns("I:J").NumberFormat = "yyyy-mm-dd"
-$wsRes.Columns("M:O").NumberFormat = "#,##0.00"
-$wsRes.Columns("P:P").NumberFormat = "0.0%"
+$wsRes.Columns("M:P").NumberFormat = "#,##0.00"
+$wsRes.Columns("Q:Q").NumberFormat = "0.0%"
 $wsRes.Rows(5).Font.Bold = $true
 
 # Boutons
@@ -110,8 +115,9 @@ Option Explicit
 Private mSapUser As String
 Private mSapPass As String
 Private mErreurs As String
+Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
-Private Const NB_COLS As Long = 16
+Private Const NB_COLS As Long = 17
 Private Const ROW_HDR As Long = 5
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
 Private Const LISTES_EXCLUES As String = "1,2,3,11"   ' listes de prix ignorees (11 = Coutant moyen)
@@ -376,8 +382,9 @@ Private Function AjouterResultats(co As Object, sql As String, src As String, ws
         arr(r, 12) = Txt(GF(rs, "Devise"))
         arr(r, 13) = prix
         arr(r, 14) = cout
-        arr(r, 15) = Round(cout - prix, 4)
-        If prix <> 0 Then arr(r, 16) = (prix - cout) / prix Else arr(r, 16) = ""
+        arr(r, 15) = Round(cout * mFacteur, 4)
+        arr(r, 16) = Round(cout * mFacteur - prix, 4)
+        arr(r, 17) = (prix - cout) / cout
         MN rs
         If r Mod 500 = 0 Then
             Application.StatusBar = src & ": " & r & " / " & n
@@ -395,10 +402,15 @@ End Function
 Public Sub AnalyserVentesPerte()
     Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Ventes a perte")
     Dim gro As String: gro = GroupesGromec(ws.Range("B2").Value)
+    Dim pct As Double: pct = Val(Replace(Txt(ws.Range("B3").Value), ",", "."))
+    If pct < 0 Then pct = 0
+    mFacteur = 1 + pct / 100
+    Dim sFact As String: sFact = Trim(Str(mFacteur))
     Dim lst As String: lst = Filtre("Listes", 2)
 
     Dim msg As String
     msg = "Groupe: " & IIf(gro = "", "TOUS", Replace(gro, "'", "")) & vbCrLf & _
+          "Profit min: " & pct & " % sur cout" & vbCrLf & _
           "Listes de prix: " & IIf(lst = "", "TOUTES", lst) & vbCrLf & vbCrLf & "Lancer l'analyse?"
     If MsgBox(msg, vbQuestion + vbYesNo, "Ventes a perte") <> vbYes Then Exit Sub
 
@@ -439,7 +451,7 @@ Public Sub AnalyserVentesPerte()
     sql = "SELECT" & selItem & ", x.""PriceList"" AS ""ListNum"", l.""ListName"", x.""Currency"" AS ""Devise"", x.""Price"" AS ""Prix""" & _
           " FROM ""ITM1"" x" & joinItem & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""PriceList""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & _
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & _
           " AND x.""PriceList"" NOT IN (" & LISTES_EXCLUES & ")" & wBase & wLst
     n1 = AjouterResultats(co, sql, "Liste de prix", ws, nextRow)
 
@@ -448,7 +460,7 @@ Public Sub AnalyserVentesPerte()
           " FROM ""OSPP"" x" & joinItem & _
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""ListNum""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & wBase
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & wBase
     n2 = AjouterResultats(co, sql, "Prix special", ws, nextRow)
 
     ' 3) Prix speciaux par periode (SPP1, non expires)
@@ -457,7 +469,7 @@ Public Sub AnalyserVentesPerte()
           " FROM ""SPP1"" x" & joinItem & _
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""ListNum""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & _
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & _
           " AND (x.""ToDate"" IS NULL OR x.""ToDate"" >= CURRENT_DATE)" & wBase
     n3 = AjouterResultats(co, sql, "Special periode", ws, nextRow)
 
@@ -469,7 +481,7 @@ Public Sub AnalyserVentesPerte()
           joinItem & _
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = d.""ListNum""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & _
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & _
           " AND (d.""ToDate"" IS NULL OR d.""ToDate"" >= CURRENT_DATE)" & wBase
     n4 = AjouterResultats(co, sql, "Special quantite", ws, nextRow)
 
@@ -479,7 +491,7 @@ Public Sub AnalyserVentesPerte()
     If total > 0 Then
         Dim rng As Range
         Set rng = ws.Range(ws.Cells(ROW_HDR, 1), ws.Cells(lastRow, NB_COLS))
-        rng.Sort Key1:=ws.Cells(ROW_HDR, 15), Order1:=xlDescending, Header:=xlYes
+        rng.Sort Key1:=ws.Cells(ROW_HDR, 16), Order1:=xlDescending, Header:=xlYes
         ' Devise etrangere en orange
         Dim r As Long, dv As String
         For r = ROW_HDR + 1 To lastRow
@@ -489,7 +501,7 @@ Public Sub AnalyserVentesPerte()
         rng.AutoFilter
     End If
 
-    ws.Cells(4, 1).Value = total & " ventes a perte  |  Listes: " & n1 & "  Speciaux: " & n2 & _
+    ws.Cells(4, 1).Value = total & " prix sous cout +" & pct & "%  |  Listes: " & n1 & "  Speciaux: " & n2 & _
         "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Groupe: " & IIf(gro = "", "tous", Replace(gro, "'", "")) & _
         "  |  " & Format(Now, "yyyy-mm-dd hh:nn")
     ws.Cells(4, 1).Font.Bold = True
@@ -497,7 +509,7 @@ Public Sub AnalyserVentesPerte()
     WriteLog "Analyse: " & total & " lignes (grp=" & gro & " lst=" & lst & ") en " & Format(Timer - t0, "0") & "s"
 
     Dim fin As String
-    fin = total & " ventes a perte trouvees en " & Format(Timer - t0, "0") & " s."
+    fin = total & " prix sous cout +" & pct & "% trouves en " & Format(Timer - t0, "0") & " s."
     If mErreurs <> "" Then fin = fin & vbCrLf & vbCrLf & "Requetes en erreur (voir VentesPerte.log):" & mErreurs
     MsgBox fin, IIf(mErreurs = "", vbInformation, vbExclamation), "Ventes a perte"
     GoTo CleanAVP
