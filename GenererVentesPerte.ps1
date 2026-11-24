@@ -6,7 +6,7 @@
     - Prix speciaux client     (OSPP)
     - Prix speciaux par dates  (SPP1, non expires)
     - Prix speciaux par qte    (SPP2, periode non expiree)
-  Exclus : codes commencant par PT, TA, TB, TC, TD, PR
+  Exclus : codes commencant par PT, TA, TB, TC, TD, PR, liste de prix 11 (Coutant moyen), articles inactifs
   Filtre optionnel par groupe d'articles (onglet Groupes) et par liste (onglet Listes)
 #>
 
@@ -107,6 +107,7 @@ Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
 Private Const NB_COLS As Long = 16
 Private Const ROW_HDR As Long = 5
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
+Private Const LISTES_EXCLUES As String = "11"   ' listes de prix ignorees (11 = Coutant moyen)
 Private Const PREFIXES_EXCLUS As String = "'PT','TA','TB','TC','TD','PR'"   ' codes articles exclus (2 premiers caracteres)
 
 Private Sub WriteLog(msg As String)
@@ -409,7 +410,8 @@ Public Sub AnalyserVentesPerte()
     sql = "SELECT" & selItem & ", x.""PriceList"" AS ""ListNum"", l.""ListName"", x.""Currency"" AS ""Devise"", x.""Price"" AS ""Prix""" & _
           " FROM ""ITM1"" x" & joinItem & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""PriceList""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & wBase & wLst
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & _
+          " AND x.""PriceList"" NOT IN (" & LISTES_EXCLUES & ")" & wBase & wLst
     n1 = AjouterResultats(co, sql, "Liste de prix", ws, nextRow)
 
     ' 2) Prix speciaux client (OSPP)
