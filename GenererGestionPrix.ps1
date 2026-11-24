@@ -967,11 +967,11 @@ Public Sub AppliquerPrixSpeciaux()
                   "' AND ""ListNum"" = " & listes(g) & " AND ""FromDate"" = '" & dateDe(g) & "'"
         Else
             Dim rsLN As Object: Set rsLN = RunQuery(co, _
-                "SELECT IFNULL(MAX(""LineNum""), -1) + 1 AS ""NXT"" FROM ""SPP1"" WHERE ""ItemCode"" = '" & cItem & "' AND ""CardCode"" = '" & cCard & "'")
+                "SELECT IFNULL(MAX(""LINENUM""), -1) + 1 AS ""NXT"" FROM ""SPP1"" WHERE ""ItemCode"" = '" & cItem & "' AND ""CardCode"" = '" & cCard & "'")
             Dim nxtLine As Long: nxtLine = CLng(GF(rsLN, "NXT"))
             Set rsLN = Nothing
 
-            sql = "INSERT INTO ""SPP1"" (""ItemCode"", ""CardCode"", ""LineNum"", ""Currency"", ""AutoUpdt"", ""ToDate"", ""Discount"", ""Price"", ""FromDate"", ""ListNum"") VALUES ('" & _
+            sql = "INSERT INTO ""SPP1"" (""ItemCode"", ""CardCode"", ""LINENUM"", ""Currency"", ""AutoUpdt"", ""ToDate"", ""Discount"", ""Price"", ""FromDate"", ""ListNum"") VALUES ('" & _
                   cItem & "', '" & cCard & "', " & nxtLine & ", '" & devises(g) & "', 'N', '" & dateA(g) & "', 0, " & prix(g) & ", '" & dateDe(g) & "', " & listes(g) & ")"
         End If
 
