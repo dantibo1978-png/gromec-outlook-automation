@@ -544,84 +544,27 @@ Public Sub AppliquerFacteurs()
 
     Dim cntOK As Long: cntOK = 0
 
-    Dim errList As String: errList = ""
-    Dim totalItems As Long: totalItems = 0
-    Dim totalDone As Long: totalDone = 0
-
     For g = 1 To nbOps
-        Application.StatusBar = "Operation " & g & "/" & nbOps & " - Chargement articles famille " & ops(1, g) & "..."
+        Application.StatusBar = "Operation " & g & "/" & nbOps & " - Fam " & ops(1, g) & " (SAP " & ops(5, g) & ") Liste " & ops(2, g) & "..."
+        Dim factStr As String: factStr = Replace(ops(3, g), ",", ".")
         Dim sql As String
-        sql = "SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & ops(5, g) & _
-              " AND LEFT(""ItemCode"",2) NOT IN ('PT','PR','TA','TB','TC','TD')"
-        Dim rsQ As Object: Set rsQ = co.GetBusinessObject(300)
-        CallByName rsQ, "DoQuery", VbMethod, sql
-
-        Dim artCodes() As String, nbArt As Long: nbArt = 0
-        Do While CLng(CallByName(rsQ, "EoF", VbGet)) = 0
-            nbArt = nbArt + 1
-            ReDim Preserve artCodes(1 To nbArt)
-            CallByName rsQ, "Fields", VbGet
-            Dim flds As Object: Set flds = CallByName(rsQ, "Fields", VbGet)
-            Dim fld0 As Object: Set fld0 = CallByName(flds, "Item", VbGet, CLng(0))
-            artCodes(nbArt) = CStr(CallByName(fld0, "Value", VbGet))
-            Set fld0 = Nothing: Set flds = Nothing
-            CallByName rsQ, "MoveNext", VbMethod
-        Loop
-        Set rsQ = Nothing
-
-        Dim targetList As Long: targetList = CLng(ops(2, g))
-        Dim baseList As Long: baseList = CLng(ops(4, g))
-        Dim factVal As Double: factVal = CDbl(Replace(ops(3, g), ",", "."))
-
-        Dim a As Long
-        For a = 1 To nbArt
-            totalDone = totalDone + 1
-            Application.StatusBar = "DI API " & totalDone & " - Fam " & ops(1, g) & " article " & a & "/" & nbArt & " (" & artCodes(a) & ")"
-            DoEvents
-            Dim oItm As Object: Set oItm = co.GetBusinessObject(4)
-            If oItm.GetByKey(artCodes(a)) Then
-                Dim pl As Long
-                Dim plOK As Boolean: plOK = False
-                For pl = 0 To 99
-                    Dim oPL As Object: Set oPL = CallByName(oItm, "PriceList", VbGet)
-                    CallByName oPL, "SetCurrentLine", VbMethod, pl
-                    If CLng(CallByName(oPL, "PriceList", VbGet)) = targetList Then
-                        CallByName oPL, "BasePriceList", VbLet, baseList
-                        CallByName oPL, "Factor", VbLet, factVal
-                        plOK = True
-                        Exit For
-                    End If
-                    Set oPL = Nothing
-                Next pl
-                If plOK Then
-                    Dim retU As Long: retU = oItm.Update()
-                    If retU = 0 Then
-                        cntOK = cntOK + 1
-                    Else
-                        Dim de As String: de = co.GetLastErrorDescription()
-                        WriteLog "FACTEUR ERR: " & artCodes(a) & " L" & targetList & ": " & de
-                        errList = errList & artCodes(a) & " L" & targetList & ": " & de & vbCrLf
-                    End If
-                Else
-                    WriteLog "FACTEUR ERR: Liste " & targetList & " introuvable pour " & artCodes(a)
-                    errList = errList & artCodes(a) & ": liste " & targetList & " introuvable" & vbCrLf
-                End If
-            Else
-                WriteLog "FACTEUR ERR: Article " & artCodes(a) & " introuvable"
-                errList = errList & artCodes(a) & ": article introuvable" & vbCrLf
-            End If
-            Set oItm = Nothing
-        Next a
-
-        WriteLog "FACTEUR: Fam " & ops(1, g) & " (SAP " & ops(5, g) & ") -> Liste " & ops(2, g) & " base=" & ops(4, g) & " facteur=" & ops(3, g) & " (" & nbArt & " articles)"
+        sql = "UPDATE ""ITM1"" AS T0" & _
+              " SET ""BasePLNum"" = " & ops(4, g) & _
+              ", ""Factor"" = " & factStr & _
+              ", ""Price"" = (SELECT T1.""Price"" FROM ""ITM1"" T1 WHERE T1.""ItemCode"" = T0.""ItemCode"" AND T1.""PriceList"" = " & ops(4, g) & ") * " & factStr & _
+              " WHERE ""PriceList"" = " & ops(2, g) & _
+              " AND ""ItemCode"" IN (SELECT ""ItemCode"" FROM ""OITM"" WHERE ""ItmsGrpCod"" = " & ops(5, g) & _
+              " AND LEFT(""ItemCode"",2) NOT IN ('PT','PR','TA','TB','TC','TD'))"
+        Dim rsUpd As Object: Set rsUpd = co.GetBusinessObject(300)
+        CallByName rsUpd, "DoQuery", VbMethod, sql
+        Set rsUpd = Nothing
+        WriteLog "FACTEUR: Fam " & ops(1, g) & " (SAP " & ops(5, g) & ") -> Liste " & ops(2, g) & " base=" & ops(4, g) & " facteur=" & ops(3, g)
+        cntOK = cntOK + 1
     Next g
 
-    Dim endMsg As String
-    endMsg = "Termine! " & cntOK & "/" & totalDone & " articles mis a jour."
-    If errList <> "" Then endMsg = endMsg & vbCrLf & vbCrLf & "ERREURS:" & vbCrLf & errList
-    WriteLog "FACTEUR TERMINE: " & cntOK & "/" & totalDone
-    MsgBox endMsg, IIf(errList = "", vbInformation, vbExclamation)
-    Application.StatusBar = "Termine - " & cntOK & "/" & totalDone & " articles"
+    WriteLog "FACTEUR TERMINE: " & cntOK & " operations executees"
+    MsgBox "Termine! " & cntOK & " operations executees.", vbInformation
+    Application.StatusBar = "Termine - " & cntOK & " operations executees"
     GoTo CleanApp
 
 ErrApp:
