@@ -1,6 +1,6 @@
 <#
   GenererVentesPerte.ps1 - Genere VentesPerte.xlsm
-  Detecte les ventes a perte : tout prix de vente SAP < cout moyen article (OITM.AvgPrice)
+  Detecte les ventes a perte : tout prix de vente SAP < cout moyen magasin 10 (OITW.AvgPrice, WhsCode=10)
   Sources verifiees :
     - Listes de prix          (ITM1)
     - Prix speciaux client     (OSPP)
@@ -39,7 +39,7 @@ function Set-Header($ws, $row, $headers, $color) {
 }
 
 # ===== ONGLET VENTES A PERTE =====
-$wsRes.Cells(1,1).Value2 = "VENTES A PERTE - Prix de vente < Cout moyen SAP"
+$wsRes.Cells(1,1).Value2 = "VENTES A PERTE - Prix de vente < Cout moyen magasin 10"
 $wsRes.Cells(1,1).Font.Bold = $true
 $wsRes.Cells(1,1).Font.Size = 14
 $wsRes.Cells(2,1).Value2 = "1) Charger groupes/listes  2) Mettre X dans onglets Groupes/Listes (aucun X = tout)  3) Analyser"
@@ -50,7 +50,7 @@ $wsRes.Cells(3,1).Font.Italic = $true
 $wsRes.Cells(3,1).Font.Color = 0x808080
 
 $hdrR = @("Source","Groupe","Article","Description","Liste #","Nom liste","Client","Nom client",
-          "Date debut","Date fin","Qte min","Devise","Prix vente","Cout moyen","Perte `$","Marge %")
+          "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Perte `$","Marge %")
 Set-Header $wsRes 5 $hdrR 0x00008B
 $widths = @(14,28,16,40,7,24,12,30,11,11,8,7,12,12,11,9)
 for ($i = 0; $i -lt $widths.Count; $i++) { $wsRes.Columns($i + 1).ColumnWidth = $widths[$i] }
@@ -105,6 +105,7 @@ Private mErreurs As String
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
 Private Const NB_COLS As Long = 16
 Private Const ROW_HDR As Long = 5
+Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
 
 Private Sub WriteLog(msg As String)
     On Error Resume Next
@@ -389,10 +390,11 @@ Public Sub AnalyserVentesPerte()
 
     ' --- Morceaux SQL communs ---
     Dim selItem As String, joinItem As String, wBase As String, wLst As String
-    selItem = " b.""ItmsGrpNam"" AS ""GrpNam"", i.""ItemCode"", i.""ItemName"", i.""AvgPrice"" AS ""Cout"""
+    selItem = " b.""ItmsGrpNam"" AS ""GrpNam"", i.""ItemCode"", i.""ItemName"", w.""AvgPrice"" AS ""Cout"""
     joinItem = " JOIN ""OITM"" i ON i.""ItemCode"" = x.""ItemCode""" & _
-               " JOIN ""OITB"" b ON b.""ItmsGrpCod"" = i.""ItmsGrpCod"""
-    wBase = " AND i.""AvgPrice"" > 0 AND i.""SellItem"" = 'Y' AND IFNULL(i.""frozenFor"", 'N') <> 'Y'"
+               " JOIN ""OITB"" b ON b.""ItmsGrpCod"" = i.""ItmsGrpCod""" & _
+               " JOIN ""OITW"" w ON w.""ItemCode"" = i.""ItemCode"" AND w.""WhsCode"" = '" & WHS_COUT & "'"
+    wBase = " AND w.""AvgPrice"" > 0 AND i.""SellItem"" = 'Y' AND IFNULL(i.""frozenFor"", 'N') <> 'Y'"
     If grp <> "" Then wBase = wBase & " AND i.""ItmsGrpCod"" IN (" & grp & ")"
     If lst <> "" Then wLst = " AND x.""PriceList"" IN (" & lst & ")"
 
@@ -404,7 +406,7 @@ Public Sub AnalyserVentesPerte()
     sql = "SELECT" & selItem & ", x.""PriceList"" AS ""ListNum"", l.""ListName"", x.""Currency"" AS ""Devise"", x.""Price"" AS ""Prix""" & _
           " FROM ""ITM1"" x" & joinItem & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""PriceList""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < i.""AvgPrice""" & wBase & wLst
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & wBase & wLst
     n1 = AjouterResultats(co, sql, "Liste de prix", ws, nextRow)
 
     ' 2) Prix speciaux client (OSPP)
@@ -412,7 +414,7 @@ Public Sub AnalyserVentesPerte()
           " FROM ""OSPP"" x" & joinItem & _
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""ListNum""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < i.""AvgPrice""" & wBase
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & wBase
     n2 = AjouterResultats(co, sql, "Prix special", ws, nextRow)
 
     ' 3) Prix speciaux par periode (SPP1, non expires)
@@ -421,7 +423,7 @@ Public Sub AnalyserVentesPerte()
           " FROM ""SPP1"" x" & joinItem & _
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""ListNum""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < i.""AvgPrice""" & _
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & _
           " AND (x.""ToDate"" IS NULL OR x.""ToDate"" >= CURRENT_DATE)" & wBase
     n3 = AjouterResultats(co, sql, "Special periode", ws, nextRow)
 
@@ -433,7 +435,7 @@ Public Sub AnalyserVentesPerte()
           joinItem & _
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = d.""ListNum""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < i.""AvgPrice""" & _
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice""" & _
           " AND (d.""ToDate"" IS NULL OR d.""ToDate"" >= CURRENT_DATE)" & wBase
     n4 = AjouterResultats(co, sql, "Special quantite", ws, nextRow)
 
