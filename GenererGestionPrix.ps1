@@ -28,6 +28,8 @@ $wsPrixNet = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsFact)
 $wsPrixNet.Name = "Prix Net"
 $wsFini = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsPrixNet)
 $wsFini.Name = "Import Finition"
+$wsSP = $wb.Sheets.Add([System.Reflection.Missing]::Value, $wsFini)
+$wsSP.Name = "Prix Speciaux"
 
 # ===== ONGLET FACTEURS =====
 $wsFact.Cells(1,1).Value2 = "GESTION DES PRIX - FACTEURS PAR GROUPE"
@@ -220,6 +222,68 @@ $wsFini.Columns("O:O").ColumnWidth = 30
 $wsFini.Columns("P:P").ColumnWidth = 8
 $wsFini.Columns("Q:Q").ColumnWidth = 12
 
+# ===== ONGLET PRIX SPECIAUX =====
+$wsSP.Cells(1,1).Value2 = "PRIX SPECIAUX PAR PARTENAIRE"
+$wsSP.Cells(1,1).Font.Bold = $true
+$wsSP.Cells(1,1).Font.Size = 14
+
+$wsSP.Cells(3,1).Value2 = "Inscrivez le code client, article, prix, dates et liste. Import dans OSPP + SPP1."
+$wsSP.Cells(3,1).Font.Color = 0x808080
+$wsSP.Cells(3,1).Font.Italic = $true
+
+$hdrSP = @("Code Client","Code Article","Prix","Devise","Date debut","Date fin","Liste")
+for ($i = 0; $i -lt $hdrSP.Count; $i++) {
+    $c = $wsSP.Cells(5, $i+1)
+    $c.Value2 = $hdrSP[$i]
+    $c.Font.Bold = $true
+    $c.Interior.Color = 0xCC3300
+    $c.Font.Color = 0xFFFFFF
+}
+$wsSP.Columns("A:A").ColumnWidth = 16
+$wsSP.Columns("B:B").ColumnWidth = 18
+$wsSP.Columns("C:C").ColumnWidth = 14
+$wsSP.Columns("D:D").ColumnWidth = 10
+$wsSP.Columns("E:E").ColumnWidth = 14
+$wsSP.Columns("F:F").ColumnWidth = 14
+$wsSP.Columns("G:G").ColumnWidth = 10
+
+$wsSP.Cells(4,4).Value2 = "$ par defaut"
+$wsSP.Cells(4,4).Font.Color = 0x808080
+$wsSP.Cells(4,4).Font.Italic = $true
+$wsSP.Cells(4,4).Font.Size = 9
+$wsSP.Cells(4,7).Value2 = "4 par defaut"
+$wsSP.Cells(4,7).Font.Color = 0x808080
+$wsSP.Cells(4,7).Font.Italic = $true
+$wsSP.Cells(4,7).Font.Size = 9
+
+for ($r = 6; $r -le 205; $r++) {
+    for ($col = 1; $col -le 7; $col++) {
+        $wsSP.Cells($r, $col).Interior.Color = 0xE0FFFF
+    }
+    $wsSP.Cells($r, 3).NumberFormat = "0.00"
+    $wsSP.Cells($r, 5).NumberFormat = "yyyy-mm-dd"
+    $wsSP.Cells($r, 6).NumberFormat = "yyyy-mm-dd"
+    if (($r - 6) % 2 -eq 1) {
+        for ($cc = 1; $cc -le 7; $cc++) {
+            $wsSP.Cells($r, $cc).Interior.Color = 0xFFF8F0
+        }
+    }
+}
+
+$hdrRefSP = @("#","Nom de la liste","Base #","Facteur SAP")
+for ($i = 0; $i -lt $hdrRefSP.Count; $i++) {
+    $c = $wsSP.Cells(5, 9 + $i)
+    $c.Value2 = $hdrRefSP[$i]
+    $c.Font.Bold = $true
+    $c.Interior.Color = 0x003366
+    $c.Font.Color = 0xFFFFFF
+}
+$wsSP.Columns("H:H").ColumnWidth = 3
+$wsSP.Columns("I:I").ColumnWidth = 6
+$wsSP.Columns("J:J").ColumnWidth = 30
+$wsSP.Columns("K:K").ColumnWidth = 8
+$wsSP.Columns("L:L").ColumnWidth = 12
+
 # ===== ONGLET GROUPES =====
 $hdrG = @("Code Famille","Nom du groupe","Code SAP","Nb articles")
 for ($i = 0; $i -lt $hdrG.Count; $i++) {
@@ -388,6 +452,7 @@ Public Sub ChargerGroupesEtListes()
     Dim wsL As Worksheet: Set wsL = ThisWorkbook.Sheets("Listes")
     Dim wsFI As Worksheet: Set wsFI = ThisWorkbook.Sheets("Import Finition")
     Dim wsPN As Worksheet: Set wsPN = ThisWorkbook.Sheets("Prix Net")
+    Dim wsSP As Worksheet: Set wsSP = ThisWorkbook.Sheets("Prix Speciaux")
 
     ' --- Charger groupes ---
     Dim lr As Long
@@ -444,6 +509,10 @@ Public Sub ChargerGroupesEtListes()
         wsPN.Cells(5 + r, 6).Value = GF(rsL, "ListName")
         wsPN.Cells(5 + r, 7).Value = GF(rsL, "BASE_NUM")
         wsPN.Cells(5 + r, 8).Value = GF(rsL, "Factor")
+        wsSP.Cells(5 + r, 9).Value = GF(rsL, "ListNum")
+        wsSP.Cells(5 + r, 10).Value = GF(rsL, "ListName")
+        wsSP.Cells(5 + r, 11).Value = GF(rsL, "BASE_NUM")
+        wsSP.Cells(5 + r, 12).Value = GF(rsL, "Factor")
         MN rsL
     Next r
 
@@ -784,6 +853,156 @@ CleanFI:
     Application.ScreenUpdating = True
 End Sub
 
+' ==========================================
+'  APPLIQUER PRIX SPECIAUX PAR PARTENAIRE
+' ==========================================
+Public Sub AppliquerPrixSpeciaux()
+    Dim wsSP As Worksheet: Set wsSP = ThisWorkbook.Sheets("Prix Speciaux")
+
+    Dim cardCodes() As String, itemCodes() As String, prix() As String
+    Dim devises() As String, dateDe() As String, dateA() As String, listes() As String
+    Dim nbOps As Long: nbOps = 0
+    Dim r As Long
+
+    For r = 6 To 205
+        Dim cc As Variant: cc = wsSP.Cells(r, 1).Value
+        Dim ic As Variant: ic = wsSP.Cells(r, 2).Value
+        Dim pr As Variant: pr = wsSP.Cells(r, 3).Value
+
+        If cc <> "" And ic <> "" And pr <> "" Then
+            nbOps = nbOps + 1
+            ReDim Preserve cardCodes(1 To nbOps)
+            ReDim Preserve itemCodes(1 To nbOps)
+            ReDim Preserve prix(1 To nbOps)
+            ReDim Preserve devises(1 To nbOps)
+            ReDim Preserve dateDe(1 To nbOps)
+            ReDim Preserve dateA(1 To nbOps)
+            ReDim Preserve listes(1 To nbOps)
+            cardCodes(nbOps) = CStr(cc)
+            itemCodes(nbOps) = CStr(ic)
+            prix(nbOps) = Replace(CStr(pr), ",", ".")
+
+            Dim dv As Variant: dv = wsSP.Cells(r, 4).Value
+            If dv = "" Then devises(nbOps) = "$" Else devises(nbOps) = CStr(dv)
+
+            Dim dd As Variant: dd = wsSP.Cells(r, 5).Value
+            If IsDate(dd) Then
+                dateDe(nbOps) = Format(CDate(dd), "yyyymmdd")
+            ElseIf dd <> "" Then
+                dateDe(nbOps) = Replace(Replace(CStr(dd), "-", ""), "/", "")
+            Else
+                dateDe(nbOps) = Format(Date, "yyyymmdd")
+            End If
+
+            Dim da As Variant: da = wsSP.Cells(r, 6).Value
+            If IsDate(da) Then
+                dateA(nbOps) = Format(CDate(da), "yyyymmdd")
+            ElseIf da <> "" Then
+                dateA(nbOps) = Replace(Replace(CStr(da), "-", ""), "/", "")
+            Else
+                dateA(nbOps) = "20991231"
+            End If
+
+            Dim ls As Variant: ls = wsSP.Cells(r, 7).Value
+            If ls = "" Then listes(nbOps) = "4" Else listes(nbOps) = CStr(ls)
+        End If
+    Next r
+
+    If nbOps = 0 Then
+        MsgBox "Aucune operation saisie." & vbCrLf & vbCrLf & _
+               "Remplissez les colonnes:" & vbCrLf & _
+               "A = Code Client, B = Code Article, C = Prix" & vbCrLf & _
+               "D = Devise ($ par defaut), E = Date debut, F = Date fin, G = Liste (4 par defaut)", vbExclamation
+        Exit Sub
+    End If
+
+    Dim msg As String, g As Long
+    msg = "PRIX SPECIAUX - " & nbOps & " lignes a importer:" & vbCrLf & vbCrLf
+    Dim mx As Long: mx = nbOps: If mx > 20 Then mx = 20
+    For g = 1 To mx
+        msg = msg & cardCodes(g) & " / " & itemCodes(g) & " = " & prix(g) & devises(g) & " (L" & listes(g) & ")" & vbCrLf
+    Next g
+    If nbOps > 20 Then msg = msg & "... et " & (nbOps - 20) & " autres" & vbCrLf
+    msg = msg & vbCrLf & "Ecriture dans OSPP + SPP1." & vbCrLf & "CONFIRMER?"
+
+    If MsgBox(msg, vbYesNo + vbQuestion, "Confirmer Prix Speciaux") <> vbYes Then Exit Sub
+
+    Application.StatusBar = "Connexion SAP..."
+    Dim co As Object: Set co = ConnectSAP()
+    If co Is Nothing Then Exit Sub
+
+    On Error GoTo ErrSP
+    Dim cntOK As Long: cntOK = 0
+    Dim sql As String
+
+    For g = 1 To nbOps
+        Application.StatusBar = "Prix special " & g & "/" & nbOps & " - " & cardCodes(g) & " / " & itemCodes(g) & "..."
+        Dim cCard As String: cCard = Replace(cardCodes(g), "'", "''")
+        Dim cItem As String: cItem = Replace(itemCodes(g), "'", "''")
+
+        ' 1) OSPP header - check if exists
+        Dim rsChk As Object: Set rsChk = RunQuery(co, _
+            "SELECT COUNT(*) AS ""CNT"" FROM ""OSPP"" WHERE ""CardCode"" = '" & cCard & "' AND ""ItemCode"" = '" & cItem & "' AND ""ListNum"" = " & listes(g))
+        Dim cnt As Long: cnt = CLng(GF(rsChk, "CNT"))
+        Set rsChk = Nothing
+
+        If cnt = 0 Then
+            sql = "INSERT INTO ""OSPP"" (""CardCode"", ""ItemCode"", ""ListNum"", ""Currency"", ""AutoUpdt"", ""Price"") VALUES ('" & _
+                  cCard & "', '" & cItem & "', " & listes(g) & ", '" & devises(g) & "', 'N', " & prix(g) & ")"
+            Dim rsI As Object: Set rsI = co.GetBusinessObject(300)
+            CallByName rsI, "DoQuery", VbMethod, sql
+            Set rsI = Nothing
+        End If
+
+        ' 2) SPP1 lines - check if exists for this date range
+        Dim rsChk2 As Object: Set rsChk2 = RunQuery(co, _
+            "SELECT COUNT(*) AS ""CNT"" FROM ""SPP1"" WHERE ""ItemCode"" = '" & cItem & "' AND ""CardCode"" = '" & cCard & _
+            "' AND ""ListNum"" = " & listes(g) & " AND ""FromDate"" = '" & dateDe(g) & "'")
+        Dim cnt2 As Long: cnt2 = CLng(GF(rsChk2, "CNT"))
+        Set rsChk2 = Nothing
+
+        If cnt2 > 0 Then
+            sql = "UPDATE ""SPP1"" SET ""Price"" = " & prix(g) & ", ""Currency"" = '" & devises(g) & "', ""ToDate"" = '" & dateA(g) & _
+                  "', ""AutoUpdt"" = 'N' WHERE ""ItemCode"" = '" & cItem & "' AND ""CardCode"" = '" & cCard & _
+                  "' AND ""ListNum"" = " & listes(g) & " AND ""FromDate"" = '" & dateDe(g) & "'"
+        Else
+            Dim rsLN As Object: Set rsLN = RunQuery(co, _
+                "SELECT IFNULL(MAX(""LineNum""), -1) + 1 AS ""NXT"" FROM ""SPP1"" WHERE ""ItemCode"" = '" & cItem & "' AND ""CardCode"" = '" & cCard & "'")
+            Dim nxtLine As Long: nxtLine = CLng(GF(rsLN, "NXT"))
+            Set rsLN = Nothing
+
+            sql = "INSERT INTO ""SPP1"" (""ItemCode"", ""CardCode"", ""LineNum"", ""Currency"", ""AutoUpdt"", ""ToDate"", ""Discount"", ""Price"", ""FromDate"", ""ListNum"") VALUES ('" & _
+                  cItem & "', '" & cCard & "', " & nxtLine & ", '" & devises(g) & "', 'N', '" & dateA(g) & "', 0, " & prix(g) & ", '" & dateDe(g) & "', " & listes(g) & ")"
+        End If
+
+        Dim rsSP As Object: Set rsSP = co.GetBusinessObject(300)
+        CallByName rsSP, "DoQuery", VbMethod, sql
+        Set rsSP = Nothing
+
+        sql = "UPDATE ""OSPP"" SET ""Price"" = " & prix(g) & " WHERE ""CardCode"" = '" & cCard & "' AND ""ItemCode"" = '" & cItem & "' AND ""ListNum"" = " & listes(g)
+        Dim rsUpO As Object: Set rsUpO = co.GetBusinessObject(300)
+        CallByName rsUpO, "DoQuery", VbMethod, sql
+        Set rsUpO = Nothing
+
+        WriteLog "PRIX SPECIAL: " & cardCodes(g) & " / " & itemCodes(g) & " = " & prix(g) & devises(g) & " L" & listes(g) & " " & dateDe(g) & "-" & dateA(g)
+        cntOK = cntOK + 1
+    Next g
+
+    WriteLog "PRIX SPECIAUX TERMINE: " & cntOK & " prix speciaux importes"
+    MsgBox "Termine! " & cntOK & " prix speciaux importes (OSPP + SPP1).", vbInformation
+    Application.StatusBar = "Termine - " & cntOK & " prix speciaux importes"
+    GoTo CleanSP
+
+ErrSP:
+    WriteLog "PRIX SPECIAUX ERREUR: " & Err.Description
+    MsgBox "Erreur: " & Err.Description, vbCritical
+    Application.StatusBar = False
+CleanSP:
+    On Error Resume Next
+    co.Disconnect: Set co = Nothing
+    Application.ScreenUpdating = True
+End Sub
+
 Public Sub TestUpdateSQL()
     Dim co As Object: Set co = ConnectSAP()
     If co Is Nothing Then Exit Sub
@@ -823,4 +1042,5 @@ Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes de SAP"
 Write-Host "    - AppliquerFacteurs      : Applique les facteurs saisis"
 Write-Host "    - AppliquerPrixNet       : Applique les prix net clients"
 Write-Host "    - AppliquerImportFinition: Import finition (prix net + facteurs)"
+Write-Host "    - AppliquerPrixSpeciaux  : Prix speciaux par partenaire (OSPP+SPP1)"
 Write-Host "====================================="
