@@ -8,7 +8,7 @@
     - Prix speciaux par qte    (SPP2, periode non expiree)
   Exclus : codes commencant par PT, TA, TB, TC, TD, PR, listes de prix 1, 2, 3, 11 (Coutant moyen), articles inactifs
   Filtre groupe Gromec (3 premiers car. du nom de groupe SAP) en B2 de l'onglet Ventes a perte
-  Filtre optionnel par groupe d'articles (onglet Groupes) et par liste (onglet Listes)
+  Onglet Groupes = liste de reference (code a taper en B2). Filtre optionnel par liste (onglet Listes)
 #>
 
 $xlsmPath = "U:\GromecOutlook\VentesPerte.xlsm"
@@ -50,7 +50,7 @@ $wsRes.Cells(2,2).NumberFormat = "@"
 $wsRes.Cells(2,2).Interior.Color = 0xCCFFFF
 $wsRes.Cells(2,2).Borders.LineStyle = 1
 $wsRes.Cells(2,2).Font.Bold = $true
-$wsRes.Cells(2,3).Value2 = "<- 3 premiers chiffres du groupe (ex: 101 ou 101,205). Vide = tous. Filtres X dans onglets Groupes/Listes aussi appliques."
+$wsRes.Cells(2,3).Value2 = "<- code groupe, 3 premiers chiffres (ex: 716 ou 716,101). Vide = tous. Liste des codes: onglet Groupes."
 $wsRes.Cells(2,3).Font.Italic = $true
 $wsRes.Cells(2,3).Font.Color = 0x808080
 $wsRes.Cells(3,1).Value2 = "Lignes orange = devise differente de `$ (cout en devise locale, comparer avec prudence)"
@@ -83,13 +83,13 @@ try {
 }
 
 # ===== ONGLET GROUPES =====
-$wsGrp.Cells(1,1).Value2 = "Mettre X en colonne A pour analyser seulement ces groupes. Aucun X = tous les groupes."
+$wsGrp.Cells(1,1).Value2 = "Liste des groupes. Taper le code (colonne A) dans la case B2 de l'onglet Ventes a perte."
 $wsGrp.Cells(1,1).Font.Italic = $true
-Set-Header $wsGrp 3 @("Inclure (X)","Code groupe","Nom du groupe","Nb articles") 0x8B4513
-$wsGrp.Columns("A:A").ColumnWidth = 11
-$wsGrp.Columns("B:B").ColumnWidth = 12
-$wsGrp.Columns("C:C").ColumnWidth = 45
-$wsGrp.Columns("D:D").ColumnWidth = 11
+Set-Header $wsGrp 3 @("Code","Nom du groupe","Nb articles") 0x8B4513
+$wsGrp.Columns("A:A").ColumnWidth = 8
+$wsGrp.Columns("A:A").NumberFormat = "@"
+$wsGrp.Columns("B:B").ColumnWidth = 45
+$wsGrp.Columns("C:C").ColumnWidth = 11
 
 # ===== ONGLET LISTES =====
 $wsLst.Cells(1,1).Value2 = "Mettre X en colonne A pour verifier seulement ces listes de prix. Aucun X = toutes les listes."
@@ -296,6 +296,7 @@ Public Sub ChargerGroupesEtListes()
 
     lr = wsG.Cells(wsG.Rows.Count, 2).End(xlUp).Row
     If lr > 3 Then wsG.Range(wsG.Cells(4, 1), wsG.Cells(lr, 4)).ClearContents
+    Dim gNam As String
     Application.StatusBar = "Chargement groupes..."
     Dim rsG As Object
     Set rsG = RunQuery(co, "SELECT g.""ItmsGrpCod"", g.""ItmsGrpNam"", COUNT(i.""ItemCode"") AS ""NbItems"" " & _
@@ -303,9 +304,10 @@ Public Sub ChargerGroupesEtListes()
         "GROUP BY g.""ItmsGrpCod"", g.""ItmsGrpNam"" ORDER BY g.""ItmsGrpNam""")
     Dim cntG As Long: cntG = RC(rsG)
     For r = 1 To cntG
-        wsG.Cells(3 + r, 2).Value = GF(rsG, "ItmsGrpCod")
-        wsG.Cells(3 + r, 3).Value = Txt(GF(rsG, "ItmsGrpNam"))
-        wsG.Cells(3 + r, 4).Value = GF(rsG, "NbItems")
+        gNam = Txt(GF(rsG, "ItmsGrpNam"))
+        wsG.Cells(3 + r, 1).Value = Left(gNam, 3)
+        wsG.Cells(3 + r, 2).Value = gNam
+        wsG.Cells(3 + r, 3).Value = GF(rsG, "NbItems")
         MN rsG
     Next r
 
@@ -323,7 +325,7 @@ Public Sub ChargerGroupesEtListes()
 
     WriteLog "Charge " & cntG & " groupes, " & cntL & " listes"
     MsgBox cntG & " groupes et " & cntL & " listes charges." & vbCrLf & _
-           "Mettre X dans les onglets Groupes / Listes pour filtrer (aucun X = tout).", vbInformation
+           "Taper le code groupe en B2 (onglet Ventes a perte). X dans onglet Listes pour filtrer les listes.", vbInformation
     GoTo CleanCGL
 ErrCGL:
     MsgBox "Erreur: " & Err.Description, vbCritical
@@ -392,13 +394,11 @@ End Function
 ' ==========================================
 Public Sub AnalyserVentesPerte()
     Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Ventes a perte")
-    Dim grp As String: grp = Filtre("Groupes", 2)
     Dim gro As String: gro = GroupesGromec(ws.Range("B2").Value)
     Dim lst As String: lst = Filtre("Listes", 2)
 
     Dim msg As String
-    msg = "Groupe Gromec: " & IIf(gro = "", "TOUS", Replace(gro, "'", "")) & vbCrLf & _
-          "Groupes SAP (X): " & IIf(grp = "", "TOUS", grp) & vbCrLf & _
+    msg = "Groupe: " & IIf(gro = "", "TOUS", Replace(gro, "'", "")) & vbCrLf & _
           "Listes de prix: " & IIf(lst = "", "TOUTES", lst) & vbCrLf & vbCrLf & "Lancer l'analyse?"
     If MsgBox(msg, vbQuestion + vbYesNo, "Ventes a perte") <> vbYes Then Exit Sub
 
@@ -428,7 +428,6 @@ Public Sub AnalyserVentesPerte()
                " JOIN ""OITW"" w ON w.""ItemCode"" = i.""ItemCode"" AND w.""WhsCode"" = '" & WHS_COUT & "'"
     wBase = " AND w.""AvgPrice"" > 0 AND i.""SellItem"" = 'Y' AND IFNULL(i.""frozenFor"", 'N') <> 'Y'" & _
             " AND UPPER(LEFT(i.""ItemCode"", 2)) NOT IN (" & PREFIXES_EXCLUS & ")"
-    If grp <> "" Then wBase = wBase & " AND i.""ItmsGrpCod"" IN (" & grp & ")"
     If gro <> "" Then wBase = wBase & " AND LEFT(b.""ItmsGrpNam"", 3) IN (" & gro & ")"
     If lst <> "" Then wLst = " AND x.""PriceList"" IN (" & lst & ")"
 
@@ -491,11 +490,11 @@ Public Sub AnalyserVentesPerte()
     End If
 
     ws.Cells(4, 1).Value = total & " ventes a perte  |  Listes: " & n1 & "  Speciaux: " & n2 & _
-        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Gromec: " & IIf(gro = "", "tous", Replace(gro, "'", "")) & _
+        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Groupe: " & IIf(gro = "", "tous", Replace(gro, "'", "")) & _
         "  |  " & Format(Now, "yyyy-mm-dd hh:nn")
     ws.Cells(4, 1).Font.Bold = True
 
-    WriteLog "Analyse: " & total & " lignes (grp=" & grp & " lst=" & lst & ") en " & Format(Timer - t0, "0") & "s"
+    WriteLog "Analyse: " & total & " lignes (grp=" & gro & " lst=" & lst & ") en " & Format(Timer - t0, "0") & "s"
 
     Dim fin As String
     fin = total & " ventes a perte trouvees en " & Format(Timer - t0, "0") & " s."
