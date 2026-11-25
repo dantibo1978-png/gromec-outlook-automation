@@ -42,7 +42,22 @@ try {
 $JoursRecherche      = 90       # Chercher les PO des X derniers jours
 $ExclureCreateurs    = @("Gagnon Marie-Christine", "St-Laurent Charles")
 $ExclureFournisseurs = @()
-$ExclureStatuts      = @("C")   # C = Clôturé
+$ExclureStatuts      = @("C")   # C = Cloture
+$ExclurePOs          = @()
+
+# ── Charger les exclusions sauvegardees ──────────────────────────────────────
+$exclusionFile = Join-Path (Split-Path $PSCommandPath) "RechercheCommandes_exclusions.json"
+try {
+    if (Test-Path $exclusionFile) {
+        $excData = Get-Content $exclusionFile -Raw | ConvertFrom-Json
+        if ($excData.po_exclus) {
+            $ExclurePOs = @($excData.po_exclus)
+        }
+        if ($excData.createurs_exclus) {
+            $ExclureCreateurs = @($excData.createurs_exclus)
+        }
+    }
+} catch {}
 
 # ── Fonctions utilitaires ─────────────────────────────────────────────────────
 function Write-Log {
@@ -141,8 +156,11 @@ while (-not $rsPO.EoF) {
     $status    = $rsPO.Fields.Item("DocStatus").Value
     $createur  = $rsPO.Fields.Item("Createur").Value
 
-    # Exclure clôturées
+    # Exclure cloturees
     if ($ExclureStatuts -contains $status) { $rsPO.MoveNext(); continue }
+
+    # Exclure POs marques
+    if ($ExclurePOs -contains [string]$docNum) { $rsPO.MoveNext(); continue }
 
     # Exclure créateurs
     $skip = $false
@@ -327,7 +345,7 @@ $ws.Cells.Item(3,5).Value2 = "Sans trace: $nbNonEnvoye"
 $ws.Cells.Item(3,5).Font.Color = 255    # rouge
 
 # ── En-têtes colonnes ────────────────────────────────────────────────────────
-$headers = @("# Commande", "Date", "Code Fourn.", "Fournisseur", "Total", "Devise", "Statut", "Createur", "Trace?", "Source", "Date trace", "De/A")
+$headers = @("# Commande", "Date", "Code Fourn.", "Fournisseur", "Total", "Devise", "Statut", "Createur", "Trace?", "Source", "Date trace", "De/A", "Exclure")
 $row = 5
 for ($c = 0; $c -lt $headers.Count; $c++) {
     $cell = $ws.Cells.Item($row, $c + 1)
@@ -369,13 +387,20 @@ foreach ($cmd in $commandes) {
 $lastRow = $dataRow - 1
 if ($lastRow -ge $row + 1) {
     # Filtre auto
-    $ws.Range("A${row}:L${lastRow}").AutoFilter() | Out-Null
+    $ws.Range("A${row}:M${lastRow}").AutoFilter() | Out-Null
 
     # Mise en forme conditionnelle - lignes sans trace en rose
-    $dataRange = $ws.Range("A$($row+1):L${lastRow}")
+    $dataRange = $ws.Range("A$($row+1):M${lastRow}")
     $fc = $dataRange.FormatConditions.Add(2, 0, '=$I' + ($row+1) + '="NON"')  # xlExpression=2
     $fc.Interior.Color = 13421823  # rose pale
     $fc.StopIfTrue = $false
+
+    # Dropdown "OUI" dans la colonne Exclure
+    $exclRange = $ws.Range("M$($row+1):M${lastRow}")
+    $exclRange.Validation.Delete()
+    $exclRange.Validation.Add(3, 1, 1, "OUI")  # xlValidateList=3
+    $exclRange.Validation.InCellDropdown = $true
+    $exclRange.Validation.IgnoreBlank = $true
 }
 
 # Largeur des colonnes
@@ -391,6 +416,128 @@ $ws.Columns.Item(9).ColumnWidth = 10   # Trace?
 $ws.Columns.Item(10).ColumnWidth = 10  # Source
 $ws.Columns.Item(11).ColumnWidth = 18  # Date trace
 $ws.Columns.Item(12).ColumnWidth = 30  # De/A
+$ws.Columns.Item(13).ColumnWidth = 10  # Exclure
+
+# ── Feuille Parametres ──────────────────────────────────────────────────────
+$wsParam = $wb.Sheets.Add([System.Reflection.Missing]::Value, $ws)
+$wsParam.Name = "Parametres"
+$wsParam.Cells.Item(1,1).Value2 = "PARAMETRES - RECHERCHE COMMANDES"
+$wsParam.Cells.Item(1,1).Font.Size = 14
+$wsParam.Cells.Item(1,1).Font.Bold = $true
+$wsParam.Range("A1:C1").Merge()
+
+$wsParam.Cells.Item(3,1).Value2 = "Createurs exclus (un par ligne):"
+$wsParam.Cells.Item(3,1).Font.Bold = $true
+$pRow = 4
+foreach ($nom in $ExclureCreateurs) {
+    $wsParam.Cells.Item($pRow, 1).Value2 = $nom
+    $pRow++
+}
+
+$wsParam.Cells.Item(3,3).Value2 = "Commandes exclues:"
+$wsParam.Cells.Item(3,3).Font.Bold = $true
+$pRow = 4
+foreach ($po in $ExclurePOs) {
+    $wsParam.Cells.Item($pRow, 3).Value2 = [string]$po
+    $pRow++
+}
+
+$wsParam.Cells.Item(2,1).Value2 = "Modifiez les listes ci-dessous puis cliquez sur [Sauvegarder exclusions]"
+$wsParam.Cells.Item(2,1).Font.Size = 9
+$wsParam.Cells.Item(2,1).Font.Color = 8421504
+$wsParam.Range("A2:D2").Merge()
+
+$wsParam.Columns.Item(1).ColumnWidth = 30
+$wsParam.Columns.Item(2).ColumnWidth = 5
+$wsParam.Columns.Item(3).ColumnWidth = 20
+
+# ── Macro VBA pour sauvegarder les exclusions ───────────────────────────────
+$scriptDir = Split-Path $PSCommandPath
+$vbaCode = @"
+Sub SauvegarderExclusions()
+    Dim wsRC As Worksheet, wsP As Worksheet
+    Dim json As String, i As Long, v As String
+    Dim poList As String, crList As String
+    Dim lastRow As Long
+    Dim filePath As String
+
+    filePath = "$($scriptDir.Replace('\','\\'))\\RechercheCommandes_exclusions.json"
+
+    Set wsRC = ThisWorkbook.Sheets("Recherche Commandes")
+    Set wsP = ThisWorkbook.Sheets("Parametres")
+
+    ' Collecter les PO exclus depuis la colonne M + feuille Parametres
+    poList = ""
+    lastRow = wsRC.Cells(wsRC.Rows.Count, 1).End(xlUp).Row
+    For i = 6 To lastRow
+        If UCase(Trim(wsRC.Cells(i, 13).Value)) = "OUI" Then
+            v = Trim(wsRC.Cells(i, 1).Value)
+            If Len(v) > 0 Then
+                If Len(poList) > 0 Then poList = poList & ","
+                poList = poList & """" & v & """"
+            End If
+        End If
+    Next i
+    ' Ajouter ceux de la feuille Parametres
+    lastRow = wsP.Cells(wsP.Rows.Count, 3).End(xlUp).Row
+    For i = 4 To lastRow
+        v = Trim(wsP.Cells(i, 3).Value)
+        If Len(v) > 0 Then
+            If Len(poList) > 0 Then poList = poList & ","
+            poList = poList & """" & v & """"
+        End If
+    Next i
+
+    ' Collecter les createurs exclus
+    crList = ""
+    lastRow = wsP.Cells(wsP.Rows.Count, 1).End(xlUp).Row
+    For i = 4 To lastRow
+        v = Trim(wsP.Cells(i, 1).Value)
+        If Len(v) > 0 Then
+            If Len(crList) > 0 Then crList = crList & ","
+            crList = crList & """" & v & """"
+        End If
+    Next i
+
+    json = "{" & vbCrLf
+    json = json & "  ""po_exclus"": [" & poList & "]," & vbCrLf
+    json = json & "  ""createurs_exclus"": [" & crList & "]" & vbCrLf
+    json = json & "}"
+
+    Dim f As Integer
+    f = FreeFile
+    Open filePath For Output As #f
+    Print #f, json
+    Close #f
+
+    MsgBox "Exclusions sauvegardees!" & vbCrLf & vbCrLf & _
+           "PO exclus: " & IIf(Len(poList) > 0, poList, "(aucun)") & vbCrLf & _
+           "Createurs exclus: " & IIf(Len(crList) > 0, crList, "(aucun)"), _
+           vbInformation, "Recherche Commandes"
+End Sub
+"@
+
+try {
+    $vbModule = $wb.VBProject.VBComponents.Add(1)  # vbext_ct_StdModule
+    $vbModule.CodeModule.AddFromString($vbaCode)
+} catch {
+    Write-Log "ATTENTION: Impossible d'ajouter la macro VBA (verifier les parametres de securite Excel)"
+}
+
+# Bouton sur la feuille principale
+$ws.Activate()
+try {
+    $btn = $ws.Buttons.Add(
+        $ws.Columns.Item(9).Left,   # colonne I
+        $ws.Rows.Item(3).Top,       # ligne 3
+        180, 22
+    )
+    $btn.Caption = "Sauvegarder exclusions"
+    $btn.OnAction = "SauvegarderExclusions"
+    $btn.Font.Size = 9
+} catch {
+    Write-Log "ATTENTION: Impossible d'ajouter le bouton macro"
+}
 
 # Figer les volets
 $ws.Cells.Item($row + 1, 1).Select()
@@ -399,4 +546,5 @@ $excel.ActiveWindow.FreezePanes = $true
 # ── Afficher ─────────────────────────────────────────────────────────────────
 $excel.Visible = $true
 Write-Log "Fichier Excel genere et ouvert. $($commandes.Count) commande(s)."
+if ($ExclurePOs.Count -gt 0) { Write-Log "  $($ExclurePOs.Count) commande(s) exclue(s) par les exclusions sauvegardees" }
 Write-Log "Termine!"
