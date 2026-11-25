@@ -193,70 +193,56 @@ if ($outlook) {
     $ns = $outlook.GetNamespace("MAPI")
     $dateFilter = (Get-Date).AddDays(-$JoursRecherche).ToString("MM/dd/yyyy")
 
-    # Index numéro -> { Date, Dest, Source }
-    $indexTraces = @{}
-
-    # 1) Éléments envoyés
-    $sentFolder = $ns.GetDefaultFolder(5)  # olFolderSentMail
-    $sentItems = $sentFolder.Items.Restrict("[SentOn] >= '$dateFilter'")
-    $countSent = 0
-    foreach ($item in $sentItems) {
-        try {
-            $sujet = $item.Subject
-            if (-not $sujet) { continue }
-            if ($sujet -match '(\d{4,})') {
-                $num = $Matches[1]
-                if (-not $indexTraces.ContainsKey($num)) {
-                    $indexTraces[$num] = @{
-                        Date   = $item.SentOn.ToString("yyyy-MM-dd HH:mm")
-                        Dest   = [string]$item.To
-                        Source = "Envoye"
-                    }
-                }
-            }
-            $countSent++
-        } catch {}
-    }
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($sentItems) | Out-Null
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($sentFolder) | Out-Null
-    Write-Log "$countSent element(s) envoye(s) scannes"
-
-    # 2) Boîte de réception
+    # Recherche par numéro de PO dans tous les dossiers (sujet + corps)
+    $sentFolder  = $ns.GetDefaultFolder(5)  # olFolderSentMail
     $inboxFolder = $ns.GetDefaultFolder(6)  # olFolderInbox
-    $inboxItems = $inboxFolder.Items.Restrict("[ReceivedTime] >= '$dateFilter'")
-    $countInbox = 0
-    foreach ($item in $inboxItems) {
+
+    $total = $commandes.Count
+    $found = 0
+    $i = 0
+    foreach ($cmd in $commandes) {
+        $i++
+        $numStr = [string]$cmd.DocNum
+        if ($i % 20 -eq 0) { Write-Log "  Recherche Outlook $i / $total..." }
+
+        # Chercher dans les envoyés (sujet ou corps contient le numéro)
         try {
-            $sujet = $item.Subject
-            if (-not $sujet) { continue }
-            if ($sujet -match '(\d{4,})') {
-                $num = $Matches[1]
-                if (-not $indexTraces.ContainsKey($num)) {
-                    $indexTraces[$num] = @{
-                        Date   = $item.ReceivedTime.ToString("yyyy-MM-dd HH:mm")
-                        Dest   = [string]$item.SenderName
-                        Source = "Recu"
-                    }
-                }
+            $filter = "@SQL=""urn:schemas:httpmail:subject"" LIKE '%$numStr%' OR ""urn:schemas:httpmail:textdescription"" LIKE '%$numStr%'"
+            $results = $sentFolder.Items.Restrict($filter)
+            if ($results.Count -gt 0) {
+                $hit = $results.GetFirst()
+                $cmd.Envoye    = $true
+                $cmd.DateEnvoi = $hit.SentOn.ToString("yyyy-MM-dd HH:mm")
+                $cmd.Dest      = [string]$hit.To
+                $cmd.Source    = "Envoye"
+                $found++
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($results) | Out-Null
+                continue
             }
-            $countInbox++
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($results) | Out-Null
+        } catch {}
+
+        # Chercher dans la réception
+        try {
+            $filter = "@SQL=""urn:schemas:httpmail:subject"" LIKE '%$numStr%' OR ""urn:schemas:httpmail:textdescription"" LIKE '%$numStr%'"
+            $results = $inboxFolder.Items.Restrict($filter)
+            if ($results.Count -gt 0) {
+                $hit = $results.GetFirst()
+                $cmd.Envoye    = $true
+                $cmd.DateEnvoi = $hit.ReceivedTime.ToString("yyyy-MM-dd HH:mm")
+                $cmd.Dest      = [string]$hit.SenderName
+                $cmd.Source    = "Recu"
+                $found++
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($results) | Out-Null
+                continue
+            }
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($results) | Out-Null
         } catch {}
     }
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($inboxItems) | Out-Null
+    Write-Log "$found trace(s) trouvee(s) sur $total commande(s)"
+
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($sentFolder) | Out-Null
     [System.Runtime.InteropServices.Marshal]::ReleaseComObject($inboxFolder) | Out-Null
-    Write-Log "$countInbox element(s) recus scannes, $($indexTraces.Count) numero(s) uniques trouves au total"
-
-    # Croiser avec les commandes
-    foreach ($cmd in $commandes) {
-        $numStr = [string]$cmd.DocNum
-        if ($indexTraces.ContainsKey($numStr)) {
-            $cmd.Envoye    = $true
-            $cmd.DateEnvoi = $indexTraces[$numStr].Date
-            $cmd.Dest      = $indexTraces[$numStr].Dest
-            $cmd.Source    = $indexTraces[$numStr].Source
-        }
-    }
-
     [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ns) | Out-Null
 }
 
