@@ -126,7 +126,7 @@ function Run-SAPQuery {
 $dateDebut = (Get-Date).AddDays(-$JoursRecherche).ToString("yyyyMMdd")
 Write-Log "Requete OPOR - commandes depuis $dateDebut..."
 
-$sqlPO = 'SELECT T0."DocNum", T0."DocDate", T0."CardCode", T0."CardName", T0."DocTotal", T0."DocCur", T0."DocStatus", IFNULL(T0."U_CreePar", ' + "''" + ') AS "Createur" FROM "OPOR" T0 WHERE T0."DocDate" >= ' + "'" + $dateDebut + "'" + ' ORDER BY T0."DocNum" DESC'
+$sqlPO = 'SELECT T0."DocNum", T0."DocDate", T0."CardCode", T0."CardName", T0."DocTotal", T0."DocCur", T0."DocStatus", IFNULL(T1."U_NAME", ' + "''" + ') AS "Createur" FROM "OPOR" T0 LEFT JOIN "OUSR" T1 ON T0."UserSign" = T1."INTERNAL_K" WHERE T0."DocDate" >= ' + "'" + $dateDebut + "'" + ' ORDER BY T0."DocNum" DESC'
 
 $rsPO = Run-SAPQuery $sqlPO
 
