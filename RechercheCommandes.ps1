@@ -57,7 +57,7 @@ function Show-LoginDialog {
     if (Test-Path $resultFile) { Remove-Item $resultFile -Force }
 
     $hta = @"
-<html><head><title>Connexion SAP — Recherche Commandes</title>
+<html><head><title>Connexion SAP - Recherche Commandes</title>
 <hta:application border="dialog" maximizeButton="no" minimizeButton="no" scroll="no" />
 <style>body{font:12px Tahoma;margin:20px}td{padding:5px}input{width:160px;padding:3px}
 button{width:85px;padding:5px;cursor:pointer}</style>
@@ -124,16 +124,9 @@ function Run-SAPQuery {
 
 # ── Récupérer les commandes d'achat ──────────────────────────────────────────
 $dateDebut = (Get-Date).AddDays(-$JoursRecherche).ToString("yyyyMMdd")
-Write-Log "Requete OPOR — commandes depuis $dateDebut..."
+Write-Log "Requete OPOR - commandes depuis $dateDebut..."
 
-$sqlPO = @"
-SELECT T0."DocNum", T0."DocDate", T0."CardCode", T0."CardName",
-       T0."DocTotal", T0."DocCur", T0."DocStatus",
-       IFNULL(T0."U_CreePar", '') AS "Createur"
-FROM "OPOR" T0
-WHERE T0."DocDate" >= '$dateDebut'
-ORDER BY T0."DocNum" DESC
-"@
+$sqlPO = 'SELECT T0."DocNum", T0."DocDate", T0."CardCode", T0."CardName", T0."DocTotal", T0."DocCur", T0."DocStatus", IFNULL(T0."U_CreePar", ' + "''" + ') AS "Createur" FROM "OPOR" T0 WHERE T0."DocDate" >= ' + "'" + $dateDebut + "'" + ' ORDER BY T0."DocNum" DESC'
 
 $rsPO = Run-SAPQuery $sqlPO
 
@@ -190,7 +183,7 @@ try {
     try {
         $outlook = New-Object -ComObject Outlook.Application
     } catch {
-        Write-Log "ATTENTION: Outlook non disponible — colonne envoi sera vide"
+        Write-Log "ATTENTION: Outlook non disponible - colonne envoi sera vide"
         $outlook = $null
     }
 }
@@ -266,7 +259,7 @@ $ws.Cells.Item(1,1).Font.Bold = $true
 $ws.Range("A1:I1").Merge()
 
 $dateGen = (Get-Date).ToString("yyyy-MM-dd HH:mm")
-$ws.Cells.Item(2,1).Value2 = "Genere le $dateGen — Periode: $JoursRecherche derniers jours"
+$ws.Cells.Item(2,1).Value2 = "Genere le $dateGen - Periode: $JoursRecherche derniers jours"
 $ws.Cells.Item(2,1).Font.Size = 9
 $ws.Cells.Item(2,1).Font.Color = 8421504
 $ws.Range("A2:I2").Merge()
