@@ -193,53 +193,98 @@ if ($outlook) {
     $ns = $outlook.GetNamespace("MAPI")
     $dateFilter = (Get-Date).AddDays(-$JoursRecherche).ToString("MM/dd/yyyy")
 
-    # Recherche par numéro de PO dans tous les dossiers (sujet + corps)
+    # Index rapide: scanner tous les courriels UNE SEULE FOIS, extraire les numeros
     $sentFolder  = $ns.GetDefaultFolder(5)  # olFolderSentMail
     $inboxFolder = $ns.GetDefaultFolder(6)  # olFolderInbox
 
-    $total = $commandes.Count
-    $found = 0
-    $i = 0
-    foreach ($cmd in $commandes) {
-        $i++
-        $numStr = [string]$cmd.DocNum
-        if ($i % 20 -eq 0) { Write-Log "  Recherche Outlook $i / $total..." }
+    # Set des numeros de PO a chercher (pour filtrer vite)
+    $poSet = @{}
+    foreach ($cmd in $commandes) { $poSet[[string]$cmd.DocNum] = $true }
 
-        # Chercher dans les envoyés (sujet ou corps contient le numéro)
-        try {
-            $filter = "@SQL=""urn:schemas:httpmail:subject"" LIKE '%$numStr%' OR ""urn:schemas:httpmail:textdescription"" LIKE '%$numStr%'"
-            $results = $sentFolder.Items.Restrict($filter)
-            if ($results.Count -gt 0) {
-                $hit = $results.GetFirst()
-                $cmd.Envoye    = $true
-                $cmd.DateEnvoi = $hit.SentOn.ToString("yyyy-MM-dd HH:mm")
-                $cmd.Dest      = [string]$hit.To
-                $cmd.Source    = "Envoye"
-                $found++
-                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($results) | Out-Null
-                continue
-            }
-            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($results) | Out-Null
-        } catch {}
+    # Hash: numero PO -> info du premier courriel trouve
+    $emailIndex = @{}
 
-        # Chercher dans la réception
+    # Regex pour extraire tous les nombres de 4+ chiffres
+    $numRegex = [regex]'\b\d{4,}\b'
+
+    # Scanner les envoyes
+    Write-Log "  Scan des envoyes (sujet + corps)..."
+    $sentItems = $sentFolder.Items
+    $sentItems.Sort("[SentOn]", $true)
+    $sentItems = $sentItems.Restrict("[SentOn] >= '$dateFilter'")
+    $scanCount = 0
+    $item = $sentItems.GetFirst()
+    while ($item -ne $null) {
+        $scanCount++
+        if ($scanCount % 200 -eq 0) { Write-Log "    $scanCount courriels scannes..." }
         try {
-            $filter = "@SQL=""urn:schemas:httpmail:subject"" LIKE '%$numStr%' OR ""urn:schemas:httpmail:textdescription"" LIKE '%$numStr%'"
-            $results = $inboxFolder.Items.Restrict($filter)
-            if ($results.Count -gt 0) {
-                $hit = $results.GetFirst()
-                $cmd.Envoye    = $true
-                $cmd.DateEnvoi = $hit.ReceivedTime.ToString("yyyy-MM-dd HH:mm")
-                $cmd.Dest      = [string]$hit.SenderName
-                $cmd.Source    = "Recu"
-                $found++
-                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($results) | Out-Null
-                continue
+            $text = ""
+            try { $text = [string]$item.Subject } catch {}
+            try { $text += " " + [string]$item.Body } catch {}
+            $matches = $numRegex.Matches($text)
+            foreach ($m in $matches) {
+                $num = $m.Value
+                if ($poSet.ContainsKey($num) -and -not $emailIndex.ContainsKey($num)) {
+                    $emailIndex[$num] = @{
+                        Source = "Envoye"
+                        Date   = try { $item.SentOn.ToString("yyyy-MM-dd HH:mm") } catch { "" }
+                        Dest   = try { [string]$item.To } catch { "" }
+                    }
+                }
             }
-            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($results) | Out-Null
         } catch {}
+        $prev = $item
+        $item = $sentItems.GetNext()
+        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($prev) | Out-Null } catch {}
     }
-    Write-Log "$found trace(s) trouvee(s) sur $total commande(s)"
+    Write-Log "    $scanCount envoye(s) scannes, $($emailIndex.Count) trace(s)"
+
+    # Scanner la reception
+    Write-Log "  Scan de la reception (sujet + corps)..."
+    $inboxItems = $inboxFolder.Items
+    $inboxItems.Sort("[ReceivedTime]", $true)
+    $inboxItems = $inboxItems.Restrict("[ReceivedTime] >= '$dateFilter'")
+    $scanCount = 0
+    $item = $inboxItems.GetFirst()
+    while ($item -ne $null) {
+        $scanCount++
+        if ($scanCount % 200 -eq 0) { Write-Log "    $scanCount courriels scannes..." }
+        try {
+            $text = ""
+            try { $text = [string]$item.Subject } catch {}
+            try { $text += " " + [string]$item.Body } catch {}
+            $matches = $numRegex.Matches($text)
+            foreach ($m in $matches) {
+                $num = $m.Value
+                if ($poSet.ContainsKey($num) -and -not $emailIndex.ContainsKey($num)) {
+                    $emailIndex[$num] = @{
+                        Source = "Recu"
+                        Date   = try { $item.ReceivedTime.ToString("yyyy-MM-dd HH:mm") } catch { "" }
+                        Dest   = try { [string]$item.SenderName } catch { "" }
+                    }
+                }
+            }
+        } catch {}
+        $prev = $item
+        $item = $inboxItems.GetNext()
+        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($prev) | Out-Null } catch {}
+    }
+    Write-Log "    $scanCount recu(s) scannes, $($emailIndex.Count) trace(s) au total"
+
+    # Appliquer l'index aux commandes
+    $found = 0
+    foreach ($cmd in $commandes) {
+        $numStr = [string]$cmd.DocNum
+        if ($emailIndex.ContainsKey($numStr)) {
+            $info = $emailIndex[$numStr]
+            $cmd.Envoye    = $true
+            $cmd.DateEnvoi = $info.Date
+            $cmd.Dest      = $info.Dest
+            $cmd.Source    = $info.Source
+            $found++
+        }
+    }
+    Write-Log "$found trace(s) trouvee(s) sur $($commandes.Count) commande(s)"
 
     [System.Runtime.InteropServices.Marshal]::ReleaseComObject($sentFolder) | Out-Null
     [System.Runtime.InteropServices.Marshal]::ReleaseComObject($inboxFolder) | Out-Null
