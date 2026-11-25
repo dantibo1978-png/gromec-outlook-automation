@@ -204,8 +204,8 @@ if ($outlook) {
     # Hash: numero PO -> info du premier courriel trouve
     $emailIndex = @{}
 
-    # Regex pour extraire tous les nombres de 4+ chiffres
-    $numRegex = [regex]'\b\d{4,}\b'
+    # Regex pour extraire tous les nombres de 7+ chiffres (numeros de PO SAP)
+    $numRegex = [regex]'\d{7,}'
 
     # Scanner les envoyes
     Write-Log "  Scan des envoyes (sujet + corps)..."
@@ -221,6 +221,7 @@ if ($outlook) {
             $text = ""
             try { $text = [string]$item.Subject } catch {}
             try { $text += " " + [string]$item.Body } catch {}
+            try { $text += " " + [string]$item.HTMLBody } catch {}
             $matches = $numRegex.Matches($text)
             foreach ($m in $matches) {
                 $num = $m.Value
@@ -251,6 +252,7 @@ if ($outlook) {
             $text = ""
             try { $text = [string]$item.Subject } catch {}
             try { $text += " " + [string]$item.Body } catch {}
+            try { $text += " " + [string]$item.HTMLBody } catch {}
             $matches = $numRegex.Matches($text)
             foreach ($m in $matches) {
                 $num = $m.Value
