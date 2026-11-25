@@ -285,15 +285,15 @@ for ($c = 0; $c -lt $headers.Count; $c++) {
 # ── Données ──────────────────────────────────────────────────────────────────
 $dataRow = $row + 1
 foreach ($cmd in $commandes) {
-    $ws.Cells.Item($dataRow, 1).Value2 = $cmd.DocNum
-    $ws.Cells.Item($dataRow, 2).Value2 = if ($cmd.DocDate) { ([datetime]$cmd.DocDate).ToString("yyyy-MM-dd") } else { "" }
-    $ws.Cells.Item($dataRow, 3).Value2 = $cmd.CardCode
-    $ws.Cells.Item($dataRow, 4).Value2 = $cmd.CardName
-    $ws.Cells.Item($dataRow, 5).Value2 = $cmd.Total
+    $ws.Cells.Item($dataRow, 1).Value2 = [string]$cmd.DocNum
+    $ws.Cells.Item($dataRow, 2).Value2 = if ($cmd.DocDate) { try { ([datetime]$cmd.DocDate).ToString("yyyy-MM-dd") } catch { [string]$cmd.DocDate } } else { "" }
+    $ws.Cells.Item($dataRow, 3).Value2 = [string]$cmd.CardCode
+    $ws.Cells.Item($dataRow, 4).Value2 = [string]$cmd.CardName
+    $ws.Cells.Item($dataRow, 5).Value2 = [double]$cmd.Total
     $ws.Cells.Item($dataRow, 5).NumberFormat = "#,##0.00"
-    $ws.Cells.Item($dataRow, 6).Value2 = $cmd.Devise
-    $ws.Cells.Item($dataRow, 7).Value2 = switch ($cmd.Status) { "O" { "Ouvert" } "C" { "Cloture" } default { $cmd.Status } }
-    $ws.Cells.Item($dataRow, 8).Value2 = $cmd.Createur
+    $ws.Cells.Item($dataRow, 6).Value2 = [string]$cmd.Devise
+    $ws.Cells.Item($dataRow, 7).Value2 = switch ([string]$cmd.Status) { "O" { "Ouvert" } "C" { "Cloture" } default { [string]$cmd.Status } }
+    $ws.Cells.Item($dataRow, 8).Value2 = [string]$cmd.Createur
 
     if ($cmd.Envoye) {
         $ws.Cells.Item($dataRow, 9).Value2 = "Oui"
