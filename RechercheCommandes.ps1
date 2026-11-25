@@ -225,11 +225,9 @@ if ($outlook) {
             foreach ($m in $matches) {
                 $num = $m.Value
                 if ($poSet.ContainsKey($num) -and -not $emailIndex.ContainsKey($num)) {
-                    $emailIndex[$num] = @{
-                        Source = "Envoye"
-                        Date   = try { $item.SentOn.ToString("yyyy-MM-dd HH:mm") } catch { "" }
-                        Dest   = try { [string]$item.To } catch { "" }
-                    }
+                    $eDate = ""; try { $eDate = $item.SentOn.ToString("yyyy-MM-dd HH:mm") } catch {}
+                    $eDest = ""; try { $eDest = [string]$item.To } catch {}
+                    $emailIndex[$num] = @{ Source = "Envoye"; Date = $eDate; Dest = $eDest }
                 }
             }
         } catch {}
@@ -257,11 +255,9 @@ if ($outlook) {
             foreach ($m in $matches) {
                 $num = $m.Value
                 if ($poSet.ContainsKey($num) -and -not $emailIndex.ContainsKey($num)) {
-                    $emailIndex[$num] = @{
-                        Source = "Recu"
-                        Date   = try { $item.ReceivedTime.ToString("yyyy-MM-dd HH:mm") } catch { "" }
-                        Dest   = try { [string]$item.SenderName } catch { "" }
-                    }
+                    $eDate = ""; try { $eDate = $item.ReceivedTime.ToString("yyyy-MM-dd HH:mm") } catch {}
+                    $eDest = ""; try { $eDest = [string]$item.SenderName } catch {}
+                    $emailIndex[$num] = @{ Source = "Recu"; Date = $eDate; Dest = $eDest }
                 }
             }
         } catch {}
