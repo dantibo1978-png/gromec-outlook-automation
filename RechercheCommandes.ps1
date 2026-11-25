@@ -169,14 +169,15 @@ while (-not $rsPO.EoF) {
         Envoye    = $false
         DateEnvoi = ""
         Dest      = ""
+        Source    = ""
     }
     $rsPO.MoveNext()
 }
 
 Write-Log "$($commandes.Count) commande(s) trouvee(s) dans SAP"
 
-# ── Vérifier dans Outlook les éléments envoyés ───────────────────────────────
-Write-Log "Verification dans Outlook (elements envoyes)..."
+# ── Vérifier dans Outlook (envoyés + réception) ─────────────────────────────
+Write-Log "Verification dans Outlook..."
 try {
     $outlook = [Runtime.InteropServices.Marshal]::GetActiveObject("Outlook.Application")
 } catch {
@@ -190,47 +191,72 @@ try {
 
 if ($outlook) {
     $ns = $outlook.GetNamespace("MAPI")
-    $sentFolder = $ns.GetDefaultFolder(5)  # olFolderSentMail
-
     $dateFilter = (Get-Date).AddDays(-$JoursRecherche).ToString("MM/dd/yyyy")
-    $filter = "[SentOn] >= '$dateFilter'"
-    $sentItems = $sentFolder.Items.Restrict($filter)
 
-    # Construire un index numéro -> { date, dest, sujet }
-    $indexEnvois = @{}
-    $count = 0
+    # Index numéro -> { Date, Dest, Source }
+    $indexTraces = @{}
+
+    # 1) Éléments envoyés
+    $sentFolder = $ns.GetDefaultFolder(5)  # olFolderSentMail
+    $sentItems = $sentFolder.Items.Restrict("[SentOn] >= '$dateFilter'")
+    $countSent = 0
     foreach ($item in $sentItems) {
         try {
             $sujet = $item.Subject
             if (-not $sujet) { continue }
-            # Extraire un numéro de 4+ chiffres du sujet
             if ($sujet -match '(\d{4,})') {
                 $num = $Matches[1]
-                if (-not $indexEnvois.ContainsKey($num)) {
-                    $indexEnvois[$num] = @{
-                        Date = $item.SentOn.ToString("yyyy-MM-dd HH:mm")
-                        Dest = $item.To
+                if (-not $indexTraces.ContainsKey($num)) {
+                    $indexTraces[$num] = @{
+                        Date   = $item.SentOn.ToString("yyyy-MM-dd HH:mm")
+                        Dest   = [string]$item.To
+                        Source = "Envoye"
                     }
                 }
             }
-            $count++
+            $countSent++
         } catch {}
     }
-    Write-Log "$count element(s) envoye(s) scannes, $($indexEnvois.Count) numero(s) uniques trouves"
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($sentItems) | Out-Null
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($sentFolder) | Out-Null
+    Write-Log "$countSent element(s) envoye(s) scannes"
+
+    # 2) Boîte de réception
+    $inboxFolder = $ns.GetDefaultFolder(6)  # olFolderInbox
+    $inboxItems = $inboxFolder.Items.Restrict("[ReceivedTime] >= '$dateFilter'")
+    $countInbox = 0
+    foreach ($item in $inboxItems) {
+        try {
+            $sujet = $item.Subject
+            if (-not $sujet) { continue }
+            if ($sujet -match '(\d{4,})') {
+                $num = $Matches[1]
+                if (-not $indexTraces.ContainsKey($num)) {
+                    $indexTraces[$num] = @{
+                        Date   = $item.ReceivedTime.ToString("yyyy-MM-dd HH:mm")
+                        Dest   = [string]$item.SenderName
+                        Source = "Recu"
+                    }
+                }
+            }
+            $countInbox++
+        } catch {}
+    }
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($inboxItems) | Out-Null
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($inboxFolder) | Out-Null
+    Write-Log "$countInbox element(s) recus scannes, $($indexTraces.Count) numero(s) uniques trouves au total"
 
     # Croiser avec les commandes
     foreach ($cmd in $commandes) {
         $numStr = [string]$cmd.DocNum
-        if ($indexEnvois.ContainsKey($numStr)) {
+        if ($indexTraces.ContainsKey($numStr)) {
             $cmd.Envoye    = $true
-            $cmd.DateEnvoi = $indexEnvois[$numStr].Date
-            $cmd.Dest      = $indexEnvois[$numStr].Dest
+            $cmd.DateEnvoi = $indexTraces[$numStr].Date
+            $cmd.Dest      = $indexTraces[$numStr].Dest
+            $cmd.Source    = $indexTraces[$numStr].Source
         }
     }
 
-    # Libérer COM
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($sentItems) | Out-Null
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($sentFolder) | Out-Null
     [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ns) | Out-Null
 }
 
@@ -266,13 +292,13 @@ $ws.Range("A2:I2").Merge()
 
 # Résumé
 $ws.Cells.Item(3,1).Value2 = "Total: $($commandes.Count)"
-$ws.Cells.Item(3,3).Value2 = "Envoyees: $nbEnvoye"
+$ws.Cells.Item(3,3).Value2 = "Avec trace: $nbEnvoye"
 $ws.Cells.Item(3,3).Font.Color = 32768  # vert
-$ws.Cells.Item(3,5).Value2 = "Non envoyees: $nbNonEnvoye"
+$ws.Cells.Item(3,5).Value2 = "Sans trace: $nbNonEnvoye"
 $ws.Cells.Item(3,5).Font.Color = 255    # rouge
 
 # ── En-têtes colonnes ────────────────────────────────────────────────────────
-$headers = @("# Commande", "Date", "Code Fourn.", "Fournisseur", "Total", "Devise", "Statut", "Createur", "Envoye?", "Date envoi", "Destinataire")
+$headers = @("# Commande", "Date", "Code Fourn.", "Fournisseur", "Total", "Devise", "Statut", "Createur", "Trace?", "Source", "Date trace", "De/A")
 $row = 5
 for ($c = 0; $c -lt $headers.Count; $c++) {
     $cell = $ws.Cells.Item($row, $c + 1)
@@ -303,8 +329,9 @@ foreach ($cmd in $commandes) {
         $ws.Cells.Item($dataRow, 9).Font.Color = 255
         $ws.Cells.Item($dataRow, 9).Font.Bold = $true
     }
-    $ws.Cells.Item($dataRow, 10).Value2 = $cmd.DateEnvoi
-    $ws.Cells.Item($dataRow, 11).Value2 = $cmd.Dest
+    $ws.Cells.Item($dataRow, 10).Value2 = [string]$cmd.Source
+    $ws.Cells.Item($dataRow, 11).Value2 = [string]$cmd.DateEnvoi
+    $ws.Cells.Item($dataRow, 12).Value2 = [string]$cmd.Dest
 
     $dataRow++
 }
@@ -313,12 +340,12 @@ foreach ($cmd in $commandes) {
 $lastRow = $dataRow - 1
 if ($lastRow -ge $row + 1) {
     # Filtre auto
-    $ws.Range("A${row}:K${lastRow}").AutoFilter() | Out-Null
+    $ws.Range("A${row}:L${lastRow}").AutoFilter() | Out-Null
 
-    # Mise en forme conditionnelle — lignes non envoyées en rose
-    $dataRange = $ws.Range("A$($row+1):K${lastRow}")
+    # Mise en forme conditionnelle - lignes sans trace en rose
+    $dataRange = $ws.Range("A$($row+1):L${lastRow}")
     $fc = $dataRange.FormatConditions.Add(2, 0, '=$I' + ($row+1) + '="NON"')  # xlExpression=2
-    $fc.Interior.Color = 13421823  # rose pâle
+    $fc.Interior.Color = 13421823  # rose pale
     $fc.StopIfTrue = $false
 }
 
@@ -331,9 +358,10 @@ $ws.Columns.Item(5).ColumnWidth = 14   # Total
 $ws.Columns.Item(6).ColumnWidth = 8    # Devise
 $ws.Columns.Item(7).ColumnWidth = 10   # Statut
 $ws.Columns.Item(8).ColumnWidth = 22   # Createur
-$ws.Columns.Item(9).ColumnWidth = 10   # Envoyé
-$ws.Columns.Item(10).ColumnWidth = 18  # Date envoi
-$ws.Columns.Item(11).ColumnWidth = 30  # Dest
+$ws.Columns.Item(9).ColumnWidth = 10   # Trace?
+$ws.Columns.Item(10).ColumnWidth = 10  # Source
+$ws.Columns.Item(11).ColumnWidth = 18  # Date trace
+$ws.Columns.Item(12).ColumnWidth = 30  # De/A
 
 # Figer les volets
 $ws.Cells.Item($row + 1, 1).Select()
