@@ -1382,7 +1382,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-11-25 15:45";
+const DERNIERE_MAJ_CODE = "2026-11-25 16:15";
 const DERNIERE_MAJ_PR = "PR #169";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
@@ -2601,11 +2601,23 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
   document.getElementById('btnRechercheCmd').addEventListener('click', () => {
     const cmd = '& "U:\\GromecOutlook\\RechercheCommandes.ps1"';
     navigator.clipboard.writeText(cmd).then(() => {
-      const btn = document.getElementById('btnRechercheCmd');
-      const sp = btn.querySelector('span');
-      const orig = sp.textContent;
-      sp.textContent = 'Commande copiee!';
-      setTimeout(() => { sp.textContent = orig; }, 2000);
+      let overlay = document.getElementById('rcOverlay');
+      if (overlay) { overlay.remove(); }
+      overlay = document.createElement('div');
+      overlay.id = 'rcOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:28px 32px;max-width:420px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.3)';
+      box.innerHTML = '<div style="font-size:15px;font-weight:600;margin-bottom:14px;color:var(--text)">Commande copiee!</div>'
+        + '<div style="font-size:13px;color:var(--muted);line-height:1.6">'
+        + '1. Ouvrir <b>PowerShell</b> sur votre poste<br>'
+        + '2. Faire <b>clic droit</b> pour coller la commande<br>'
+        + '3. Appuyer sur <b>Entree</b></div>'
+        + '<div style="margin-top:16px;padding:8px 12px;background:var(--panel-2);border-radius:6px;font-family:monospace;font-size:12px;color:var(--accent);word-break:break-all">' + cmd.replace(/\\/g,'\\\\') + '</div>'
+        + '<button style="margin-top:18px;padding:8px 28px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px" onclick="this.closest(\'#rcOverlay\').remove()">OK</button>';
+      overlay.appendChild(box);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      document.body.appendChild(overlay);
     });
   });
 
