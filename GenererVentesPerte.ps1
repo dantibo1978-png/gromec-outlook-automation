@@ -862,6 +862,9 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
     Dim co As Object: Set co = ConnectSAP()
     If co Is Nothing Then Application.StatusBar = False: Exit Sub
 
+    ' Nb de decimales des prix (Administration > Initialisation > Affichage), comme SAP a l'ecran
+    Dim nDec As Long: nDec = DecimalesPrix(co)
+
     ' Fichier d'annulation (ecrase a chaque lot) : anciennes valeurs de chaque ligne touchee
     Dim fso As Object, fU As Object
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -902,11 +905,11 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
             End If
             sql = "UPDATE ""ITM1"" AS T0 SET ""BasePLNum"" = " & ops(3, k) & ", ""Factor"" = " & sFac & _
                   ", ""Ovrwritten"" = 'N'" & _
-                  ", ""Price"" = " & PrixBaseSQL(CLng(ops(3, k))) & " * " & sFac & _
+                  ", ""Price"" = ROUND(" & PrixBaseSQL(CLng(ops(3, k))) & " * " & sFac & ", " & nDec & ")" & _
                   " WHERE T0.""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND T0.""PriceList"" = " & ops(2, k)
         Else
             sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = 0, ""Factor"" = 0, ""Ovrwritten"" = 'Y'" & _
-                  ", ""Price"" = " & Trim(Str(ops(6, k))) & _
+                  ", ""Price"" = ROUND(" & Trim(Str(ops(6, k))) & ", " & nDec & ")" & _
                   " WHERE ""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND ""PriceList"" = " & ops(2, k)
         End If
         Set rsU = co.GetBusinessObject(300)
@@ -963,6 +966,21 @@ Private Function Different(a As Variant, b As Variant) As Boolean
     Else
         Different = UCase(Trim(CStr(a))) <> UCase(Trim(CStr(b)))
     End If
+End Function
+
+' Nombre de decimales des prix de la societe (OADM.PriceDec). Defaut 2 si illisible.
+' Les listes n'ont pas de methode d'arrondi (OPLN.RoundSys vide) : SAP arrondit seulement a ce nb de decimales.
+Private Function DecimalesPrix(co As Object) As Long
+    DecimalesPrix = 2
+    On Error Resume Next
+    Dim rs As Object: Set rs = RunQuery(co, "SELECT ""PriceDec"" FROM ""OADM""")
+    If Err.Number = 0 Then
+        If RC(rs) > 0 Then
+            If IsNumeric(GF(rs, "PriceDec")) And Txt(GF(rs, "PriceDec")) <> "" Then DecimalesPrix = CLng(GF(rs, "PriceDec"))
+        End If
+    End If
+    Err.Clear
+    On Error GoTo 0
 End Function
 
 ' Expression SQL du prix de base pour un UPDATE "ITM1" AS T0.
