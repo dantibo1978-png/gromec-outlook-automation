@@ -67,9 +67,9 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
     $ws.Cells(3,3).Font.Color = 0x808080
 
     $hdrR = @("Source","Groupe","Article","Description","Liste #","Lie a","Facteur","Prix Net","Nom liste","Client","Nom client",
-              "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout","Dern. prix achat","Date dern. achat","Sous achat")
+              "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout","Dern. prix achat","Date dern. achat","Sous achat","Prix base","% profit voulu")
     Set-Header $ws 5 $hdrR 0x00008B
-    $widths = @(14,28,16,40,7,7,8,8,24,12,30,11,11,8,7,12,12,12,11,10,12,11,9)
+    $widths = @(14,28,16,40,7,7,8,8,24,12,30,11,11,8,7,12,12,12,11,10,12,11,9,10,11)
     for ($i = 0; $i -lt $widths.Count; $i++) { $ws.Columns($i + 1).ColumnWidth = $widths[$i] }
     $ws.Columns("C:C").NumberFormat = "@"
     $ws.Columns("J:J").NumberFormat = "@"
@@ -78,6 +78,7 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
     $ws.Columns("P:S").NumberFormat = "#,##0.00"
     $ws.Columns("T:T").NumberFormat = "0.0%"
     $ws.Columns("U:U").NumberFormat = "#,##0.00"
+    $ws.Columns("X:X").NumberFormat = "#,##0.00"
     $ws.Rows(5).Font.Bold = $true
     $ws.Rows(1).RowHeight = 30
 }
@@ -89,8 +90,10 @@ Set-ResultSheet $wsArt "RECHERCHE PAR ARTICLE - Prix de vente < Cout moyen magas
 # Colonnes modifiables (F Lie a, G Facteur, H Prix Net) en vert
 $wsArt.Range("F5:H5").Interior.Color = 0x008000
 $wsArt.Range("P5").Interior.Color = 0x008000
+$wsArt.Range("Y5").Interior.Color = 0x008000
 $wsRes.Range("F5:H5").Interior.Color = 0x008000
 $wsRes.Range("P5").Interior.Color = 0x008000
+$wsRes.Range("Y5").Interior.Color = 0x008000
 $wsArt.Cells(4,6).Value2 = "Modifiable (vert) -> bouton Appliquer. N = Lie a x Facteur. Y = prix net saisi en P."
 $wsArt.Cells(4,6).Font.Italic = $true
 $wsArt.Cells(4,6).Font.Color = 0x008000
@@ -153,9 +156,9 @@ Private mErreurs As String
 Private mSkipManuel As Long
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
-Private Const NB_COLS As Long = 23
-Private Const COL_KEY As Long = 24    ' colonne cachee = cle de ligne (Source|Article|Liste|Client) pour detecter un tri
-Private Const COL_ORIG As Long = 25   ' colonnes cachees 25-27 = originaux F-G-H, 28 = original P (prix vente)
+Private Const NB_COLS As Long = 24   ' + colonne 25 = % profit voulu (saisie)
+Private Const COL_KEY As Long = 40    ' colonne cachee = cle de ligne (Source|Article|Liste|Client) pour detecter un tri
+Private Const COL_ORIG As Long = 41   ' colonnes cachees 41-43 = originaux F-G-H, 44 = original P (prix vente)
 Private Const ROW_HDR As Long = 5
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
 Private Const LISTES_EXCLUES As String = "1,2,3,11"       ' listes ignorees - Ventes a perte (11 = Coutant moyen)
@@ -431,6 +434,8 @@ Private Function AjouterResultats(co As Object, sql As String, src As String, ws
         If dern > 0 Then arr(r, 21) = dern Else arr(r, 21) = ""
         arr(r, 22) = DateVal(GF(rs, "DernAchatDate"))
         If dern > 0 And prix < dern Then arr(r, 23) = "OUI" Else arr(r, 23) = ""
+        q = GF(rs, "PrixBase")
+        If IsNumeric(q) And Txt(q) <> "" Then arr(r, 24) = CDbl(q) Else arr(r, 24) = ""
         MN rs
         If r Mod 500 = 0 Then
             Application.StatusBar = src & ": " & r & " / " & n
@@ -538,7 +543,8 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
     nextRow = ROW_HDR + 1
 
     ' 1) Listes de prix (ITM1)
-    sql = "SELECT" & selItem & ", x.""PriceList"" AS ""ListNum"", x.""BasePLNum"" AS ""LieA"", x.""Factor"" AS ""Facteur"", x.""Ovrwritten"" AS ""PrixNet"", l.""ListName"", x.""Currency"" AS ""Devise"", x.""Price"" AS ""Prix""" & _
+    sql = "SELECT" & selItem & ", x.""PriceList"" AS ""ListNum"", x.""BasePLNum"" AS ""LieA"", x.""Factor"" AS ""Facteur"", x.""Ovrwritten"" AS ""PrixNet"", CASE WHEN x.""BasePLNum"" = -1 THEN i.""LastPurPrc"" WHEN x.""BasePLNum"" = -2 THEN i.""LstEvlPric""" & _
+          " ELSE (SELECT pb.""Price"" FROM ""ITM1"" pb WHERE pb.""ItemCode"" = x.""ItemCode"" AND pb.""PriceList"" = x.""BasePLNum"") END AS ""PrixBase"", l.""ListName"", x.""Currency"" AS ""Devise"", x.""Price"" AS ""Prix""" & _
           " FROM ""ITM1"" x" & joinItem & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""PriceList""" & _
           " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & _
@@ -982,23 +988,58 @@ try {
     Write-Host "VBA injecte avec succes!"
     # Code de feuille "Recherche article" : surlignage jaune des cellules modifiees
     $sheetCode = @'
-' Surligne en jaune les cellules F-G-H-P modifiees (comparaison avec les originaux caches 25-28)
+' Colonnes : F=6 Lie a, G=7 Facteur, H=8 Prix Net, P=16 Prix vente, Q=17 Cout, X=24 Prix base, Y=25 % profit voulu
+' Originaux caches : 41=F, 42=G, 43=H, 44=P
 Private Sub Worksheet_Change(ByVal Target As Range)
-    Dim zone As Range, c As Range, r As Long, col As Long
+    Dim zone As Range, c As Range, r As Long
     On Error GoTo Fin
+
+    ' 1) % profit voulu (Y) -> calcule le facteur (G) ou le prix net (P)
+    Set zone = Application.Intersect(Target, Me.Range("Y6:Y100000"))
+    If Not zone Is Nothing Then
+        If zone.Cells.Count <= 5000 Then
+            For Each c In zone.Cells
+                r = c.Row
+                If Trim(CStr(Me.Cells(r, 3).Value)) <> "" And IsNumeric(c.Value2) And Trim(CStr(c.Value2)) <> "" Then
+                    If CStr(Me.Cells(r, 1).Value) <> "Liste de prix" Then
+                        MsgBox "Ligne " & r & ": seulement pour les lignes 'Liste de prix'.", vbExclamation
+                    ElseIf CStr(Me.Cells(r, 6).Value2) <> CStr(Me.Cells(r, 41).Value2) Then
+                        MsgBox "Ligne " & r & ": 'Lie a' a ete modifie, le prix de base (X) n'est plus a jour." & vbCrLf & _
+                               "Appliquer le changement de 'Lie a' d'abord, puis entrer le %.", vbExclamation
+                    Else
+                        Dim cible As Double, base As Double
+                        cible = CDbl(Me.Cells(r, 17).Value2) * (1 + CDbl(c.Value2) / 100)
+                        If UCase(Trim(CStr(Me.Cells(r, 8).Value2))) = "Y" Then
+                            Me.Cells(r, 16).Value = Round(cible, 2)
+                        Else
+                            base = 0
+                            If IsNumeric(Me.Cells(r, 24).Value2) And Trim(CStr(Me.Cells(r, 24).Value2)) <> "" Then base = CDbl(Me.Cells(r, 24).Value2)
+                            If base > 0 Then
+                                Me.Cells(r, 7).Value = Round(cible / base, 6)
+                            Else
+                                MsgBox "Ligne " & r & ": prix de base (colonne X) inconnu, facteur non calcule.", vbExclamation
+                            End If
+                        End If
+                    End If
+                End If
+            Next c
+        End If
+    End If
+
+    ' 2) Surligne en jaune F-G-H-P modifiees
     Set zone = Application.Intersect(Target, Me.Range("F6:H100000,P6:P100000"))
     If zone Is Nothing Then Exit Sub
     If zone.Cells.Count > 5000 Then Exit Sub
+    Dim col As Long, a As Variant, o As Variant, dif As Boolean
     For Each c In zone.Cells
         r = c.Row
         If Trim(CStr(Me.Cells(r, 3).Value)) <> "" Then
             Select Case c.Column
-                Case 6: col = 25
-                Case 7: col = 26
-                Case 8: col = 27
-                Case Else: col = 28
+                Case 6: col = 41
+                Case 7: col = 42
+                Case 8: col = 43
+                Case Else: col = 44
             End Select
-            Dim a As Variant, o As Variant, dif As Boolean
             a = c.Value2: o = Me.Cells(r, col).Value2
             If IsNumeric(a) And IsNumeric(o) And Trim(CStr(a)) <> "" And Trim(CStr(o)) <> "" Then
                 dif = Abs(CDbl(a) - CDbl(o)) > 0.000001
