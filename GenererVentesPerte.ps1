@@ -525,6 +525,13 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
     If arts <> "" Then wBase = wBase & " AND i.""ItemCode"" IN (" & arts & ")"
     If lst <> "" Then wLst = " AND x.""PriceList"" IN (" & lst & ")"
     If lstN <> "" Then wLst = wLst & " AND x.""PriceList"" NOT IN (" & lstN & ")"
+    ' Meme filtre X / N pour les prix speciaux, sur leur liste (colonne Liste #)
+    Dim wLstSp As String, wLstQte As String
+    If lst <> "" Then wLstSp = " AND x.""ListNum"" IN (" & lst & ")": wLstQte = " AND d.""ListNum"" IN (" & lst & ")"
+    If lstN <> "" Then
+        wLstSp = wLstSp & " AND x.""ListNum"" NOT IN (" & lstN & ")"
+        wLstQte = wLstQte & " AND d.""ListNum"" NOT IN (" & lstN & ")"
+    End If
 
     Dim sql As String, nextRow As Long
     Dim n1 As Long, n2 As Long, n3 As Long, n4 As Long
@@ -543,7 +550,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
           " FROM ""OSPP"" x" & joinItem & _
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""ListNum""" & _
-          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & wBase
+          " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & wBase & wLstSp
     n2 = AjouterResultats(co, sql, "Prix special", ws, nextRow)
 
     ' 3) Prix speciaux par periode (SPP1, non expires)
@@ -553,7 +560,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = x.""ListNum""" & _
           " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & _
-          " AND (x.""ToDate"" IS NULL OR x.""ToDate"" >= CURRENT_DATE)" & wBase
+          " AND (x.""ToDate"" IS NULL OR x.""ToDate"" >= CURRENT_DATE)" & wBase & wLstSp
     n3 = AjouterResultats(co, sql, "Special periode", ws, nextRow)
 
     ' 4) Prix speciaux par quantite (SPP2, periode non expiree)
@@ -565,7 +572,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
           " LEFT JOIN ""OCRD"" c ON c.""CardCode"" = x.""CardCode""" & _
           " LEFT JOIN ""OPLN"" l ON l.""ListNum"" = d.""ListNum""" & _
           " WHERE x.""Price"" > 0 AND x.""Price"" < w.""AvgPrice"" * " & sFact & _
-          " AND (d.""ToDate"" IS NULL OR d.""ToDate"" >= CURRENT_DATE)" & wBase
+          " AND (d.""ToDate"" IS NULL OR d.""ToDate"" >= CURRENT_DATE)" & wBase & wLstQte
     n4 = AjouterResultats(co, sql, "Special quantite", ws, nextRow)
 
     Dim total As Long: total = n1 + n2 + n3 + n4
