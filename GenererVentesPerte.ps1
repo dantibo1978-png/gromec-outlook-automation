@@ -646,7 +646,8 @@ End Sub
 '  APPLIQUER MODIFS F (Lie a) / G (Facteur) / H (Prix Net) DANS SAP (ITM1)
 ' ==========================================
 Public Sub AppliquerModifsArticle()
-    AppliquerModifs ThisWorkbook.Sheets("Recherche article"), True
+    ' Pas de recalcul des listes liees : seule la liste de la ligne change
+    AppliquerModifs ThisWorkbook.Sheets("Recherche article"), False
 End Sub
 
 ' Onglet Ventes a perte : modifie seulement la liste de la ligne (pas de recalcul des listes liees)
@@ -812,14 +813,14 @@ LigneSuivante:
     Application.StatusBar = False
 
     MsgBox ok & " prix modifies dans SAP." & vbCrLf & _
-        IIf(avecCascade, nCasc & " liste(s) liee(s) recalculee(s) automatiquement.", "Listes liees NON recalculees (onglet Ventes a perte).") & _
+        IIf(avecCascade, nCasc & " liste(s) liee(s) recalculee(s) automatiquement.", "Seule la liste de chaque ligne a ete modifiee (listes liees non touchees).") & _
         IIf(mSkipManuel > 0, vbCrLf & mSkipManuel & " liste(s) liee(s) en prix manuel non touchee(s).", "") & _
         IIf(ko <> "", vbCrLf & vbCrLf & "Erreurs:" & ko, "") & vbCrLf & vbCrLf & _
         "Bouton 'Annuler derniere modif' pour revenir en arriere.", _
         IIf(ko = "", vbInformation, vbExclamation), "Modifier SAP"
 
     ' Recharger pour afficher les nouveaux prix
-    LancerAnalyse ws, avecCascade, True
+    LancerAnalyse ws, (ws.Name = "Recherche article"), True
 End Sub
 
 ' Cle d'identification d'une ligne de resultat
@@ -1080,7 +1081,7 @@ Write-Host "  Boutons (ou Alt+F8):"
 Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes de SAP"
 Write-Host "    - AnalyserVentesPerte    : Trouve prix vente < cout moyen"
 Write-Host "    - RechercherArticle      : Meme analyse pour un/des articles"
-Write-Host "    - AppliquerModifsArticle : Ecrit F-G-H-R dans SAP + recalcule listes liees"
+Write-Host "    - AppliquerModifsArticle : Ecrit F-G-H-R dans SAP (liste de la ligne seulement)"
 Write-Host "    - AppliquerModifsVentesPerte : Ecrit F-G-H-R dans SAP (liste de la ligne seulement)"
 Write-Host "    - AnnulerDerniereModif   : Restaure les prix d'avant la derniere modif"
 Write-Host "====================================="
