@@ -146,6 +146,7 @@ Private mSkipManuel As Long
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
 Private Const NB_COLS As Long = 23
+Private Const COL_KEY As Long = 24    ' colonne cachee = cle de ligne (Source|Article|Liste|Client) pour detecter un tri
 Private Const COL_ORIG As Long = 25   ' colonnes cachees 25-27 = originaux F-G-H, 28 = original P (prix vente)
 Private Const ROW_HDR As Long = 5
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
@@ -582,8 +583,15 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
             ws.Range(ws.Cells(ROW_HDR + 1, 6), ws.Cells(lastRow, 8)).Value
         ws.Range(ws.Cells(ROW_HDR + 1, COL_ORIG + 3), ws.Cells(lastRow, COL_ORIG + 3)).Value = _
             ws.Range(ws.Cells(ROW_HDR + 1, 16), ws.Cells(lastRow, 16)).Value
-        ws.Range(ws.Cells(1, COL_ORIG), ws.Cells(1, COL_ORIG + 3)).EntireColumn.Hidden = True
-        rng.AutoFilter
+        Dim cles() As Variant: ReDim cles(1 To total, 1 To 1)
+        For r = ROW_HDR + 1 To lastRow
+            cles(r - ROW_HDR, 1) = CleLigne(ws, r)
+        Next r
+        ws.Range(ws.Cells(ROW_HDR + 1, COL_KEY), ws.Cells(lastRow, COL_KEY)).Value = cles
+        ws.Range(ws.Cells(ROW_HDR, COL_KEY), ws.Cells(ROW_HDR, COL_ORIG + 3)).Value = Array("cle", "orig F", "orig G", "orig H", "orig P")
+        ws.Range(ws.Cells(1, COL_KEY), ws.Cells(1, COL_ORIG + 3)).EntireColumn.Hidden = True
+        ' Filtre/tri sur tout le tableau, colonnes cachees incluses (elles suivent le tri)
+        ws.Range(ws.Cells(ROW_HDR, 1), ws.Cells(lastRow, COL_ORIG + 3)).AutoFilter
     End If
 
     ws.Cells(4, 1).Value = total & " prix sous cout +" & pct & "%  |  Listes: " & n1 & "  Speciaux: " & n2 & _
@@ -624,11 +632,20 @@ Public Sub AppliquerModifsArticle()
     Dim erreurs As String, ignores As Long, resumeTxt As String
     ReDim ops(1 To 6, 1 To lastRow)
 
+    ' Verifier que les lignes n'ont pas ete deplacees (tri) par rapport aux originaux caches
     For r = ROW_HDR + 1 To lastRow
-        If CStr(ws.Cells(r, 6).Value) <> CStr(ws.Cells(r, COL_ORIG).Value) Or _
-           CStr(ws.Cells(r, 7).Value) <> CStr(ws.Cells(r, COL_ORIG + 1).Value) Or _
-           UCase(Trim(CStr(ws.Cells(r, 8).Value))) <> UCase(Trim(CStr(ws.Cells(r, COL_ORIG + 2).Value))) Or _
-           CStr(ws.Cells(r, 16).Value) <> CStr(ws.Cells(r, COL_ORIG + 3).Value) Then
+        If CStr(ws.Cells(r, COL_KEY).Value) <> CleLigne(ws, r) Then
+            MsgBox "Le tableau a ete trie ou deplace (ligne " & r & ")." & vbCrLf & _
+                   "Relancer 'Rechercher article', puis refaire les modifications.", vbExclamation
+            Exit Sub
+        End If
+    Next r
+
+    For r = ROW_HDR + 1 To lastRow
+        If Different(ws.Cells(r, 6).Value2, ws.Cells(r, COL_ORIG).Value2) Or _
+           Different(ws.Cells(r, 7).Value2, ws.Cells(r, COL_ORIG + 1).Value2) Or _
+           Different(ws.Cells(r, 8).Value2, ws.Cells(r, COL_ORIG + 2).Value2) Or _
+           Different(ws.Cells(r, 16).Value2, ws.Cells(r, COL_ORIG + 3).Value2) Then
 
             If CStr(ws.Cells(r, 1).Value) <> "Liste de prix" Then
                 ignores = ignores + 1
@@ -653,7 +670,7 @@ Public Sub AppliquerModifsArticle()
                         If nb <= 25 Then resumeTxt = resumeTxt & vbCrLf & art & "  liste " & liste & _
                             " -> PRIX NET " & Format(CDbl(pv), "0.00")
                     End If
-                ElseIf CStr(pv) <> CStr(ws.Cells(r, COL_ORIG + 3).Value) Then
+                ElseIf Different(ws.Cells(r, 16).Value2, ws.Cells(r, COL_ORIG + 3).Value2) Then
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": prix modifie en P -> mettre Y en H (prix net)"
                 ElseIf Not IsNumeric(lie) Or Trim(CStr(lie)) = "" Then
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": 'Lie a' invalide"
@@ -772,6 +789,21 @@ LigneSuivante:
     ' Recharger pour afficher les nouveaux prix
     LancerAnalyse ws, True, True
 End Sub
+
+' Cle d'identification d'une ligne de resultat
+Private Function CleLigne(ws As Worksheet, r As Long) As String
+    CleLigne = CStr(ws.Cells(r, 1).Value) & "|" & CStr(ws.Cells(r, 3).Value) & "|" & _
+               CStr(ws.Cells(r, 5).Value) & "|" & CStr(ws.Cells(r, 10).Value)
+End Function
+
+' Compare deux valeurs : numerique avec tolerance, sinon texte (majuscules, sans espaces)
+Private Function Different(a As Variant, b As Variant) As Boolean
+    If IsNumeric(a) And IsNumeric(b) And Trim(CStr(a)) <> "" And Trim(CStr(b)) <> "" Then
+        Different = Abs(CDbl(a) - CDbl(b)) > 0.000001
+    Else
+        Different = UCase(Trim(CStr(a))) <> UCase(Trim(CStr(b)))
+    End If
+End Function
 
 ' Expression SQL du prix de base pour un UPDATE "ITM1" AS T0.
 ' -1 = Dernier prix d'achat (OITM.LastPurPrc), -2 = Dernier prix determine (OITM.LstEvlPric), sinon liste ITM1.
@@ -932,7 +964,14 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                 Case 8: col = 27
                 Case Else: col = 28
             End Select
-            If UCase(Trim(CStr(c.Value))) <> UCase(Trim(CStr(Me.Cells(r, col).Value))) Then
+            Dim a As Variant, o As Variant, dif As Boolean
+            a = c.Value2: o = Me.Cells(r, col).Value2
+            If IsNumeric(a) And IsNumeric(o) And Trim(CStr(a)) <> "" And Trim(CStr(o)) <> "" Then
+                dif = Abs(CDbl(a) - CDbl(o)) > 0.000001
+            Else
+                dif = UCase(Trim(CStr(a))) <> UCase(Trim(CStr(o)))
+            End If
+            If dif Then
                 c.Interior.Color = RGB(255, 255, 0)
             ElseIf Me.Cells(r, 1).Interior.ColorIndex = xlNone Then
                 c.Interior.ColorIndex = xlNone
