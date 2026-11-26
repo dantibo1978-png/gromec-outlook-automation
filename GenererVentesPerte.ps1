@@ -66,19 +66,20 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
     $ws.Cells(3,3).Font.Italic = $true
     $ws.Cells(3,3).Font.Color = 0x808080
 
-    $hdrR = @("Source","Groupe","Article","Description","Liste #","Lie a","Facteur","Prix Net","Prix base","% profit voulu","Nom liste","Client","Nom client",
-              "Date debut","Date fin","Qte min","Devise","Prix vente","Cout retenu","Source cout","Date cout","Prix min","Manque `$","Profit % /cout","Sous cout")
+    $hdrR = @("Source","Groupe","Article","Description","Liste #","Lie a","Facteur","Prix base","% profit voulu","Nom liste",
+              "Client","Nom client","Date debut","Date fin","Qte min","Devise","Prix Net","Prix vente","% marge","Cout retenu","Source cout","Date cout","Prix min","Manque `$","Profit % /cout","Sous cout")
     Set-Header $ws 5 $hdrR 0x00008B
-    $widths = @(14,28,16,40,7,7,8,8,10,9,24,12,30,11,11,8,7,12,12,9,11,12,11,10,9)
+    $widths = @(14,28,16,40,7,7,8,10,9,24,12,30,11,11,8,7,8,12,8,12,9,11,12,11,10,9)
     for ($i = 0; $i -lt $widths.Count; $i++) { $ws.Columns($i + 1).ColumnWidth = $widths[$i] }
     $ws.Columns("C:C").NumberFormat = "@"
-    $ws.Columns("L:L").NumberFormat = "@"
+    $ws.Columns("K:K").NumberFormat = "@"
     $ws.Columns("G:G").NumberFormat = "0.0000"
-    $ws.Columns("H:H").HorizontalAlignment = -4108
-    $ws.Columns("I:I").NumberFormat = "#,##0.00"
-    $ws.Columns("R:S").NumberFormat = "#,##0.00"
-    $ws.Columns("V:W").NumberFormat = "#,##0.00"
-    $ws.Columns("X:X").NumberFormat = "0.0%"
+    $ws.Columns("H:H").NumberFormat = "#,##0.00"
+    $ws.Columns("Q:Q").HorizontalAlignment = -4108
+    $ws.Columns("R:R").NumberFormat = "#,##0.00"
+    $ws.Columns("T:T").NumberFormat = "#,##0.00"
+    $ws.Columns("W:X").NumberFormat = "#,##0.00"
+    $ws.Columns("Y:Y").NumberFormat = "0.0%"
     $ws.Rows(5).Font.Bold = $true
     $ws.Rows(1).RowHeight = 30
 }
@@ -88,13 +89,13 @@ Set-ResultSheet $wsRes "VENTES A PERTE - Prix de vente < Cout retenu" "Groupe Gr
 Set-ResultSheet $wsArt "RECHERCHE PAR ARTICLE - Prix de vente < Cout retenu" "No article:" `
     "<- numero d'article (ex: 701096 ou 701096,701097). Memes regles que Ventes a perte, mais liste 1 incluse."
 # Colonnes modifiables (F Lie a, G Facteur, H Prix Net) en vert
-$wsArt.Range("F5:H5").Interior.Color = 0x008000
-$wsArt.Range("R5").Interior.Color = 0x008000
-$wsArt.Range("J5").Interior.Color = 0x008000
-$wsRes.Range("F5:H5").Interior.Color = 0x008000
-$wsRes.Range("R5").Interior.Color = 0x008000
-$wsRes.Range("J5").Interior.Color = 0x008000
-$wsArt.Cells(4,6).Value2 = "Modifiable (vert) -> bouton Appliquer. N = Lie a x Facteur. Y = prix net saisi en R."
+$wsArt.Range("F5:G5").Interior.Color = 0x008000
+$wsArt.Range("I5").Interior.Color = 0x008000
+$wsArt.Range("Q5:S5").Interior.Color = 0x008000
+$wsRes.Range("F5:G5").Interior.Color = 0x008000
+$wsRes.Range("I5").Interior.Color = 0x008000
+$wsRes.Range("Q5:S5").Interior.Color = 0x008000
+$wsArt.Cells(4,6).Value2 = "Modifiable (vert) -> bouton Appliquer. Facteur: I = % profit voulu. Prix net: S = % marge."
 $wsArt.Cells(4,6).Font.Italic = $true
 $wsArt.Cells(4,6).Font.Color = 0x008000
 
@@ -156,9 +157,9 @@ Private mErreurs As String
 Private mSkipManuel As Long
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
-Private Const NB_COLS As Long = 25   ' colonne 10 (J) = % profit voulu (saisie, vide au chargement)
+Private Const NB_COLS As Long = 26   ' colonne 10 (J) = % profit voulu (saisie, vide au chargement)
 Private Const COL_KEY As Long = 40    ' colonne cachee = cle de ligne (Source|Article|Liste|Client) pour detecter un tri
-Private Const COL_ORIG As Long = 41   ' colonnes cachees 41-43 = originaux F-G-H, 44 = original R (prix vente)
+Private Const COL_ORIG As Long = 41   ' colonnes cachees 41-42 = originaux F-G, 43 = Q (prix net), 44 = R (prix vente)
 Private Const ROW_HDR As Long = 5
 Private Const LISTE_FOURN As Long = 2   ' liste de prix = prix fournisseur
 Private Const COL_TMP As Long = 30      ' colonnes temporaires 30-33 (sources de cout brutes)
@@ -418,15 +419,15 @@ Private Function AjouterResultats(co As Object, sql As String, src As String, ws
         arr(r, 5) = GF(rs, "ListNum")
         arr(r, 6) = GF(rs, "LieA")
         arr(r, 7) = GF(rs, "Facteur")
-        arr(r, 8) = Txt(GF(rs, "PrixNet"))
-        arr(r, 11) = Txt(GF(rs, "ListName"))
-        arr(r, 12) = Txt(GF(rs, "CardCode"))
-        arr(r, 13) = Txt(GF(rs, "CardName"))
-        arr(r, 14) = DateVal(GF(rs, "FromDate"))
-        arr(r, 15) = DateVal(GF(rs, "ToDate"))
+        arr(r, 17) = Txt(GF(rs, "PrixNet"))
+        arr(r, 10) = Txt(GF(rs, "ListName"))
+        arr(r, 11) = Txt(GF(rs, "CardCode"))
+        arr(r, 12) = Txt(GF(rs, "CardName"))
+        arr(r, 13) = DateVal(GF(rs, "FromDate"))
+        arr(r, 14) = DateVal(GF(rs, "ToDate"))
         q = GF(rs, "Qte")
-        If IsNumeric(q) And Txt(q) <> "" Then arr(r, 16) = CDbl(q) Else arr(r, 16) = ""
-        arr(r, 17) = Txt(GF(rs, "Devise"))
+        If IsNumeric(q) And Txt(q) <> "" Then arr(r, 15) = CDbl(q) Else arr(r, 15) = ""
+        arr(r, 16) = Txt(GF(rs, "Devise"))
         arr(r, 18) = prix
         ' Sources de cout brutes (traitees par FinaliserCouts)
         arr(r, COL_TMP) = cout
@@ -434,7 +435,7 @@ Private Function AjouterResultats(co As Object, sql As String, src As String, ws
         arr(r, COL_TMP + 2) = DateVal(GF(rs, "DernAchatDate"))
         arr(r, COL_TMP + 3) = Num(GF(rs, "PrixFourn"))
         q = GF(rs, "PrixBase")
-        If IsNumeric(q) And Txt(q) <> "" Then arr(r, 9) = CDbl(q) Else arr(r, 9) = ""
+        If IsNumeric(q) And Txt(q) <> "" Then arr(r, 8) = CDbl(q) Else arr(r, 8) = ""
         MN rs
         If r Mod 500 = 0 Then
             Application.StatusBar = src & ": " & r & " / " & n
@@ -603,23 +604,25 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
     If total > 0 Then
         Dim rng As Range
         Set rng = ws.Range(ws.Cells(ROW_HDR, 1), ws.Cells(lastRow, NB_COLS))
-        rng.Sort Key1:=ws.Cells(ROW_HDR, 23), Order1:=xlDescending, Header:=xlYes
+        rng.Sort Key1:=ws.Cells(ROW_HDR, 24), Order1:=xlDescending, Header:=xlYes
         ' Devise etrangere en orange, prix < cout retenu en rouge
         Dim r As Long, dv As String, nSous As Long
         For r = ROW_HDR + 1 To lastRow
-            dv = Trim(CStr(ws.Cells(r, 17).Value))
+            dv = Trim(CStr(ws.Cells(r, 16).Value))
             If dv <> "" And dv <> "$" Then ws.Range(ws.Cells(r, 1), ws.Cells(r, NB_COLS)).Interior.Color = RGB(255, 204, 153)
-            If ws.Cells(r, 25).Value = "OUI" Then
+            If ws.Cells(r, 26).Value = "OUI" Then
                 ws.Range(ws.Cells(r, 1), ws.Cells(r, NB_COLS)).Interior.Color = RGB(255, 150, 150)
                 nSous = nSous + 1
             End If
         Next r
         ' Format date applique en VBA (NumberFormat via PowerShell = interprete en francais)
-        ws.Range(ws.Cells(ROW_HDR + 1, 14), ws.Cells(lastRow, 15)).NumberFormat = "yyyy-mm-dd"
-        ws.Range(ws.Cells(ROW_HDR + 1, 21), ws.Cells(lastRow, 21)).NumberFormat = "yyyy-mm-dd"
+        ws.Range(ws.Cells(ROW_HDR + 1, 13), ws.Cells(lastRow, 14)).NumberFormat = "yyyy-mm-dd"
+        ws.Range(ws.Cells(ROW_HDR + 1, 22), ws.Cells(lastRow, 22)).NumberFormat = "yyyy-mm-dd"
         ' Copie cachee des valeurs originales F-G-H (detection des modifs)
-        ws.Range(ws.Cells(ROW_HDR + 1, COL_ORIG), ws.Cells(lastRow, COL_ORIG + 2)).Value = _
-            ws.Range(ws.Cells(ROW_HDR + 1, 6), ws.Cells(lastRow, 8)).Value
+        ws.Range(ws.Cells(ROW_HDR + 1, COL_ORIG), ws.Cells(lastRow, COL_ORIG + 1)).Value = _
+            ws.Range(ws.Cells(ROW_HDR + 1, 6), ws.Cells(lastRow, 7)).Value
+        ws.Range(ws.Cells(ROW_HDR + 1, COL_ORIG + 2), ws.Cells(lastRow, COL_ORIG + 2)).Value = _
+            ws.Range(ws.Cells(ROW_HDR + 1, 17), ws.Cells(lastRow, 17)).Value
         ws.Range(ws.Cells(ROW_HDR + 1, COL_ORIG + 3), ws.Cells(lastRow, COL_ORIG + 3)).Value = _
             ws.Range(ws.Cells(ROW_HDR + 1, 18), ws.Cells(lastRow, 18)).Value
         Dim cles() As Variant: ReDim cles(1 To total, 1 To 1)
@@ -627,7 +630,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
             cles(r - ROW_HDR, 1) = CleLigne(ws, r)
         Next r
         ws.Range(ws.Cells(ROW_HDR + 1, COL_KEY), ws.Cells(lastRow, COL_KEY)).Value = cles
-        ws.Range(ws.Cells(ROW_HDR, COL_KEY), ws.Cells(ROW_HDR, COL_ORIG + 3)).Value = Array("cle", "orig F", "orig G", "orig H", "orig P")
+        ws.Range(ws.Cells(ROW_HDR, COL_KEY), ws.Cells(ROW_HDR, COL_ORIG + 3)).Value = Array("cle", "orig F", "orig G", "orig Q", "orig R")
         ws.Range(ws.Cells(1, COL_KEY), ws.Cells(1, COL_ORIG + 3)).EntireColumn.Hidden = True
         ' Filtre/tri sur tout le tableau, colonnes cachees incluses (elles suivent le tri)
         ws.Range(ws.Cells(ROW_HDR, 1), ws.Cells(lastRow, COL_ORIG + 3)).AutoFilter
@@ -729,13 +732,13 @@ Private Function FinaliserCouts(co As Object, ws As Worksheet, r1 As Long, r2 As
             For c = 1 To NB_COLS
                 out(k, c) = data(i, c)
             Next c
-            out(k, 19) = cout
-            out(k, 20) = srcC
-            If IsDate(dC) Then out(k, 21) = CDate(dC) Else out(k, 21) = ""
-            out(k, 22) = Round(cout * mFacteur, 4)
-            out(k, 23) = Round(cout * mFacteur - prix, 4)
-            out(k, 24) = (prix - cout) / cout
-            If prix < cout Then out(k, 25) = "OUI" Else out(k, 25) = ""
+            out(k, 20) = cout
+            out(k, 21) = srcC
+            If IsDate(dC) Then out(k, 22) = CDate(dC) Else out(k, 22) = ""
+            out(k, 23) = Round(cout * mFacteur, 4)
+            out(k, 24) = Round(cout * mFacteur - prix, 4)
+            out(k, 25) = (prix - cout) / cout
+            If prix < cout Then out(k, 26) = "OUI" Else out(k, 26) = ""
         End If
     Next i
 
@@ -780,7 +783,7 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
     For r = ROW_HDR + 1 To lastRow
         If Different(ws.Cells(r, 6).Value2, ws.Cells(r, COL_ORIG).Value2) Or _
            Different(ws.Cells(r, 7).Value2, ws.Cells(r, COL_ORIG + 1).Value2) Or _
-           Different(ws.Cells(r, 8).Value2, ws.Cells(r, COL_ORIG + 2).Value2) Or _
+           Different(ws.Cells(r, 17).Value2, ws.Cells(r, COL_ORIG + 2).Value2) Or _
            Different(ws.Cells(r, 18).Value2, ws.Cells(r, COL_ORIG + 3).Value2) Then
 
             If CStr(ws.Cells(r, 1).Value) <> "Liste de prix" Then
@@ -790,10 +793,10 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
                 liste = CLng(ws.Cells(r, 5).Value)
                 lie = ws.Cells(r, 6).Value
                 fac = ws.Cells(r, 7).Value
-                pn = UCase(Trim(CStr(ws.Cells(r, 8).Value)))
+                pn = UCase(Trim(CStr(ws.Cells(r, 17).Value)))
                 pv = ws.Cells(r, 18).Value
                 If pn <> "Y" And pn <> "N" Then
-                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": Prix Net doit etre Y ou N"
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": Prix Net (Q) doit etre Y ou N"
                 ElseIf pn = "Y" Then
                     If Not IsNumeric(pv) Or Trim(CStr(pv)) = "" Then
                         erreurs = erreurs & vbCrLf & "Ligne " & r & ": Prix vente (R) invalide"
@@ -807,7 +810,7 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
                             " -> PRIX NET " & Format(CDbl(pv), "0.00")
                     End If
                 ElseIf Different(ws.Cells(r, 18).Value2, ws.Cells(r, COL_ORIG + 3).Value2) Then
-                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": prix modifie en R -> mettre Y en H (prix net)"
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": prix modifie en R -> mettre Y en Q (prix net)"
                 ElseIf Not IsNumeric(lie) Or Trim(CStr(lie)) = "" Then
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": 'Lie a' invalide"
                 ElseIf CLng(lie) < -2 Or CLng(lie) = 0 Then
@@ -831,7 +834,7 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
 
     If erreurs <> "" Then MsgBox "Corriger avant d'appliquer:" & erreurs, vbExclamation: Exit Sub
     If nb = 0 Then
-        MsgBox "Aucune modification detectee dans F-G-H-R (lignes 'Liste de prix')." & _
+        MsgBox "Aucune modification detectee dans F-G-Q-R (lignes 'Liste de prix')." & _
             IIf(ignores > 0, vbCrLf & ignores & " modif(s) sur prix speciaux ignoree(s).", ""), vbInformation
         Exit Sub
     End If
@@ -930,7 +933,7 @@ End Sub
 ' Cle d'identification d'une ligne de resultat
 Private Function CleLigne(ws As Worksheet, r As Long) As String
     CleLigne = CStr(ws.Cells(r, 1).Value) & "|" & CStr(ws.Cells(r, 3).Value) & "|" & _
-               CStr(ws.Cells(r, 5).Value) & "|" & CStr(ws.Cells(r, 12).Value)
+               CStr(ws.Cells(r, 5).Value) & "|" & CStr(ws.Cells(r, 11).Value)
 End Function
 
 ' Compare deux valeurs : numerique avec tolerance, sinon texte (majuscules, sans espaces)
@@ -1093,14 +1096,16 @@ try {
     Write-Host "VBA injecte avec succes!"
     # Code de feuille "Recherche article" : surlignage jaune des cellules modifiees
     $sheetCode = @'
-' Colonnes : F=6 Lie a, G=7 Facteur, H=8 Prix Net, I=9 Prix base, J=10 % profit voulu, R=18 Prix vente, S=19 Cout
-' Originaux caches : 41=F, 42=G, 43=H, 44=R
+' Colonnes : F=6 Lie a, G=7 Facteur, H=8 Prix base, I=9 % profit voulu (facteur),
+'            Q=17 Prix Net, R=18 Prix vente, S=19 % marge (prix net), T=20 Cout retenu
+' Originaux caches : 41=F, 42=G, 43=Q, 44=R
 Private Sub Worksheet_Change(ByVal Target As Range)
     Dim zone As Range, c As Range, r As Long
+    Dim cout As Double, base As Double, pctV As Double
     On Error GoTo Fin
 
-    ' 1) % profit voulu (J) -> calcule le facteur (G) ou le prix net (R)
-    Set zone = Application.Intersect(Target, Me.Range("J6:J100000"))
+    ' 1) I = % profit voulu -> Facteur (G) = cout retenu x (1 + %) / prix base   [prix a facteur]
+    Set zone = Application.Intersect(Target, Me.Range("I6:I100000"))
     If Not zone Is Nothing Then
         If zone.Cells.Count <= 5000 Then
             For Each c In zone.Cells
@@ -1108,22 +1113,19 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                 If Trim(CStr(Me.Cells(r, 3).Value)) <> "" And IsNumeric(c.Value2) And Trim(CStr(c.Value2)) <> "" Then
                     If CStr(Me.Cells(r, 1).Value) <> "Liste de prix" Then
                         MsgBox "Ligne " & r & ": seulement pour les lignes 'Liste de prix'.", vbExclamation
+                    ElseIf UCase(Trim(CStr(Me.Cells(r, 17).Value2))) = "Y" Then
+                        MsgBox "Ligne " & r & ": prix net -> utiliser la colonne S (% marge).", vbExclamation
                     ElseIf CStr(Me.Cells(r, 6).Value2) <> CStr(Me.Cells(r, 41).Value2) Then
-                        MsgBox "Ligne " & r & ": 'Lie a' a ete modifie, le prix de base (X) n'est plus a jour." & vbCrLf & _
+                        MsgBox "Ligne " & r & ": 'Lie a' a ete modifie, le prix de base (H) n'est plus a jour." & vbCrLf & _
                                "Appliquer le changement de 'Lie a' d'abord, puis entrer le %.", vbExclamation
                     Else
-                        Dim cible As Double, base As Double
-                        cible = CDbl(Me.Cells(r, 19).Value2) * (1 + CDbl(c.Value2) / 100)
-                        If UCase(Trim(CStr(Me.Cells(r, 8).Value2))) = "Y" Then
-                            Me.Cells(r, 18).Value = Round(cible, 2)
+                        cout = CDbl(Me.Cells(r, 20).Value2)
+                        base = 0
+                        If IsNumeric(Me.Cells(r, 8).Value2) And Trim(CStr(Me.Cells(r, 8).Value2)) <> "" Then base = CDbl(Me.Cells(r, 8).Value2)
+                        If base > 0 Then
+                            Me.Cells(r, 7).Value = Round(cout * (1 + CDbl(c.Value2) / 100) / base, 6)
                         Else
-                            base = 0
-                            If IsNumeric(Me.Cells(r, 9).Value2) And Trim(CStr(Me.Cells(r, 9).Value2)) <> "" Then base = CDbl(Me.Cells(r, 9).Value2)
-                            If base > 0 Then
-                                Me.Cells(r, 7).Value = Round(cible / base, 6)
-                            Else
-                                MsgBox "Ligne " & r & ": prix de base (colonne I) inconnu, facteur non calcule.", vbExclamation
-                            End If
+                            MsgBox "Ligne " & r & ": prix de base (colonne H) inconnu, facteur non calcule.", vbExclamation
                         End If
                     End If
                 End If
@@ -1131,8 +1133,30 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         End If
     End If
 
-    ' 2) Surligne en jaune F-G-H-R modifiees
-    Set zone = Application.Intersect(Target, Me.Range("F6:H100000,R6:R100000"))
+    ' 2) S = % marge -> Prix vente (R) = cout retenu / (1 - %), Prix Net (Q) = Y   [prix net]
+    Set zone = Application.Intersect(Target, Me.Range("S6:S100000"))
+    If Not zone Is Nothing Then
+        If zone.Cells.Count <= 5000 Then
+            For Each c In zone.Cells
+                r = c.Row
+                If Trim(CStr(Me.Cells(r, 3).Value)) <> "" And IsNumeric(c.Value2) And Trim(CStr(c.Value2)) <> "" Then
+                    pctV = CDbl(c.Value2)
+                    If CStr(Me.Cells(r, 1).Value) <> "Liste de prix" Then
+                        MsgBox "Ligne " & r & ": seulement pour les lignes 'Liste de prix'.", vbExclamation
+                    ElseIf pctV >= 100 Or pctV < 0 Then
+                        MsgBox "Ligne " & r & ": % marge doit etre entre 0 et 99.", vbExclamation
+                    Else
+                        cout = CDbl(Me.Cells(r, 20).Value2)
+                        Me.Cells(r, 18).Value = Round(cout / (1 - pctV / 100), 2)
+                        If UCase(Trim(CStr(Me.Cells(r, 17).Value2))) <> "Y" Then Me.Cells(r, 17).Value = "Y"
+                    End If
+                End If
+            Next c
+        End If
+    End If
+
+    ' 3) Surligne en jaune F-G-Q-R modifiees
+    Set zone = Application.Intersect(Target, Me.Range("F6:G100000,Q6:R100000"))
     If zone Is Nothing Then Exit Sub
     If zone.Cells.Count > 5000 Then Exit Sub
     Dim col As Long, a As Variant, o As Variant, dif As Boolean
@@ -1142,7 +1166,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
             Select Case c.Column
                 Case 6: col = 41
                 Case 7: col = 42
-                Case 8: col = 43
+                Case 17: col = 43
                 Case Else: col = 44
             End Select
             a = c.Value2: o = Me.Cells(r, col).Value2
@@ -1185,7 +1209,7 @@ Write-Host "  Boutons (ou Alt+F8):"
 Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes de SAP"
 Write-Host "    - AnalyserVentesPerte    : Trouve prix vente < cout moyen"
 Write-Host "    - RechercherArticle      : Meme analyse pour un/des articles"
-Write-Host "    - AppliquerModifsArticle : Ecrit F-G-H-R dans SAP (liste de la ligne seulement)"
-Write-Host "    - AppliquerModifsVentesPerte : Ecrit F-G-H-R dans SAP (liste de la ligne seulement)"
+Write-Host "    - AppliquerModifsArticle : Ecrit F-G-Q-R dans SAP (liste de la ligne seulement)"
+Write-Host "    - AppliquerModifsVentesPerte : Ecrit F-G-Q-R dans SAP (liste de la ligne seulement)"
 Write-Host "    - AnnulerDerniereModif   : Restaure les prix d'avant la derniere modif"
 Write-Host "====================================="
