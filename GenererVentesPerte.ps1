@@ -767,9 +767,9 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
     If lastRow <= ROW_HDR Then MsgBox "Aucun resultat. Faire une recherche d'abord.", vbExclamation: Exit Sub
 
     Dim ops() As Variant, nb As Long, r As Long, k As Long
-    Dim art As String, liste As Long, lie As Variant, fac As Variant, pn As String, pv As Variant
+    Dim art As String, liste As Long, lie As Variant, fac As Variant, pn As String, pv As Variant, pctI As Variant, avecPct As Boolean
     Dim erreurs As String, ignores As Long, resumeTxt As String
-    ReDim ops(1 To 6, 1 To lastRow)
+    ReDim ops(1 To 8, 1 To lastRow)   ' 7 = % profit voulu (si facteur a calculer avec le prix de base SAP), 8 = cout retenu
 
     ' Verifier que les lignes n'ont pas ete deplacees (tri) par rapport aux originaux caches
     For r = ROW_HDR + 1 To lastRow
@@ -795,6 +795,17 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
                 fac = ws.Cells(r, 7).Value
                 pn = UCase(Trim(CStr(ws.Cells(r, 17).Value)))
                 pv = ws.Cells(r, 18).Value
+                pctI = ws.Cells(r, 9).Value2
+                ' % profit voulu (I) present et facteur inutilisable ou Lie a change -> facteur calcule a l'application
+                avecPct = False
+                If IsNumeric(pctI) And Trim(CStr(pctI)) <> "" Then
+                    If Different(ws.Cells(r, 6).Value2, ws.Cells(r, COL_ORIG).Value2) Or Not IsNumeric(fac) Or Trim(CStr(fac)) = "" Then
+                        avecPct = True
+                    ElseIf CDbl(fac) <= 0 Then
+                        avecPct = True
+                    End If
+                End If
+                If avecPct Then fac = 1   ' provisoire, remplace a l'application
                 If pn <> "Y" And pn <> "N" Then
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": Prix Net (Q) doit etre Y ou N"
                 ElseIf pn = "Y" Then
@@ -825,8 +836,10 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
                     nb = nb + 1
                     ops(1, nb) = art: ops(2, nb) = liste: ops(3, nb) = CLng(lie)
                     ops(4, nb) = CDbl(fac): ops(5, nb) = "N": ops(6, nb) = 0
+                    ops(7, nb) = "": ops(8, nb) = 0
+                    If avecPct Then ops(7, nb) = CDbl(pctI): ops(8, nb) = Num(ws.Cells(r, 20).Value2)
                     If nb <= 25 Then resumeTxt = resumeTxt & vbCrLf & art & "  liste " & liste & " -> lie a " & CLng(lie) & _
-                        "  x" & CDbl(fac)
+                        IIf(avecPct, "  profit " & CDbl(pctI) & "% (facteur calcule)", "  x" & CDbl(fac))
                 End If
             End If
         End If
@@ -861,16 +874,6 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
     For k = 1 To nb
         Application.StatusBar = "Mise a jour " & k & "/" & nb & " - " & ops(1, k) & " liste " & ops(2, k)
         sFac = Trim(Str(ops(4, k)))
-        If ops(5, k) = "N" Then
-            sql = "UPDATE ""ITM1"" AS T0 SET ""BasePLNum"" = " & ops(3, k) & ", ""Factor"" = " & sFac & _
-                  ", ""Ovrwritten"" = 'N'" & _
-                  ", ""Price"" = " & PrixBaseSQL(CLng(ops(3, k))) & " * " & sFac & _
-                  " WHERE T0.""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND T0.""PriceList"" = " & ops(2, k)
-        Else
-            sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = 0, ""Factor"" = 0, ""Ovrwritten"" = 'Y'" & _
-                  ", ""Price"" = " & Trim(Str(ops(6, k))) & _
-                  " WHERE ""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND ""PriceList"" = " & ops(2, k)
-        End If
         On Error Resume Next
         SauverAncien co, fU, CStr(ops(1, k)), CLng(ops(2, k))
         If Err.Number <> 0 Then
@@ -888,6 +891,23 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
                 Err.Clear
                 GoTo LigneSuivante
             End If
+            ' Facteur calcule depuis le % profit voulu et le prix de base lu dans SAP
+            If CStr(ops(7, k)) <> "" Then
+                If ops(8, k) <= 0 Then
+                    ko = ko & vbCrLf & ops(1, k) & " liste " & ops(2, k) & ": cout retenu = 0, facteur non calcule"
+                    Err.Clear
+                    GoTo LigneSuivante
+                End If
+                sFac = Trim(Str(Round(ops(8, k) * (1 + ops(7, k) / 100) / Num(GF(rsU, "PB")), 6)))
+            End If
+            sql = "UPDATE ""ITM1"" AS T0 SET ""BasePLNum"" = " & ops(3, k) & ", ""Factor"" = " & sFac & _
+                  ", ""Ovrwritten"" = 'N'" & _
+                  ", ""Price"" = " & PrixBaseSQL(CLng(ops(3, k))) & " * " & sFac & _
+                  " WHERE T0.""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND T0.""PriceList"" = " & ops(2, k)
+        Else
+            sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = 0, ""Factor"" = 0, ""Ovrwritten"" = 'Y'" & _
+                  ", ""Price"" = " & Trim(Str(ops(6, k))) & _
+                  " WHERE ""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND ""PriceList"" = " & ops(2, k)
         End If
         Set rsU = co.GetBusinessObject(300)
         CallByName rsU, "DoQuery", VbMethod, sql
@@ -1113,19 +1133,17 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                 If Trim(CStr(Me.Cells(r, 3).Value)) <> "" And IsNumeric(c.Value2) And Trim(CStr(c.Value2)) <> "" Then
                     If CStr(Me.Cells(r, 1).Value) <> "Liste de prix" Then
                         MsgBox "Ligne " & r & ": seulement pour les lignes 'Liste de prix'.", vbExclamation
-                    ElseIf UCase(Trim(CStr(Me.Cells(r, 17).Value2))) = "Y" Then
-                        MsgBox "Ligne " & r & ": prix net -> utiliser la colonne S (% marge).", vbExclamation
-                    ElseIf CStr(Me.Cells(r, 6).Value2) <> CStr(Me.Cells(r, 41).Value2) Then
-                        MsgBox "Ligne " & r & ": 'Lie a' a ete modifie, le prix de base (H) n'est plus a jour." & vbCrLf & _
-                               "Appliquer le changement de 'Lie a' d'abord, puis entrer le %.", vbExclamation
                     Else
+                        ' Un facteur -> ce n'est plus un prix net
+                        If UCase(Trim(CStr(Me.Cells(r, 17).Value2))) <> "N" Then Me.Cells(r, 17).Value = "N"
                         cout = CDbl(Me.Cells(r, 20).Value2)
                         base = 0
                         If IsNumeric(Me.Cells(r, 8).Value2) And Trim(CStr(Me.Cells(r, 8).Value2)) <> "" Then base = CDbl(Me.Cells(r, 8).Value2)
-                        If base > 0 Then
+                        If base > 0 And CStr(Me.Cells(r, 6).Value2) = CStr(Me.Cells(r, 41).Value2) Then
                             Me.Cells(r, 7).Value = Round(cout * (1 + CDbl(c.Value2) / 100) / base, 6)
                         Else
-                            MsgBox "Ligne " & r & ": prix de base (colonne H) inconnu, facteur non calcule.", vbExclamation
+                            ' Prix de base inconnu ou 'Lie a' change : facteur calcule a l'application avec le prix de base SAP
+                            Application.StatusBar = "Ligne " & r & ": facteur calcule a l'application (verifier 'Lie a' en F)."
                         End If
                     End If
                 End If
@@ -1155,7 +1173,21 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         End If
     End If
 
-    ' 3) Surligne en jaune F-G-Q-R modifiees
+    ' 3) Facteur (G) modifie sur un prix net -> Prix Net (Q) = N
+    Set zone = Application.Intersect(Target, Me.Range("G6:G100000"))
+    If Not zone Is Nothing Then
+        If zone.Cells.Count <= 5000 Then
+            For Each c In zone.Cells
+                r = c.Row
+                If Trim(CStr(Me.Cells(r, 3).Value)) <> "" And CStr(Me.Cells(r, 1).Value) = "Liste de prix" _
+                   And IsNumeric(c.Value2) And Trim(CStr(c.Value2)) <> "" Then
+                    If CDbl(c.Value2) > 0 And UCase(Trim(CStr(Me.Cells(r, 17).Value2))) = "Y" Then Me.Cells(r, 17).Value = "N"
+                End If
+            Next c
+        End If
+    End If
+
+    ' 4) Surligne en jaune F-G-Q-R modifiees
     Set zone = Application.Intersect(Target, Me.Range("F6:G100000,Q6:R100000"))
     If zone Is Nothing Then Exit Sub
     If zone.Cells.Count > 5000 Then Exit Sub
