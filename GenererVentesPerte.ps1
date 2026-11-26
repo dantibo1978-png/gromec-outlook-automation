@@ -73,13 +73,16 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
     for ($i = 0; $i -lt $widths.Count; $i++) { $ws.Columns($i + 1).ColumnWidth = $widths[$i] }
     $ws.Columns("C:C").NumberFormat = "@"
     $ws.Columns("K:K").NumberFormat = "@"
-    $ws.Columns("G:G").NumberFormat = "0.0000"
+    $ws.Columns("G:G").NumberFormat = "0.00"
+    $ws.Columns("I:I").NumberFormat = "0.00"
+    $ws.Columns("O:O").NumberFormat = "0.00"
+    $ws.Columns("S:S").NumberFormat = "0.00"
     $ws.Columns("H:H").NumberFormat = "#,##0.00"
     $ws.Columns("Q:Q").HorizontalAlignment = -4108
     $ws.Columns("R:R").NumberFormat = "#,##0.00"
     $ws.Columns("T:T").NumberFormat = "#,##0.00"
     $ws.Columns("W:X").NumberFormat = "#,##0.00"
-    $ws.Columns("Y:Y").NumberFormat = "0.0%"
+    $ws.Columns("Y:Y").NumberFormat = "0.00%"
     $ws.Rows(5).Font.Bold = $true
     $ws.Rows(1).RowHeight = 30
 }
@@ -735,8 +738,8 @@ Private Function FinaliserCouts(co As Object, ws As Worksheet, r1 As Long, r2 As
             out(k, 20) = cout
             out(k, 21) = srcC
             If IsDate(dC) Then out(k, 22) = CDate(dC) Else out(k, 22) = ""
-            out(k, 23) = Round(cout * mFacteur, 4)
-            out(k, 24) = Round(cout * mFacteur - prix, 4)
+            out(k, 23) = Round(cout * mFacteur, 2)
+            out(k, 24) = Round(cout * mFacteur - prix, 2)
             out(k, 25) = (prix - cout) / cout
             If prix < cout Then out(k, 26) = "OUI" Else out(k, 26) = ""
         End If
@@ -863,7 +866,7 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
     If co Is Nothing Then Application.StatusBar = False: Exit Sub
 
     ' Nb de decimales des prix (Administration > Initialisation > Affichage), comme SAP a l'ecran
-    Dim nDec As Long: nDec = DecimalesPrix(co)
+    Dim nDec As Long: nDec = 2   ' prix toujours arrondis a 2 decimales
 
     ' Fichier d'annulation (ecrase a chaque lot) : anciennes valeurs de chaque ligne touchee
     Dim fso As Object, fU As Object
@@ -901,7 +904,7 @@ Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
                     Err.Clear
                     GoTo LigneSuivante
                 End If
-                sFac = Trim(Str(Round(ops(8, k) * (1 + ops(7, k) / 100) / Num(GF(rsU, "PB")), 6)))
+                sFac = Trim(Str(Round(ops(8, k) * (1 + ops(7, k) / 100) / Num(GF(rsU, "PB")), 2)))
             End If
             sql = "UPDATE ""ITM1"" AS T0 SET ""BasePLNum"" = " & ops(3, k) & ", ""Factor"" = " & sFac & _
                   ", ""Ovrwritten"" = 'N'" & _
@@ -1158,7 +1161,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                         base = 0
                         If IsNumeric(Me.Cells(r, 8).Value2) And Trim(CStr(Me.Cells(r, 8).Value2)) <> "" Then base = CDbl(Me.Cells(r, 8).Value2)
                         If base > 0 And CStr(Me.Cells(r, 6).Value2) = CStr(Me.Cells(r, 41).Value2) Then
-                            Me.Cells(r, 7).Value = Round(cout * (1 + CDbl(c.Value2) / 100) / base, 6)
+                            Me.Cells(r, 7).Value = Round(cout * (1 + CDbl(c.Value2) / 100) / base, 2)
                         Else
                             ' Prix de base inconnu ou 'Lie a' change : facteur calcule a l'application avec le prix de base SAP
                             Application.StatusBar = "Ligne " & r & ": facteur calcule a l'application (verifier 'Lie a' en F)."
