@@ -657,6 +657,8 @@ Public Sub AppliquerModifsArticle()
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": prix modifie en P -> mettre Y en H (prix net)"
                 ElseIf Not IsNumeric(lie) Or Trim(CStr(lie)) = "" Then
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": 'Lie a' invalide"
+                ElseIf CLng(lie) < -2 Or CLng(lie) = 0 Then
+                    erreurs = erreurs & vbCrLf & "Ligne " & r & ": 'Lie a' doit etre un no de liste, -1 (dern. prix achat) ou -2 (dern. prix determine)"
                 ElseIf CLng(lie) = liste Then
                     erreurs = erreurs & vbCrLf & "Ligne " & r & ": 'Lie a' = la liste elle-meme"
                 ElseIf Not IsNumeric(fac) Or Trim(CStr(fac)) = "" Then
@@ -705,8 +707,7 @@ Public Sub AppliquerModifsArticle()
         If ops(5, k) = "N" Then
             sql = "UPDATE ""ITM1"" AS T0 SET ""BasePLNum"" = " & ops(3, k) & ", ""Factor"" = " & sFac & _
                   ", ""Ovrwritten"" = 'N'" & _
-                  ", ""Price"" = IFNULL((SELECT T1.""Price"" FROM ""ITM1"" T1 WHERE T1.""ItemCode"" = T0.""ItemCode""" & _
-                  " AND T1.""PriceList"" = " & ops(3, k) & "), 0) * " & sFac & _
+                  ", ""Price"" = " & PrixBaseSQL(CLng(ops(3, k))) & " * " & sFac & _
                   " WHERE T0.""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND T0.""PriceList"" = " & ops(2, k)
         Else
             sql = "UPDATE ""ITM1"" SET ""BasePLNum"" = 0, ""Factor"" = 0, ""Ovrwritten"" = 'Y'" & _
@@ -720,6 +721,16 @@ Public Sub AppliquerModifsArticle()
             ko = ko & vbCrLf & ops(1, k) & " liste " & ops(2, k) & ": sauvegarde impossible (" & Err.Description & "), non modifie"
             Err.Clear
             GoTo LigneSuivante
+        End If
+        If ops(5, k) = "N" Then
+            ' Securite : ne jamais ecrire un prix a 0 si le prix de base est vide
+            Set rsU = RunQuery(co, "SELECT " & PrixBaseSQL(CLng(ops(3, k))) & " AS ""PB"" FROM ""ITM1"" T0" & _
+                " WHERE T0.""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND T0.""PriceList"" = " & ops(2, k))
+            If Num(GF(rsU, "PB")) <= 0 Then
+                ko = ko & vbCrLf & ops(1, k) & " liste " & ops(2, k) & ": prix de base (lie a " & ops(3, k) & ") = 0, non modifie"
+                Err.Clear
+                GoTo LigneSuivante
+            End If
         End If
         Set rsU = co.GetBusinessObject(300)
         CallByName rsU, "DoQuery", VbMethod, sql
@@ -761,6 +772,20 @@ LigneSuivante:
     ' Recharger pour afficher les nouveaux prix
     LancerAnalyse ws, True, True
 End Sub
+
+' Expression SQL du prix de base pour un UPDATE "ITM1" AS T0.
+' -1 = Dernier prix d'achat (OITM.LastPurPrc), -2 = Dernier prix determine (OITM.LstEvlPric), sinon liste ITM1.
+Private Function PrixBaseSQL(base As Long) As String
+    Select Case base
+        Case -1
+            PrixBaseSQL = "IFNULL((SELECT I.""LastPurPrc"" FROM ""OITM"" I WHERE I.""ItemCode"" = T0.""ItemCode""), 0)"
+        Case -2
+            PrixBaseSQL = "IFNULL((SELECT I.""LstEvlPric"" FROM ""OITM"" I WHERE I.""ItemCode"" = T0.""ItemCode""), 0)"
+        Case Else
+            PrixBaseSQL = "IFNULL((SELECT T1.""Price"" FROM ""ITM1"" T1 WHERE T1.""ItemCode"" = T0.""ItemCode""" & _
+                          " AND T1.""PriceList"" = " & base & "), 0)"
+    End Select
+End Function
 
 ' ==========================================
 '  ANNULATION / CASCADE - utilitaires
