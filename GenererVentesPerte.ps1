@@ -107,6 +107,9 @@ try {
     $b4 = $wsArt.Buttons().Add($wsArt.Range("J1").Left + 170, 2, 200, 26)
     $b4.Text = "Appliquer modifs dans SAP"
     $b4.OnAction = "AppliquerModifsArticle"
+    $b5 = $wsArt.Buttons().Add($wsArt.Range("J1").Left + 380, 2, 160, 26)
+    $b5.Text = "Annuler derniere modif"
+    $b5.OnAction = "AnnulerDerniereModif"
 } catch {
     Write-Host "Boutons non crees (utiliser Alt+F8): $($_.Exception.Message)"
 }
@@ -139,6 +142,7 @@ Option Explicit
 Private mSapUser As String
 Private mSapPass As String
 Private mErreurs As String
+Private mSkipManuel As Long
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
 Private Const NB_COLS As Long = 23
@@ -487,6 +491,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
     Dim t0 As Double: t0 = Timer
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
     On Error GoTo ErrAVP
     mErreurs = ""
 
@@ -600,6 +605,7 @@ CleanAVP:
     On Error Resume Next
     co.Disconnect: Set co = Nothing
     Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
     Application.ScreenUpdating = True
     Application.StatusBar = False
     ws.Activate
@@ -685,7 +691,14 @@ Public Sub AppliquerModifsArticle()
     Dim co As Object: Set co = ConnectSAP()
     If co Is Nothing Then Application.StatusBar = False: Exit Sub
 
-    Dim sql As String, sFac As String, ok As Long, ko As String, rsU As Object
+    ' Fichier d'annulation (ecrase a chaque lot) : anciennes valeurs de chaque ligne touchee
+    Dim fso As Object, fU As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set fU = fso.CreateTextFile(UndoPath(), True)
+    fU.WriteLine "# " & Format(Now, "yyyy-mm-dd hh:nn:ss") & " " & mSapUser
+    mSkipManuel = 0
+
+    Dim sql As String, sFac As String, ok As Long, ko As String, rsU As Object, nCasc As Long, nc As Long
     For k = 1 To nb
         Application.StatusBar = "Mise a jour " & k & "/" & nb & " - " & ops(1, k) & " liste " & ops(2, k)
         sFac = Trim(Str(ops(4, k)))
@@ -701,6 +714,13 @@ Public Sub AppliquerModifsArticle()
                   " WHERE ""ItemCode"" = '" & Replace(ops(1, k), "'", "''") & "' AND ""PriceList"" = " & ops(2, k)
         End If
         On Error Resume Next
+        SauverAncien co, fU, CStr(ops(1, k)), CLng(ops(2, k))
+        If Err.Number <> 0 Then
+            ' Pas de sauvegarde possible -> on ne modifie pas cette ligne
+            ko = ko & vbCrLf & ops(1, k) & " liste " & ops(2, k) & ": sauvegarde impossible (" & Err.Description & "), non modifie"
+            Err.Clear
+            GoTo LigneSuivante
+        End If
         Set rsU = co.GetBusinessObject(300)
         CallByName rsU, "DoQuery", VbMethod, sql
         If Err.Number <> 0 Then
@@ -710,21 +730,157 @@ Public Sub AppliquerModifsArticle()
         Else
             ok = ok + 1
             WriteLog "MODIF " & ops(1, k) & " liste " & ops(2, k) & " lie=" & ops(3, k) & " fac=" & sFac & " net=" & ops(5, k) & " prix=" & ops(6, k)
+            ' Recalcul des listes liees a cette liste (en chaine)
+            nc = 0
+            nc = Cascade(co, fU, CStr(ops(1, k)), CLng(ops(2, k)))
+            If Err.Number <> 0 Then
+                ko = ko & vbCrLf & ops(1, k) & " listes liees a " & ops(2, k) & ": " & Err.Description
+                WriteLog "CASCADE ERREUR " & ops(1, k) & " base " & ops(2, k) & ": " & Err.Description
+                Err.Clear
+            End If
+            nCasc = nCasc + nc
         End If
+LigneSuivante:
         On Error GoTo 0
         Set rsU = Nothing
     Next k
+    fU.Close
 
     On Error Resume Next
     co.Disconnect: Set co = Nothing
     On Error GoTo 0
     Application.StatusBar = False
 
-    MsgBox ok & " prix modifies dans SAP." & IIf(ko <> "", vbCrLf & vbCrLf & "Erreurs:" & ko, ""), _
+    MsgBox ok & " prix modifies dans SAP." & vbCrLf & _
+        nCasc & " liste(s) liee(s) recalculee(s) automatiquement." & _
+        IIf(mSkipManuel > 0, vbCrLf & mSkipManuel & " liste(s) liee(s) en prix manuel non touchee(s).", "") & _
+        IIf(ko <> "", vbCrLf & vbCrLf & "Erreurs:" & ko, "") & vbCrLf & vbCrLf & _
+        "Bouton 'Annuler derniere modif' pour revenir en arriere.", _
         IIf(ko = "", vbInformation, vbExclamation), "Modifier SAP"
 
     ' Recharger pour afficher les nouveaux prix
     LancerAnalyse ws, True, True
+End Sub
+
+' ==========================================
+'  ANNULATION / CASCADE - utilitaires
+' ==========================================
+Private Function UndoPath() As String
+    UndoPath = "U:\GromecOutlook\VentesPerte_annuler_" & Environ("USERNAME") & ".txt"
+End Function
+
+' Ecrit l'etat actuel d'une ligne ITM1 dans le fichier d'annulation
+Private Sub SauverAncien(co As Object, fU As Object, art As String, liste As Long)
+    Dim rs As Object
+    Set rs = RunQuery(co, "SELECT ""BasePLNum"", ""Factor"", IFNULL(""Ovrwritten"", 'N') AS ""Ovr"", ""Price"" FROM ""ITM1""" & _
+        " WHERE ""ItemCode"" = '" & Replace(art, "'", "''") & "' AND ""PriceList"" = " & liste)
+    If RC(rs) > 0 Then
+        fU.WriteLine art & vbTab & liste & vbTab & CLng(Num(GF(rs, "BasePLNum"))) & vbTab & _
+            Trim(Str(Num(GF(rs, "Factor")))) & vbTab & Txt(GF(rs, "Ovr")) & vbTab & Trim(Str(Num(GF(rs, "Price"))))
+    End If
+End Sub
+
+' Recalcule (en chaine) les listes dont "Lie a" = listeBase pour cet article.
+' Les listes en prix manuel (Ovrwritten = Y) ne sont pas touchees (comptees dans mSkipManuel).
+Private Function Cascade(co As Object, fU As Object, art As String, listeBase As Long) As Long
+    Dim q(1 To 500) As Long, head As Long, tail As Long, vus As String
+    Dim L As Long, rs As Object, n As Long, i As Long, deps() As Long, cnt As Long
+    Dim a As String: a = Replace(art, "'", "''")
+    head = 1: tail = 1: q(1) = listeBase: vus = "," & listeBase & ","
+    Do While head <= tail
+        L = q(head): head = head + 1
+        Set rs = RunQuery(co, "SELECT COUNT(*) AS ""N"" FROM ""ITM1"" WHERE ""ItemCode"" = '" & a & "'" & _
+            " AND ""BasePLNum"" = " & L & " AND ""PriceList"" <> " & L & " AND IFNULL(""Ovrwritten"", 'N') = 'Y'")
+        mSkipManuel = mSkipManuel + CLng(Num(GF(rs, "N")))
+        Set rs = RunQuery(co, "SELECT ""PriceList"" FROM ""ITM1"" WHERE ""ItemCode"" = '" & a & "'" & _
+            " AND ""BasePLNum"" = " & L & " AND ""PriceList"" <> " & L & _
+            " AND IFNULL(""Ovrwritten"", 'N') <> 'Y' AND ""Factor"" > 0")
+        n = RC(rs)
+        If n > 0 Then
+            ReDim deps(1 To n)
+            For i = 1 To n
+                deps(i) = CLng(GF(rs, "PriceList"))
+                MN rs
+            Next i
+            For i = 1 To n
+                If InStr(vus, "," & deps(i) & ",") = 0 And tail < 500 Then
+                    vus = vus & deps(i) & ","
+                    SauverAncien co, fU, art, deps(i)
+                    RunQuery co, "UPDATE ""ITM1"" AS T0 SET ""Price"" = IFNULL((SELECT T1.""Price"" FROM ""ITM1"" T1" & _
+                        " WHERE T1.""ItemCode"" = T0.""ItemCode"" AND T1.""PriceList"" = " & L & "), 0) * T0.""Factor""" & _
+                        " WHERE T0.""ItemCode"" = '" & a & "' AND T0.""PriceList"" = " & deps(i)
+                    WriteLog "CASCADE " & art & " liste " & deps(i) & " recalculee (base " & L & ")"
+                    cnt = cnt + 1
+                    tail = tail + 1: q(tail) = deps(i)
+                End If
+            Next i
+        End If
+    Loop
+    Cascade = cnt
+End Function
+
+' ==========================================
+'  ANNULER LA DERNIERE MODIFICATION (restaure les anciennes valeurs ITM1)
+' ==========================================
+Public Sub AnnulerDerniereModif()
+    Dim fso As Object: Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim p As String: p = UndoPath()
+    If Not fso.FileExists(p) Then MsgBox "Aucune modification a annuler.", vbInformation: Exit Sub
+
+    Dim f As Object, ligne As String, entete As String, lignes() As String, n As Long
+    ReDim lignes(1 To 1)
+    Set f = fso.OpenTextFile(p, 1)
+    Do While Not f.AtEndOfStream
+        ligne = f.ReadLine
+        If Left(ligne, 1) = "#" Then
+            entete = Mid(ligne, 3)
+        ElseIf UBound(Split(ligne, vbTab)) = 5 Then
+            n = n + 1
+            ReDim Preserve lignes(1 To n)
+            lignes(n) = ligne
+        End If
+    Loop
+    f.Close
+    If n = 0 Then MsgBox "Aucune modification a annuler.", vbInformation: Exit Sub
+
+    If MsgBox("Restaurer " & n & " prix tels qu'avant la modification du " & entete & " ?", _
+              vbYesNo + vbQuestion, "Annuler derniere modif") <> vbYes Then Exit Sub
+
+    Application.StatusBar = "Connexion SAP..."
+    Dim co As Object: Set co = ConnectSAP()
+    If co Is Nothing Then Application.StatusBar = False: Exit Sub
+
+    Dim i As Long, c() As String, ok As Long, ko As String
+    ' Ordre inverse : la 1re valeur sauvegardee d'une ligne (l'originale) est appliquee en dernier
+    For i = n To 1 Step -1
+        c = Split(lignes(i), vbTab)
+        Application.StatusBar = "Restauration " & (n - i + 1) & "/" & n
+        On Error Resume Next
+        RunQuery co, "UPDATE ""ITM1"" SET ""BasePLNum"" = " & CLng(Val(c(2))) & ", ""Factor"" = " & Trim(Str(Val(c(3)))) & _
+            ", ""Ovrwritten"" = '" & IIf(c(4) = "Y", "Y", "N") & "', ""Price"" = " & Trim(Str(Val(c(5)))) & _
+            " WHERE ""ItemCode"" = '" & Replace(c(0), "'", "''") & "' AND ""PriceList"" = " & CLng(Val(c(1)))
+        If Err.Number <> 0 Then
+            ko = ko & vbCrLf & c(0) & " liste " & c(1) & ": " & Err.Description
+            Err.Clear
+        Else
+            ok = ok + 1
+            WriteLog "ANNULE " & c(0) & " liste " & c(1) & " -> lie=" & c(2) & " fac=" & c(3) & " net=" & c(4) & " prix=" & c(5)
+        End If
+        On Error GoTo 0
+    Next i
+
+    On Error Resume Next
+    co.Disconnect: Set co = Nothing
+    If fso.FileExists(p & ".annule") Then fso.DeleteFile p & ".annule"
+    fso.MoveFile p, p & ".annule"
+    On Error GoTo 0
+    Application.StatusBar = False
+
+    MsgBox ok & " prix restaures." & IIf(ko <> "", vbCrLf & vbCrLf & "Erreurs:" & ko, ""), _
+        IIf(ko = "", vbInformation, vbExclamation), "Annuler derniere modif"
+
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Recherche article")
+    If Trim(CStr(ws.Range("B2").Value)) <> "" Then LancerAnalyse ws, True, True
 End Sub
 '@
 
@@ -733,6 +889,43 @@ try {
     $vbMod.Name = "ModVentesPerte"
     $vbMod.CodeModule.AddFromString($vbaCode)
     Write-Host "VBA injecte avec succes!"
+    # Code de feuille "Recherche article" : surlignage jaune des cellules modifiees
+    $sheetCode = @'
+' Surligne en jaune les cellules F-G-H-P modifiees (comparaison avec les originaux caches 25-28)
+Private Sub Worksheet_Change(ByVal Target As Range)
+    Dim zone As Range, c As Range, r As Long, col As Long
+    On Error GoTo Fin
+    Set zone = Application.Intersect(Target, Me.Range("F6:H100000,P6:P100000"))
+    If zone Is Nothing Then Exit Sub
+    If zone.Cells.Count > 5000 Then Exit Sub
+    For Each c In zone.Cells
+        r = c.Row
+        If Trim(CStr(Me.Cells(r, 3).Value)) <> "" Then
+            Select Case c.Column
+                Case 6: col = 25
+                Case 7: col = 26
+                Case 8: col = 27
+                Case Else: col = 28
+            End Select
+            If UCase(Trim(CStr(c.Value))) <> UCase(Trim(CStr(Me.Cells(r, col).Value))) Then
+                c.Interior.Color = RGB(255, 255, 0)
+            ElseIf Me.Cells(r, 1).Interior.ColorIndex = xlNone Then
+                c.Interior.ColorIndex = xlNone
+            Else
+                c.Interior.Color = Me.Cells(r, 1).Interior.Color
+            End If
+        End If
+    Next c
+Fin:
+End Sub
+'@
+    foreach ($c in $wb.VBProject.VBComponents) {
+        if ($c.Type -eq 100) {
+            $nm = ""
+            try { $nm = $c.Properties.Item("Name").Value } catch {}
+            if ($nm -eq "Recherche article") { $c.CodeModule.AddFromString($sheetCode) }
+        }
+    }
 } catch {
     Write-Host "ERREUR injection VBA: $($_.Exception.Message)"
     Write-Host "Verifiez que 'Acces approuve au modele objet VBA' est active dans Excel."
@@ -748,5 +941,6 @@ Write-Host "  Boutons (ou Alt+F8):"
 Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes de SAP"
 Write-Host "    - AnalyserVentesPerte    : Trouve prix vente < cout moyen"
 Write-Host "    - RechercherArticle      : Meme analyse pour un/des articles"
-Write-Host "    - AppliquerModifsArticle : Ecrit F-G-H (Lie a/Facteur/Prix Net) dans SAP"
+Write-Host "    - AppliquerModifsArticle : Ecrit F-G-H-P dans SAP + recalcule listes liees"
+Write-Host "    - AnnulerDerniereModif   : Restaure les prix d'avant la derniere modif"
 Write-Host "====================================="
