@@ -124,9 +124,9 @@ $wsGrp.Columns("B:B").ColumnWidth = 45
 $wsGrp.Columns("C:C").ColumnWidth = 11
 
 # ===== ONGLET LISTES =====
-$wsLst.Cells(1,1).Value2 = "Mettre X en colonne A pour verifier seulement ces listes de prix. Aucun X = toutes les listes."
+$wsLst.Cells(1,1).Value2 = "Colonne A: X = analyser seulement ces listes (aucun X = toutes). N = ne jamais analyser cette liste."
 $wsLst.Cells(1,1).Font.Italic = $true
-Set-Header $wsLst 3 @("Inclure (X)","Liste #","Nom de la liste") 0x003366
+Set-Header $wsLst 3 @("X / N","Liste #","Nom de la liste") 0x003366
 $wsLst.Columns("A:A").ColumnWidth = 11
 $wsLst.Columns("B:B").ColumnWidth = 8
 $wsLst.Columns("C:C").ColumnWidth = 40
@@ -282,12 +282,12 @@ Private Function DateVal(v As Variant) As Variant
 End Function
 
 ' Liste des codes marques X (colonne A) dans un onglet, valeur en colonne colVal
-Private Function Filtre(wsName As String, colVal As Long) As String
+Private Function Filtre(wsName As String, colVal As Long, Optional marque As String = "X") As String
     Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets(wsName)
     Dim lr As Long: lr = ws.Cells(ws.Rows.Count, colVal).End(xlUp).Row
     Dim r As Long, s As String
     For r = 4 To lr
-        If UCase(Trim(CStr(ws.Cells(r, 1).Value))) = "X" Then
+        If UCase(Trim(CStr(ws.Cells(r, 1).Value))) = marque Then
             If IsNumeric(ws.Cells(r, colVal).Value) Then
                 If s <> "" Then s = s & ","
                 s = s & CLng(ws.Cells(r, colVal).Value)
@@ -476,11 +476,12 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
     mFacteur = 1 + pct / 100
     Dim sFact As String: sFact = Trim(Str(mFacteur))
     Dim lst As String: lst = Filtre("Listes", 2)
+    Dim lstN As String: lstN = Filtre("Listes", 2, "N")
 
     Dim msg As String
     msg = filtreTxt & vbCrLf & _
           "Profit min: " & pct & " % sur cout" & vbCrLf & _
-          "Listes de prix: " & IIf(lst = "", "TOUTES", lst) & vbCrLf & vbCrLf & "Lancer l'analyse?"
+          "Listes de prix: " & IIf(lst = "", "TOUTES", lst) & IIf(lstN = "", "", "  sauf " & lstN) & vbCrLf & vbCrLf & "Lancer l'analyse?"
     If Not silencieux Then
         If MsgBox(msg, vbQuestion + vbYesNo, "Ventes a perte") <> vbYes Then Exit Sub
     End If
@@ -515,6 +516,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
     If gro <> "" Then wBase = wBase & " AND LEFT(b.""ItmsGrpNam"", 3) IN (" & gro & ")"
     If arts <> "" Then wBase = wBase & " AND i.""ItemCode"" IN (" & arts & ")"
     If lst <> "" Then wLst = " AND x.""PriceList"" IN (" & lst & ")"
+    If lstN <> "" Then wLst = wLst & " AND x.""PriceList"" NOT IN (" & lstN & ")"
 
     Dim sql As String, nextRow As Long
     Dim n1 As Long, n2 As Long, n3 As Long, n4 As Long
