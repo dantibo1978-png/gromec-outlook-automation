@@ -67,9 +67,9 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
     $ws.Cells(3,3).Font.Color = 0x808080
 
     $hdrR = @("Source","Groupe","Article","Description","Liste #","Lie a","Facteur","Prix base","% profit voulu","Nom liste",
-              "Client","Nom client","Date debut","Date fin","Qte min","Devise","Prix Net","Prix vente","% marge","Cout retenu","Source cout","Date cout","Prix min","Manque `$","Profit % /cout","Sous cout")
+              "Client","Nom client","Date debut","Date fin","Qte min","Devise","Prix Net","Prix vente","% marge","Cout retenu","Source cout","Date cout","Prix min","Manque `$","Profit % /cout","Sous cout","Ventes 12 mois (qte)")
     Set-Header $ws 5 $hdrR 0x00008B
-    $widths = @(14,28,16,40,7,7,8,10,9,24,12,30,11,11,8,7,8,12,8,12,9,11,12,11,10,9)
+    $widths = @(14,28,16,40,7,7,8,10,9,24,12,30,11,11,8,7,8,12,8,12,9,11,12,11,10,9,12)
     for ($i = 0; $i -lt $widths.Count; $i++) { $ws.Columns($i + 1).ColumnWidth = $widths[$i] }
     $ws.Columns("C:C").NumberFormat = "@"
     $ws.Columns("K:K").NumberFormat = "@"
@@ -83,6 +83,7 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
     $ws.Columns("T:T").NumberFormat = "#,##0.00"
     $ws.Columns("W:X").NumberFormat = "#,##0.00"
     $ws.Columns("Y:Y").NumberFormat = "0.00%"
+    $ws.Columns("AA:AA").NumberFormat = "#,##0.00"
     $ws.Rows(5).Font.Bold = $true
     $ws.Rows(1).RowHeight = 30
 }
@@ -160,7 +161,7 @@ Private mErreurs As String
 Private mSkipManuel As Long
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
-Private Const NB_COLS As Long = 26   ' colonne 10 (J) = % profit voulu (saisie, vide au chargement)
+Private Const NB_COLS As Long = 27   ' colonne 10 (J) = % profit voulu (saisie, vide au chargement)
 Private Const COL_KEY As Long = 40    ' colonne cachee = cle de ligne (Source|Article|Liste|Client) pour detecter un tri
 Private Const COL_ORIG As Long = 41   ' colonnes cachees 41-42 = originaux F-G, 43 = Q (prix net), 44 = R (prix vente)
 Private Const ROW_HDR As Long = 5
@@ -676,6 +677,7 @@ Private Function FinaliserCouts(co As Object, ws As Worksheet, r1 As Long, r2 As
     Dim n As Long: n = r2 - r1 + 1
     Dim data As Variant: data = ws.Range(ws.Cells(r1, 1), ws.Cells(r2, COL_TMP + 3)).Value
     Dim d As Object: Set d = CreateObject("Scripting.Dictionary")
+    Dim dv As Object: Set dv = CreateObject("Scripting.Dictionary")   ' ventes 12 mois (qte) par article
     Dim i As Long, j As Long, c As Long, lot As String, nb As Long, rs As Object, cnt As Long
 
     ' Date de derniere modification du prix fournisseur, par article (lots de 300)
@@ -688,7 +690,7 @@ Private Function FinaliserCouts(co As Object, ws As Worksheet, r1 As Long, r2 As
         lot = lot & "'" & Replace(cles(i), "'", "''") & "'"
         nb = nb + 1
         If nb = 300 Or i = d.Count - 1 Then
-            Application.StatusBar = "Date prix fournisseur: " & (i + 1) & " / " & d.Count
+            Application.StatusBar = "Prix fournisseur / ventes 12 mois: " & (i + 1) & " / " & d.Count
             Set rs = RunQuery(co, "SELECT i.""ItemCode""," & _
                 " COALESCE((SELECT MIN(h.""UpdateDate"") FROM ""AITM"" h WHERE h.""ItemCode"" = i.""ItemCode""" & _
                 "   AND h.""LogInstanc"" > IFNULL((SELECT MAX(a.""LogInstanc"") FROM ""AIT1"" a" & _
@@ -701,6 +703,27 @@ Private Function FinaliserCouts(co As Object, ws As Worksheet, r1 As Long, r2 As
                 d(CStr(GF(rs, "ItemCode"))) = DateVal(GF(rs, "DF"))
                 MN rs
             Next j
+            ' Ventes des 12 derniers mois : factures - notes de credit (documents non annules)
+            On Error Resume Next
+            Set rs = RunQuery(co, "SELECT ""ItemCode"", SUM(""Q"") AS ""Q"" FROM (" & _
+                "SELECT l.""ItemCode"", l.""Quantity"" AS ""Q"" FROM ""INV1"" l JOIN ""OINV"" h ON h.""DocEntry"" = l.""DocEntry""" & _
+                " WHERE h.""CANCELED"" = 'N' AND h.""DocDate"" >= ADD_DAYS(CURRENT_DATE, -365) AND l.""ItemCode"" IN (" & lot & ")" & _
+                " UNION ALL " & _
+                "SELECT l.""ItemCode"", -l.""Quantity"" AS ""Q"" FROM ""RIN1"" l JOIN ""ORIN"" h ON h.""DocEntry"" = l.""DocEntry""" & _
+                " WHERE h.""CANCELED"" = 'N' AND h.""DocDate"" >= ADD_DAYS(CURRENT_DATE, -365) AND l.""ItemCode"" IN (" & lot & ")" & _
+                ") GROUP BY ""ItemCode""")
+            If Err.Number <> 0 Then
+                If InStr(mErreurs, "Ventes 12 mois") = 0 Then mErreurs = mErreurs & vbCrLf & "- Ventes 12 mois: " & Err.Description
+                WriteLog "ERREUR Ventes 12 mois: " & Err.Description
+                Err.Clear
+            Else
+                cnt = RC(rs)
+                For j = 1 To cnt
+                    dv(CStr(GF(rs, "ItemCode"))) = Num(GF(rs, "Q"))
+                    MN rs
+                Next j
+            End If
+            On Error GoTo 0
             lot = "": nb = 0
             DoEvents
         End If
@@ -742,6 +765,7 @@ Private Function FinaliserCouts(co As Object, ws As Worksheet, r1 As Long, r2 As
             out(k, 24) = Round(cout * mFacteur - prix, 2)
             out(k, 25) = (prix - cout) / cout
             If prix < cout Then out(k, 26) = "OUI" Else out(k, 26) = ""
+            If dv.Exists(CStr(data(i, 3))) Then out(k, 27) = dv(CStr(data(i, 3))) Else out(k, 27) = 0
         End If
     Next i
 
