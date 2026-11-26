@@ -62,14 +62,14 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
     $ws.Cells(3,2).Interior.Color = 0xCCFFFF
     $ws.Cells(3,2).Borders.LineStyle = 1
     $ws.Cells(3,2).Font.Bold = $true
-    $ws.Cells(3,3).Value2 = "<- % de profit minimum sur cout (ex: 15 = prix < cout x 1.15). Vide = 0 (vente a perte). Orange = devise autre que `$. ROUGE = prix vente < dernier prix d'achat"
+    $ws.Cells(3,3).Value2 = "<- % de profit minimum sur cout (ex: 15 = prix < cout x 1.15). Vide = 0 (vente a perte). Orange = devise autre que `$. ROUGE = prix vente < cout achat ref (le plus recent: dernier prix paye ou prix fournisseur liste 2)"
     $ws.Cells(3,3).Font.Italic = $true
     $ws.Cells(3,3).Font.Color = 0x808080
 
     $hdrR = @("Source","Groupe","Article","Description","Liste #","Lie a","Facteur","Prix Net","Prix base","% profit voulu","Nom liste","Client","Nom client",
-              "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout","Dern. prix achat","Date dern. achat","Sous achat")
+              "Date debut","Date fin","Qte min","Devise","Prix vente","Cout mag 10","Prix min","Manque `$","Profit % /cout","Dern. prix achat","Date dern. achat","Prix fourn. (L2)","Date prix fourn.","Cout achat ref","Sous achat")
     Set-Header $ws 5 $hdrR 0x00008B
-    $widths = @(14,28,16,40,7,7,8,8,10,9,24,12,30,11,11,8,7,12,12,12,11,10,12,11,9)
+    $widths = @(14,28,16,40,7,7,8,8,10,9,24,12,30,11,11,8,7,12,12,12,11,10,12,11,12,11,12,9)
     for ($i = 0; $i -lt $widths.Count; $i++) { $ws.Columns($i + 1).ColumnWidth = $widths[$i] }
     $ws.Columns("C:C").NumberFormat = "@"
     $ws.Columns("L:L").NumberFormat = "@"
@@ -79,6 +79,8 @@ function Set-ResultSheet($ws, $titre, $labelB2, $aideB2) {
     $ws.Columns("R:U").NumberFormat = "#,##0.00"
     $ws.Columns("V:V").NumberFormat = "0.0%"
     $ws.Columns("W:W").NumberFormat = "#,##0.00"
+    $ws.Columns("Y:Y").NumberFormat = "#,##0.00"
+    $ws.Columns("AA:AA").NumberFormat = "#,##0.00"
     $ws.Rows(5).Font.Bold = $true
     $ws.Rows(1).RowHeight = 30
 }
@@ -156,10 +158,11 @@ Private mErreurs As String
 Private mSkipManuel As Long
 Private mFacteur As Double   ' 1 + profit min / 100
 Private Const LOG_PATH As String = "U:\GromecOutlook\VentesPerte.log"
-Private Const NB_COLS As Long = 25   ' colonne 10 (J) = % profit voulu (saisie, vide au chargement)
+Private Const NB_COLS As Long = 28   ' colonne 10 (J) = % profit voulu (saisie, vide au chargement)
 Private Const COL_KEY As Long = 40    ' colonne cachee = cle de ligne (Source|Article|Liste|Client) pour detecter un tri
 Private Const COL_ORIG As Long = 41   ' colonnes cachees 41-43 = originaux F-G-H, 44 = original R (prix vente)
 Private Const ROW_HDR As Long = 5
+Private Const LISTE_FOURN As Long = 2   ' liste de prix = prix fournisseur
 Private Const WHS_COUT As String = "10"   ' magasin de reference pour le cout
 Private Const LISTES_EXCLUES As String = "1,2,3,11"       ' listes ignorees - Ventes a perte (11 = Coutant moyen)
 Private Const LISTES_EXCLUES_ART As String = "2,3,11"    ' listes ignorees - Recherche article (liste 1 incluse)
@@ -433,7 +436,6 @@ Private Function AjouterResultats(co As Object, sql As String, src As String, ws
         dern = Num(GF(rs, "DernAchat"))
         If dern > 0 Then arr(r, 23) = dern Else arr(r, 23) = ""
         arr(r, 24) = DateVal(GF(rs, "DernAchatDate"))
-        If dern > 0 And prix < dern Then arr(r, 25) = "OUI" Else arr(r, 25) = ""
         q = GF(rs, "PrixBase")
         If IsNumeric(q) And Txt(q) <> "" Then arr(r, 9) = CDbl(q) Else arr(r, 9) = ""
         MN rs
@@ -583,6 +585,17 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
 
     Dim total As Long: total = n1 + n2 + n3 + n4
     Dim lastRow As Long: lastRow = ROW_HDR + total
+    ' Prix fournisseur + cout achat de reference (colonnes 25-28)
+    If total > 0 Then
+        On Error Resume Next
+        CompleterPrixFourn co, ws, ROW_HDR + 1, lastRow
+        If Err.Number <> 0 Then
+            mErreurs = mErreurs & vbCrLf & "- Prix fournisseur: " & Err.Description
+            WriteLog "ERREUR Prix fournisseur: " & Err.Description
+            Err.Clear
+        End If
+        On Error GoTo ErrAVP
+    End If
 
     If total > 0 Then
         Dim rng As Range
@@ -593,7 +606,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
         For r = ROW_HDR + 1 To lastRow
             dv = Trim(CStr(ws.Cells(r, 17).Value))
             If dv <> "" And dv <> "$" Then ws.Range(ws.Cells(r, 1), ws.Cells(r, NB_COLS)).Interior.Color = RGB(255, 204, 153)
-            If ws.Cells(r, 25).Value = "OUI" Then
+            If ws.Cells(r, 28).Value = "OUI" Then
                 ws.Range(ws.Cells(r, 1), ws.Cells(r, NB_COLS)).Interior.Color = RGB(255, 150, 150)
                 nSous = nSous + 1
             End If
@@ -601,6 +614,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
         ' Format date applique en VBA (NumberFormat via PowerShell = interprete en francais)
         ws.Range(ws.Cells(ROW_HDR + 1, 14), ws.Cells(lastRow, 15)).NumberFormat = "yyyy-mm-dd"
         ws.Range(ws.Cells(ROW_HDR + 1, 24), ws.Cells(lastRow, 24)).NumberFormat = "yyyy-mm-dd"
+        ws.Range(ws.Cells(ROW_HDR + 1, 26), ws.Cells(lastRow, 26)).NumberFormat = "yyyy-mm-dd"
         ' Copie cachee des valeurs originales F-G-H (detection des modifs)
         ws.Range(ws.Cells(ROW_HDR + 1, COL_ORIG), ws.Cells(lastRow, COL_ORIG + 2)).Value = _
             ws.Range(ws.Cells(ROW_HDR + 1, 6), ws.Cells(lastRow, 8)).Value
@@ -618,7 +632,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
     End If
 
     ws.Cells(4, 1).Value = total & " prix sous cout +" & pct & "%  |  Listes: " & n1 & "  Speciaux: " & n2 & _
-        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Sous dern. achat: " & nSous & "  |  " & filtreTxt & _
+        "  Periodes: " & n3 & "  Quantites: " & n4 & "  |  Sous cout achat: " & nSous & "  |  " & filtreTxt & _
         "  |  " & Format(Now, "yyyy-mm-dd hh:nn")
     ws.Cells(4, 1).Font.Bold = True
 
@@ -626,7 +640,7 @@ Private Sub LancerAnalyse(ws As Worksheet, parArticle As Boolean, Optional silen
 
     Dim fin As String
     fin = total & " prix sous cout +" & pct & "% trouves en " & Format(Timer - t0, "0") & " s." & vbCrLf & _
-          nSous & " sous le dernier prix d'achat (lignes rouges)."
+          nSous & " sous le cout d'achat de reference (lignes rouges)."
     If mErreurs <> "" Then fin = fin & vbCrLf & vbCrLf & "Requetes en erreur (voir VentesPerte.log):" & mErreurs
     If Not silencieux Or mErreurs <> "" Then MsgBox fin, IIf(mErreurs = "", vbInformation, vbExclamation), "Ventes a perte"
     GoTo CleanAVP
@@ -640,6 +654,79 @@ CleanAVP:
     Application.ScreenUpdating = True
     Application.StatusBar = False
     ws.Activate
+End Sub
+
+' ==========================================
+'  PRIX FOURNISSEUR (liste 2) + date de derniere modification (historique AIT1/AITM)
+'  Remplit colonnes 25 Prix fourn., 26 Date prix fourn., 27 Cout achat ref, 28 Sous achat
+'  Cout achat ref = le plus recent entre dernier prix paye (23/24) et prix fournisseur (25/26)
+' ==========================================
+Private Sub CompleterPrixFourn(co As Object, ws As Worksheet, r1 As Long, r2 As Long)
+    If r2 < r1 Then Exit Sub
+    Dim n As Long: n = r2 - r1 + 1
+    Dim codes As Variant: codes = ws.Range(ws.Cells(r1, 3), ws.Cells(r2, 3)).Value
+    Dim d As Object: Set d = CreateObject("Scripting.Dictionary")
+    Dim i As Long, k As Variant, lot As String, nb As Long, rs As Object, j As Long, cnt As Long
+
+    For i = 1 To n
+        If Not d.Exists(CStr(codes(i, 1))) Then d.Add CStr(codes(i, 1)), Empty
+    Next i
+
+    ' Requetes par lots de 300 articles
+    Dim cles As Variant: cles = d.Keys
+    For i = 0 To d.Count - 1
+        If lot <> "" Then lot = lot & ","
+        lot = lot & "'" & Replace(cles(i), "'", "''") & "'"
+        nb = nb + 1
+        If nb = 300 Or i = d.Count - 1 Then
+            Application.StatusBar = "Prix fournisseur: " & (i + 1) & " / " & d.Count
+            Set rs = RunQuery(co, "SELECT i.""ItemCode"", p.""Price"" AS ""PF""," & _
+                " COALESCE((SELECT MIN(h.""UpdateDate"") FROM ""AITM"" h WHERE h.""ItemCode"" = i.""ItemCode""" & _
+                "   AND h.""LogInstanc"" > IFNULL((SELECT MAX(a.""LogInstanc"") FROM ""AIT1"" a" & _
+                "     WHERE a.""ItemCode"" = i.""ItemCode"" AND a.""PriceList"" = " & LISTE_FOURN & _
+                "     AND a.""Price"" <> p.""Price""), 0)), i.""UpdateDate"") AS ""DF""" & _
+                " FROM ""OITM"" i LEFT JOIN ""ITM1"" p ON p.""ItemCode"" = i.""ItemCode"" AND p.""PriceList"" = " & LISTE_FOURN & _
+                " WHERE i.""ItemCode"" IN (" & lot & ")")
+            cnt = RC(rs)
+            For j = 1 To cnt
+                d(CStr(GF(rs, "ItemCode"))) = Array(Num(GF(rs, "PF")), DateVal(GF(rs, "DF")))
+                MN rs
+            Next j
+            lot = "": nb = 0
+            DoEvents
+        End If
+    Next i
+
+    ' Remplir les colonnes
+    Dim src As Variant: src = ws.Range(ws.Cells(r1, 18), ws.Cells(r2, 24)).Value   ' 18 prix ... 23 dern achat, 24 date
+    Dim out() As Variant: ReDim out(1 To n, 1 To 4)
+    Dim pf As Double, df As Variant, dp As Double, dd As Variant, ref As Double, prix As Double, v As Variant
+    For i = 1 To n
+        prix = Num(src(i, 1))
+        dp = Num(src(i, 6)): dd = src(i, 7)
+        pf = 0: df = ""
+        v = d(CStr(codes(i, 1)))
+        If IsArray(v) Then pf = v(0): df = v(1)
+        If pf > 0 Then out(i, 1) = pf Else out(i, 1) = ""
+        out(i, 2) = df
+        ' Choisir le plus recent
+        If pf > 0 And dp > 0 Then
+            If IsDate(df) And IsDate(dd) Then
+                If CDate(df) > CDate(dd) Then ref = pf Else ref = dp
+            ElseIf IsDate(df) Then
+                ref = pf
+            Else
+                ref = dp
+            End If
+        ElseIf pf > 0 Then
+            ref = pf
+        Else
+            ref = dp
+        End If
+        If ref > 0 Then out(i, 3) = ref Else out(i, 3) = ""
+        If ref > 0 And prix < ref Then out(i, 4) = "OUI" Else out(i, 4) = ""
+    Next i
+    ws.Range(ws.Cells(r1, 25), ws.Cells(r2, 28)).Value = out
 End Sub
 
 ' ==========================================
