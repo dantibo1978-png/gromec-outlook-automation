@@ -1382,7 +1382,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-11-25 16:30";
+const DERNIERE_MAJ_CODE = "2026-11-26 10:15";
 const DERNIERE_MAJ_PR = "PR #169";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
@@ -2597,6 +2597,27 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
     modal.style.display = 'flex';
     resetModal();
   });
+
+  // Rappel vendredi: faire clignoter le bouton Recherche commandes
+  (function() {
+    const now = new Date();
+    const jour = now.getDay(); // 5 = vendredi
+    if (jour === 5) {
+      const btn = document.getElementById('btnRechercheCmd');
+      btn.style.animation = 'rcPulse 2s ease-in-out infinite';
+      const badge = document.createElement('span');
+      badge.textContent = 'A faire';
+      badge.style.cssText = 'margin-left:8px;background:#e74c3c;color:#fff;font-size:10px;padding:2px 6px;border-radius:8px;font-weight:600';
+      btn.appendChild(badge);
+      btn.addEventListener('click', () => { btn.style.animation = ''; if (badge.parentNode) badge.remove(); }, { once: true });
+    }
+    if (!document.getElementById('rcPulseStyle')) {
+      const s = document.createElement('style');
+      s.id = 'rcPulseStyle';
+      s.textContent = '@keyframes rcPulse { 0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,.4)} 50%{box-shadow:0 0 12px 4px rgba(231,76,60,.6)} }';
+      document.head.appendChild(s);
+    }
+  })();
 
   document.getElementById('btnRechercheCmd').addEventListener('click', () => {
     const cmd = '& "U:\\GromecOutlook\\RechercheCommandes.ps1"';
