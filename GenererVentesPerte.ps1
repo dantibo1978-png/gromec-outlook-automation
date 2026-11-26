@@ -89,6 +89,8 @@ Set-ResultSheet $wsArt "RECHERCHE PAR ARTICLE - Prix de vente < Cout moyen magas
 # Colonnes modifiables (F Lie a, G Facteur, H Prix Net) en vert
 $wsArt.Range("F5:H5").Interior.Color = 0x008000
 $wsArt.Range("P5").Interior.Color = 0x008000
+$wsRes.Range("F5:H5").Interior.Color = 0x008000
+$wsRes.Range("P5").Interior.Color = 0x008000
 $wsArt.Cells(4,6).Value2 = "Modifiable (vert) -> bouton Appliquer. N = Lie a x Facteur. Y = prix net saisi en P."
 $wsArt.Cells(4,6).Font.Italic = $true
 $wsArt.Cells(4,6).Font.Color = 0x008000
@@ -110,6 +112,12 @@ try {
     $b5 = $wsArt.Buttons().Add($wsArt.Range("J1").Left + 380, 2, 160, 26)
     $b5.Text = "Annuler derniere modif"
     $b5.OnAction = "AnnulerDerniereModif"
+    $b6 = $wsRes.Buttons().Add($wsRes.Range("J1").Left + 340, 2, 200, 26)
+    $b6.Text = "Appliquer modifs dans SAP"
+    $b6.OnAction = "AppliquerModifsVentesPerte"
+    $b7 = $wsRes.Buttons().Add($wsRes.Range("J1").Left + 550, 2, 160, 26)
+    $b7.Text = "Annuler derniere modif"
+    $b7.OnAction = "AnnulerDerniereModif"
 } catch {
     Write-Host "Boutons non crees (utiliser Alt+F8): $($_.Exception.Message)"
 }
@@ -625,7 +633,15 @@ End Sub
 '  APPLIQUER MODIFS F (Lie a) / G (Facteur) / H (Prix Net) DANS SAP (ITM1)
 ' ==========================================
 Public Sub AppliquerModifsArticle()
-    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Recherche article")
+    AppliquerModifs ThisWorkbook.Sheets("Recherche article"), True
+End Sub
+
+' Onglet Ventes a perte : modifie seulement la liste de la ligne (pas de recalcul des listes liees)
+Public Sub AppliquerModifsVentesPerte()
+    AppliquerModifs ThisWorkbook.Sheets("Ventes a perte"), False
+End Sub
+
+Private Sub AppliquerModifs(ws As Worksheet, avecCascade As Boolean)
     Dim lastRow As Long: lastRow = ws.Cells(ws.Rows.Count, 3).End(xlUp).Row
     If lastRow <= ROW_HDR Then MsgBox "Aucun resultat. Faire une recherche d'abord.", vbExclamation: Exit Sub
 
@@ -717,6 +733,7 @@ Public Sub AppliquerModifsArticle()
     Set fso = CreateObject("Scripting.FileSystemObject")
     Set fU = fso.CreateTextFile(UndoPath(), True)
     fU.WriteLine "# " & Format(Now, "yyyy-mm-dd hh:nn:ss") & " " & mSapUser
+    fU.WriteLine "@" & ws.Name
     mSkipManuel = 0
 
     Dim sql As String, sFac As String, ok As Long, ko As String, rsU As Object, nCasc As Long, nc As Long
@@ -760,9 +777,9 @@ Public Sub AppliquerModifsArticle()
         Else
             ok = ok + 1
             WriteLog "MODIF " & ops(1, k) & " liste " & ops(2, k) & " lie=" & ops(3, k) & " fac=" & sFac & " net=" & ops(5, k) & " prix=" & ops(6, k)
-            ' Recalcul des listes liees a cette liste (en chaine)
+            ' Recalcul des listes liees a cette liste (en chaine) - Recherche article seulement
             nc = 0
-            nc = Cascade(co, fU, CStr(ops(1, k)), CLng(ops(2, k)))
+            If avecCascade Then nc = Cascade(co, fU, CStr(ops(1, k)), CLng(ops(2, k)))
             If Err.Number <> 0 Then
                 ko = ko & vbCrLf & ops(1, k) & " listes liees a " & ops(2, k) & ": " & Err.Description
                 WriteLog "CASCADE ERREUR " & ops(1, k) & " base " & ops(2, k) & ": " & Err.Description
@@ -782,14 +799,14 @@ LigneSuivante:
     Application.StatusBar = False
 
     MsgBox ok & " prix modifies dans SAP." & vbCrLf & _
-        nCasc & " liste(s) liee(s) recalculee(s) automatiquement." & _
+        IIf(avecCascade, nCasc & " liste(s) liee(s) recalculee(s) automatiquement.", "Listes liees NON recalculees (onglet Ventes a perte).") & _
         IIf(mSkipManuel > 0, vbCrLf & mSkipManuel & " liste(s) liee(s) en prix manuel non touchee(s).", "") & _
         IIf(ko <> "", vbCrLf & vbCrLf & "Erreurs:" & ko, "") & vbCrLf & vbCrLf & _
         "Bouton 'Annuler derniere modif' pour revenir en arriere.", _
         IIf(ko = "", vbInformation, vbExclamation), "Modifier SAP"
 
     ' Recharger pour afficher les nouveaux prix
-    LancerAnalyse ws, True, True
+    LancerAnalyse ws, avecCascade, True
 End Sub
 
 ' Cle d'identification d'une ligne de resultat
@@ -886,13 +903,15 @@ Public Sub AnnulerDerniereModif()
     Dim p As String: p = UndoPath()
     If Not fso.FileExists(p) Then MsgBox "Aucune modification a annuler.", vbInformation: Exit Sub
 
-    Dim f As Object, ligne As String, entete As String, lignes() As String, n As Long
+    Dim f As Object, ligne As String, entete As String, lignes() As String, n As Long, feuille As String
     ReDim lignes(1 To 1)
     Set f = fso.OpenTextFile(p, 1)
     Do While Not f.AtEndOfStream
         ligne = f.ReadLine
         If Left(ligne, 1) = "#" Then
             entete = Mid(ligne, 3)
+        ElseIf Left(ligne, 1) = "@" Then
+            feuille = Mid(ligne, 2)
         ElseIf UBound(Split(ligne, vbTab)) = 5 Then
             n = n + 1
             ReDim Preserve lignes(1 To n)
@@ -938,8 +957,14 @@ Public Sub AnnulerDerniereModif()
     MsgBox ok & " prix restaures." & IIf(ko <> "", vbCrLf & vbCrLf & "Erreurs:" & ko, ""), _
         IIf(ko = "", vbInformation, vbExclamation), "Annuler derniere modif"
 
-    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets("Recherche article")
-    If Trim(CStr(ws.Range("B2").Value)) <> "" Then LancerAnalyse ws, True, True
+    ' Recharger l'onglet d'ou venait la modification
+    If feuille = "" Then feuille = "Recherche article"
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets(feuille)
+    If feuille = "Ventes a perte" Then
+        LancerAnalyse ws, False, True
+    ElseIf Trim(CStr(ws.Range("B2").Value)) <> "" Then
+        LancerAnalyse ws, True, True
+    End If
 End Sub
 '@
 
@@ -989,7 +1014,7 @@ End Sub
         if ($c.Type -eq 100) {
             $nm = ""
             try { $nm = $c.Properties.Item("Name").Value } catch {}
-            if ($nm -eq "Recherche article") { $c.CodeModule.AddFromString($sheetCode) }
+            if ($nm -eq "Recherche article" -or $nm -eq "Ventes a perte") { $c.CodeModule.AddFromString($sheetCode) }
         }
     }
 } catch {
@@ -1008,5 +1033,6 @@ Write-Host "    - ChargerGroupesEtListes : Charge groupes + listes de SAP"
 Write-Host "    - AnalyserVentesPerte    : Trouve prix vente < cout moyen"
 Write-Host "    - RechercherArticle      : Meme analyse pour un/des articles"
 Write-Host "    - AppliquerModifsArticle : Ecrit F-G-H-P dans SAP + recalcule listes liees"
+Write-Host "    - AppliquerModifsVentesPerte : Ecrit F-G-H-P dans SAP (liste de la ligne seulement)"
 Write-Host "    - AnnulerDerniereModif   : Restaure les prix d'avant la derniere modif"
 Write-Host "====================================="
