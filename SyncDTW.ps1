@@ -472,7 +472,7 @@ function Update-ItemFullbox {
     $lignes = $Contenu -split "`r?`n" | Where-Object { $_ -ne '' }
     if ($lignes.Count -lt 3) { throw "Contenu fullbox vide ou invalide" }
     $headers = $lignes[0] -split "`t"
-    $colItemCode = -1; $colPurPack = -1; $colQryGroup = -1; $colQryGroup2 = -1; $colNwrType = -1; $colMinStock = -1; $colSuppCatNum = -1
+    $colItemCode = -1; $colPurPack = -1; $colQryGroup = -1; $colQryGroup2 = -1; $colNwrType = -1; $colMinStock = -1; $colSuppCatNum = -1; $colPrixListe2 = -1
     for ($c = 0; $c -lt $headers.Count; $c++) {
         $h = $headers[$c].Trim()
         if ($h -eq 'ItemCode') { $colItemCode = $c }
@@ -482,6 +482,7 @@ function Update-ItemFullbox {
         if ($h -like '*U_NWR_Type*') { $colNwrType = $c }
         if ($h -like '*MinStock*') { $colMinStock = $c }
         if ($h -like '*SuppCatNum*') { $colSuppCatNum = $c }
+        if ($h -like '*PrixListe2*' -or $h -like '*PriceList2*') { $colPrixListe2 = $c }
     }
     if ($colItemCode -lt 0) { throw "Colonne ItemCode introuvable dans contenu fullbox" }
 
@@ -535,6 +536,18 @@ function Update-ItemFullbox {
                 $erreurs += "Erreur MinStock $itemCode : $($_.Exception.Message)"
             }
             $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rsW)
+        }
+
+        if ($colPrixListe2 -ge 0 -and $cols.Count -gt $colPrixListe2 -and $cols[$colPrixListe2].Trim() -ne '') {
+            $prixVal = [double]$cols[$colPrixListe2].Trim()
+            $sqlP = "UPDATE ""ITM1"" SET ""Price"" = $prixVal WHERE ""ItemCode"" = '$escapedCode' AND ""PriceList"" = 2"
+            $rsP = $Company.GetBusinessObject($BO_Recordset)
+            try {
+                $null = [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rsP, @($sqlP))
+            } catch {
+                $erreurs += "Erreur PrixListe2 $itemCode : $($_.Exception.Message)"
+            }
+            $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rsP)
         }
     }
     if ($erreurs.Count -gt 0) { throw "Erreur(s) Fullbox : $($erreurs -join ' | ')" }
