@@ -472,12 +472,15 @@ function Update-ItemFullbox {
     $lignes = $Contenu -split "`r?`n" | Where-Object { $_ -ne '' }
     if ($lignes.Count -lt 3) { throw "Contenu fullbox vide ou invalide" }
     $headers = $lignes[0] -split "`t"
-    $colItemCode = -1; $colPurPack = -1; $colQryGroup = -1
+    $colItemCode = -1; $colPurPack = -1; $colQryGroup = -1; $colQryGroup2 = -1; $colNwrType = -1; $colMinStock = -1
     for ($c = 0; $c -lt $headers.Count; $c++) {
         $h = $headers[$c].Trim()
         if ($h -eq 'ItemCode') { $colItemCode = $c }
         if ($h -like '*PurPackUn*' -or $h -like '*PurchaseQtyPerPack*') { $colPurPack = $c }
-        if ($h -like '*QryGroup26*' -or $h -like '*Properties26*') { $colQryGroup = $c }
+        if ($h -like '*Properties26*' -or ($h -like '*QryGroup26*')) { $colQryGroup = $c }
+        if ($h -like '*Properties2' -or $h -eq 'QryGroup2') { $colQryGroup2 = $c }
+        if ($h -like '*U_NWR_Type*') { $colNwrType = $c }
+        if ($h -like '*MinStock*') { $colMinStock = $c }
     }
     if ($colItemCode -lt 0) { throw "Colonne ItemCode introuvable dans contenu fullbox" }
 
@@ -486,6 +489,7 @@ function Update-ItemFullbox {
         $cols = $lignes[$r] -split "`t"
         $itemCode = $cols[$colItemCode].Trim()
         if ([string]::IsNullOrEmpty($itemCode)) { continue }
+        $escapedCode = $itemCode -replace "'","''"
 
         $sets = @()
         if ($colPurPack -ge 0 -and $cols.Count -gt $colPurPack -and $cols[$colPurPack].Trim() -ne '') {
@@ -496,15 +500,37 @@ function Update-ItemFullbox {
             $qryVal = if ($val -eq 'Y' -or $val -eq '1') { "'Y'" } else { "'N'" }
             $sets += """QryGroup26"" = $qryVal"
         }
-        if ($sets.Count -eq 0) { continue }
-        $sql = "UPDATE ""OITM"" SET $($sets -join ', ') WHERE ""ItemCode"" = '$($itemCode -replace "'","''")'"
-        $rs = $Company.GetBusinessObject($BO_Recordset)
-        try {
-            $null = [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sql))
-        } catch {
-            $erreurs += "Erreur $itemCode : $($_.Exception.Message)"
+        if ($colQryGroup2 -ge 0 -and $cols.Count -gt $colQryGroup2 -and $cols[$colQryGroup2].Trim() -ne '') {
+            $val = $cols[$colQryGroup2].Trim()
+            $qryVal = if ($val -eq 'Y' -or $val -eq '1') { "'Y'" } else { "'N'" }
+            $sets += """QryGroup2"" = $qryVal"
         }
-        $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs)
+        if ($colNwrType -ge 0 -and $cols.Count -gt $colNwrType -and $cols[$colNwrType].Trim() -ne '') {
+            $nwr = $cols[$colNwrType].Trim()
+            $sets += """U_NWR_Type"" = '$nwr'"
+        }
+        if ($sets.Count -gt 0) {
+            $sql = "UPDATE ""OITM"" SET $($sets -join ', ') WHERE ""ItemCode"" = '$escapedCode'"
+            $rs = $Company.GetBusinessObject($BO_Recordset)
+            try {
+                $null = [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rs, @($sql))
+            } catch {
+                $erreurs += "Erreur OITM $itemCode : $($_.Exception.Message)"
+            }
+            $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rs)
+        }
+
+        if ($colMinStock -ge 0 -and $cols.Count -gt $colMinStock -and $cols[$colMinStock].Trim() -ne '') {
+            $minVal = [double]$cols[$colMinStock].Trim()
+            $sqlW = "UPDATE ""OITW"" SET ""MinStock"" = $minVal WHERE ""ItemCode"" = '$escapedCode' AND ""WhsCode"" = '10'"
+            $rsW = $Company.GetBusinessObject($BO_Recordset)
+            try {
+                $null = [System.__ComObject].InvokeMember("DoQuery", [System.Reflection.BindingFlags]::InvokeMethod, $null, $rsW, @($sqlW))
+            } catch {
+                $erreurs += "Erreur MinStock $itemCode : $($_.Exception.Message)"
+            }
+            $null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject($rsW)
+        }
     }
     if ($erreurs.Count -gt 0) { throw "Erreur(s) Fullbox : $($erreurs -join ' | ')" }
 }
