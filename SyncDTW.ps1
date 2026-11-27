@@ -472,7 +472,7 @@ function Update-ItemFullbox {
     $lignes = $Contenu -split "`r?`n" | Where-Object { $_ -ne '' }
     if ($lignes.Count -lt 3) { throw "Contenu fullbox vide ou invalide" }
     $headers = $lignes[0] -split "`t"
-    $colItemCode = -1; $colPurPack = -1; $colQryGroup = -1; $colQryGroup2 = -1; $colNwrType = -1; $colMinStock = -1
+    $colItemCode = -1; $colPurPack = -1; $colQryGroup = -1; $colQryGroup2 = -1; $colNwrType = -1; $colMinStock = -1; $colSuppCatNum = -1
     for ($c = 0; $c -lt $headers.Count; $c++) {
         $h = $headers[$c].Trim()
         if ($h -eq 'ItemCode') { $colItemCode = $c }
@@ -481,6 +481,7 @@ function Update-ItemFullbox {
         if ($h -like '*Properties2' -or $h -eq 'QryGroup2') { $colQryGroup2 = $c }
         if ($h -like '*U_NWR_Type*') { $colNwrType = $c }
         if ($h -like '*MinStock*') { $colMinStock = $c }
+        if ($h -like '*SuppCatNum*') { $colSuppCatNum = $c }
     }
     if ($colItemCode -lt 0) { throw "Colonne ItemCode introuvable dans contenu fullbox" }
 
@@ -508,6 +509,10 @@ function Update-ItemFullbox {
         if ($colNwrType -ge 0 -and $cols.Count -gt $colNwrType -and $cols[$colNwrType].Trim() -ne '') {
             $nwr = $cols[$colNwrType].Trim()
             $sets += """U_NWR_Type"" = '$nwr'"
+        }
+        if ($colSuppCatNum -ge 0 -and $cols.Count -gt $colSuppCatNum -and $cols[$colSuppCatNum].Trim() -ne '') {
+            $scn = $cols[$colSuppCatNum].Trim() -replace "'","''"
+            $sets += """SuppCatNum"" = '$scn'"
         }
         if ($sets.Count -gt 0) {
             $sql = "UPDATE ""OITM"" SET $($sets -join ', ') WHERE ""ItemCode"" = '$escapedCode'"
