@@ -1230,9 +1230,9 @@
 <div id="modalFullbox" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
   <div style="background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:28px;max-width:660px;width:92%;max-height:90vh;overflow-y:auto;">
     <h3 style="font-family:'Space Grotesk',sans-serif;margin:0 0 6px;font-size:20px;">Import fullbox — Mise à jour articles</h3>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 18px;">Collez un tableau avec 1 à 7 colonnes : <b>Code article</b> (obligatoire), <b>PurPackUn</b> (optionnel), <b>Propriété 26</b> (Y/N, optionnel), <b>Propriété 2</b> (Y/N, optionnel), <b>U_NWR_Type</b> (REG ou PT, optionnel), <b>Min Stock</b> (nombre, optionnel), <b>SuppCatNum</b> (texte, optionnel). Les données seront importées directement dans SAP.</p>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 18px;">Collez un tableau avec 1 à 8 colonnes : <b>Code article</b> (obligatoire), <b>PurPackUn</b> (optionnel), <b>Propriété 26</b> (Y/N, optionnel), <b>Propriété 2</b> (Y/N, optionnel), <b>U_NWR_Type</b> (REG ou PT, optionnel), <b>Min Stock</b> (nombre, optionnel), <b>SuppCatNum</b> (texte, optionnel), <b>Prix Liste 2</b> (nombre, optionnel). Les données seront importées directement dans SAP.</p>
 
-    <textarea id="fullboxZone" style="width:100%;height:200px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:12px;resize:vertical;" placeholder="Collez ici de 1 à 7 colonnes (tab-separated) :&#10;Code article &#9; PurPackUn &#9; Prop26 &#9; Prop2 &#9; U_NWR_Type &#9; Min Stock &#9; SuppCatNum&#10;PT7141120 &#9; 12 &#9; Y &#9; Y &#9; PT &#9; 50 &#9; ABC-123&#10;PT8200050 &#9; &#9; &#9; N &#9; REG &#9; 100&#10;551670 &#9; 10&#10;..."></textarea>
+    <textarea id="fullboxZone" style="width:100%;height:200px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--rule);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:12px;resize:vertical;" placeholder="Collez ici de 1 à 8 colonnes (tab-separated) :&#10;Code article &#9; PurPackUn &#9; Prop26 &#9; Prop2 &#9; U_NWR_Type &#9; Min Stock &#9; SuppCatNum &#9; Prix Liste 2&#10;PT7141120 &#9; 12 &#9; Y &#9; Y &#9; PT &#9; 50 &#9; ABC-123 &#9; 25.99&#10;PT8200050 &#9; &#9; &#9; N &#9; REG &#9; 100 &#9;  &#9; 14.50&#10;551670 &#9; 10&#10;..."></textarea>
 
     <div id="fullboxStatus" style="margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:13px;display:none;"></div>
 
@@ -1382,7 +1382,7 @@
 const FIREBASE_URL = "https://gromec-outlook-vba-default-rtdb.firebaseio.com/";
 
 // Mis a jour manuellement a chaque push de code sur GitHub (pas les donnees)
-const DERNIERE_MAJ_CODE = "2026-11-27 09:15";
+const DERNIERE_MAJ_CODE = "2026-11-27 09:30";
 const DERNIERE_MAJ_PR = "PR #203";
 document.addEventListener('drop', e => e.preventDefault());
 document.addEventListener('DOMContentLoaded', () => {
@@ -3336,11 +3336,11 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
         return;
       }
 
-      const aEntete = premiersCols.some(h => /code|item|article|numéro|purpackun|pack|prop|group|stock|min|supp|cat/i.test(h));
+      const aEntete = premiersCols.some(h => /code|item|article|numéro|purpackun|pack|prop|group|stock|min|supp|cat|prix|price/i.test(h));
       const startIdx = aEntete ? 1 : 0;
 
       const Tab = '\t';
-      const header = 'ItemCode' + Tab + 'PurchaseQtyPerPackUnit' + Tab + 'Properties26' + Tab + 'Properties2' + Tab + 'U_NWR_Type' + Tab + 'MinStock' + Tab + 'SuppCatNum';
+      const header = 'ItemCode' + Tab + 'PurchaseQtyPerPackUnit' + Tab + 'Properties26' + Tab + 'Properties2' + Tab + 'U_NWR_Type' + Tab + 'MinStock' + Tab + 'SuppCatNum' + Tab + 'PrixListe2';
       const dtwLignes = [header, header];
       let nbArticles = 0;
       function normProp(v) {
@@ -3363,7 +3363,8 @@ document.getElementById('logTxtFilter').addEventListener('input', rendreLogs);
         if (nwr && nwr !== 'REG' && nwr !== 'PT') { errNwr.push(code + ' → "' + c[4].trim() + '"'); nwr = ''; }
         const minStock = c.length > 5 ? (c[5] || '').trim() : '';
         const suppCatNum = c.length > 6 ? (c[6] || '').trim() : '';
-        dtwLignes.push(code + Tab + pack + Tab + prop26 + Tab + prop2 + Tab + nwr + Tab + minStock + Tab + suppCatNum);
+        const prixListe2 = c.length > 7 ? (c[7] || '').trim() : '';
+        dtwLignes.push(code + Tab + pack + Tab + prop26 + Tab + prop2 + Tab + nwr + Tab + minStock + Tab + suppCatNum + Tab + prixListe2);
         nbArticles++;
       }
       if (errNwr.length > 0) {
